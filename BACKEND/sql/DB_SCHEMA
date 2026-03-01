@@ -1,0 +1,233 @@
+--MANUALLY CREATED IN POSTGRESQL(PGADMIN) 
+
+--users table
+CREATE TABLE users(
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER UNIQUE NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    profile_picture VARCHAR(500),
+    blood_group VARCHAR(5),
+    batch INTEGER,
+    hall_name VARCHAR(100),
+    hall_attachement VARCHAR(20) CHECK (hall_attachement IN ('Resident', 'Attached')),
+    department_name VARCHAR(100),
+    bio TEXT,
+    is_active BOOLEAN ,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+);
+
+--table of posts
+CREATE TABLE posts(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT,
+    media_type VARCHAR(20) CHECK (media_type IN ('image', 'video','text')) DEFAULT 'text',
+    visibility VARCHAR(20) CHECK (visibility IN ('public', 'private', 'followers')) DEFAULT 'public',
+    group_id INTEGER,
+    likes_count INTEGER DEFAULT 0,
+    comments_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for media associated with posts
+CREATE TABLE media_urls(
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    media_url VARCHAR(500) NOT NULL,
+    media_type VARCHAR(20) CHECK (media_type IN ('image', 'video','text')) NOT NULL
+);
+
+
+--table of comments
+CREATE TABLE comments(
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table of likes
+CREATE TABLE likes(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_id)
+);
+
+--table of follows
+CREATE TABLE follows(
+    id SERIAL PRIMARY KEY,
+    follower_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    following_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) CHECK (status IN ('pending','accepted','rejected')) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(follower_id, following_id),
+    CHECK(follower_id <> following_id)
+);
+
+--table of groups
+CREATE TABLE groups(
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    admin_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    is_private BOOLEAN DEFAULT FALSE,
+    cover_image VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for group members
+CREATE TABLE group_members(
+    id SERIAL PRIMARY KEY,
+    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) CHECK (role IN ('member', 'admin','moderator')) DEFAULT 'member',
+    status VARCHAR(20) CHECK (status IN ('pending','accepted','rejected')) DEFAULT 'pending',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, user_id)
+);
+
+--table for marketplace sells
+CREATE TABLE marketplace_products(
+    id SERIAL PRIMARY KEY,
+    seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(250) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    category VARCHAR(100),
+    condition VARCHAR(50) CHECK (condition IN ('new','like_new','good','fair','poor')) DEFAULT 'good',
+    location VARCHAR(250),
+    status VARCHAR(20) CHECK (status IN ('available','sold','reserved')) DEFAULT 'available',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+--table for marketplace product images
+CREATE TABLE marketplace_product_images(
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
+    image_url VARCHAR(500) NOT NULL
+);
+
+--table for blood donation requests
+CREATE TABLE blood_donation_posts(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    blood_group VARCHAR(5) NOT NULL,
+    urgency VARCHAR(20) CHECK (urgency IN ('low','moderate','urgent')) DEFAULT 'moderate',
+    patient_name VARCHAR(100) NOT NULL,
+    hospital_name VARCHAR(250) NOT NULL,
+    hospital_address TEXT,
+    contact_number VARCHAR(15) NOT NULL,
+    needed_date DATE,
+    description TEXT,
+    status VARCHAR(20) CHECK (status IN ('active','fulfilled','cancelled')) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for tution related posts
+CREATE TABLE tution_posts(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    post_type VARCHAR(20) CHECK (post_type IN ('seeking_tutor', 'offering_tuition')),
+    class_level VARCHAR(50),
+    preferred_gender VARCHAR(20) CHECK (preferred_gender IN ('male','female','any')) DEFAULT 'any',
+    location VARCHAR(250),
+    salary_min DECIMAL(10,2),
+    salary_max DECIMAL(10,2),
+    days_per_week INTEGER,
+    duration_hours DECIMAL(3,1),
+    requirements TEXT,
+    contact_number VARCHAR(15),
+    status VARCHAR(20) CHECK (status IN ('active','completed','cancelled')) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for tution post subjects
+CREATE TABLE tution_post_subjects(
+    id SERIAL PRIMARY KEY,
+    tution_post_id INTEGER REFERENCES tution_posts(id) ON DELETE CASCADE,
+    subject_name VARCHAR(100) NOT NULL,
+    UNIQUE(tution_post_id, subject_name)
+);
+
+
+--table for blog posts
+CREATE TABLE blog_posts(
+    id SERIAL PRIMARY KEY,
+    author_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(250) NOT NULL,
+    content TEXT NOT NULL,
+    excerpt TEXT,
+    cover_image VARCHAR(500),
+    category VARCHAR(100),
+    views_count INTEGER DEFAULT 0,
+    likes_count INTEGER DEFAULT 0,
+    is_published BOOLEAN DEFAULT TRUE,
+    published_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for blog post tags
+CREATE TABLE blog_post_tags(
+    id SERIAL PRIMARY KEY,
+    blog_post_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
+    tag_name VARCHAR(50) NOT NULL,
+    UNIQUE(blog_post_id, tag_name)
+);
+
+--table for blog post comments
+CREATE TABLE blog_comments(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    blog_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for blog post likes
+CREATE TABLE blog_likes(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    blog_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, blog_id)
+);
+
+--table for messaging chat app
+CREATE TABLE messages(
+    id SERIAL PRIMARY KEY,
+    sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    media_url VARCHAR(500),
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for notifications
+CREATE TABLE notifications(
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    actor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,
+    reference_id INTEGER,
+    content TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+

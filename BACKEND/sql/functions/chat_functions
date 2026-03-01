@@ -1,0 +1,153 @@
+CREATE OR REPLACE FUNCTION get_unread_messages_count(p_user_id INTEGER)
+RETURNS TABLE(
+    sender_id INTEGER,
+    sender_name VARCHAR(50),
+    sender_picture VARCHAR(500),
+    unread_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        m.sender_id,
+        u.name as sender_name,
+        u.profile_picture as sender_picture,
+        COUNT(*) as unread_count
+    FROM messages m
+    INNER JOIN users u ON m.sender_id = u.id
+    WHERE m.receiver_id = p_user_id
+    AND m.is_read = FALSE
+    GROUP BY m.sender_id, u.name, u.profile_picture
+    ORDER BY unread_count DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_total_unread_messages(p_user_id INTEGER)
+RETURNS INTEGER AS $$
+DECLARE
+    total_unread INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO total_unread
+    FROM messages
+    WHERE receiver_id = p_user_id
+    AND is_read = FALSE;
+    
+    RETURN total_unread;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION search_messages(
+    p_user_id INTEGER,
+    p_search_term VARCHAR(255),
+    p_limit INTEGER DEFAULT 50
+)
+RETURNS TABLE(
+    message_id INTEGER,
+    sender_id INTEGER,
+    receiver_id INTEGER,
+    content TEXT,
+    sender_name VARCHAR(50),
+    receiver_name VARCHAR(50),
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        m.id as message_id,
+        m.sender_id,
+        m.receiver_id,
+        m.content,
+        s.name as sender_name,
+        r.name as receiver_name,
+        m.created_at
+    FROM messages m
+    INNER JOIN users s ON m.sender_id = s.id
+    INNER JOIN users r ON m.receiver_id = r.id
+    WHERE (m.sender_id = p_user_id OR m.receiver_id = p_user_id)
+    AND m.content ILIKE '%' || p_search_term || '%'
+    ORDER BY m.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION delete_conversation(
+    p_user1_id INTEGER,
+    p_user2_id INTEGER
+)
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM messages
+    WHERE (sender_id = p_user1_id AND receiver_id = p_user2_id)
+       OR (sender_id = p_user2_id AND receiver_id = p_user1_id);
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION mark_conversation_read(
+    p_receiver_id INTEGER,
+    p_sender_id INTEGER
+)
+RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    UPDATE messages
+    SET is_read = TRUE
+    WHERE receiver_id = p_receiver_id
+    AND sender_id = p_sender_id
+    AND is_read = FALSE;
+    
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_user_message_stats(p_user_id INTEGER)
+RETURNS TABLE(
+    total_sent INTEGER,
+    total_received INTEGER,
+    unread_count INTEGER,
+    active_conversations INTEGER,
+    messages_today INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        (SELECT COUNT(*)::INTEGER FROM messages WHERE sender_id = p_user_id) as total_sent,
+        (SELECT COUNT(*)::INTEGER FROM messages WHERE receiver_id = p_user_id) as total_received,
+        (SELECT COUNT(*)::INTEGER FROM messages WHERE receiver_id = p_user_id AND is_read = FALSE) as unread_count,
+        (SELECT COUNT(DISTINCT 
+            CASE WHEN sender_id = p_user_id THEN receiver_id ELSE sender_id END
+        )::INTEGER FROM messages 
+        WHERE sender_id = p_user_id OR receiver_id = p_user_id) as active_conversations,
+        (SELECT COUNT(*)::INTEGER FROM messages 
+        WHERE (sender_id = p_user_id OR receiver_id = p_user_id)
+        AND created_at > CURRENT_DATE) as messages_today;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_conversation_participants(
+    p_user_id INTEGER,
+    p_other_user_id INTEGER
+)
+RETURNS TABLE(
+    user_id INTEGER,
+    name VARCHAR(50),
+    profile_picture VARCHAR(500),
+    is_active BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id as user_id,
+        u.name,
+        u.profile_picture,
+        u.is_active
+    FROM users u
+    WHERE u.id IN (p_user_id, p_other_user_id)
+    AND u.is_active = TRUE;
+END;
+$$ LANGUAGE plpgsql;

@@ -1,0 +1,110 @@
+CREATE OR REPLACE FUNCTION create_notification(
+    p_user_id INTEGER,
+    p_actor_id INTEGER,
+    p_notification_type VARCHAR(50),
+    p_reference_id INTEGER,
+    p_content TEXT
+)
+RETURNS INTEGER AS $$
+DECLARE
+    notification_id INTEGER;
+BEGIN
+    IF p_actor_id = p_user_id THEN
+        RETURN NULL;
+    END IF;
+    
+    INSERT INTO notifications (user_id, actor_id, notification_type, reference_id, content)
+    VALUES (p_user_id, p_actor_id, p_notification_type, p_reference_id, p_content)
+    RETURNING id INTO notification_id;
+    
+    RETURN notification_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION delete_old_read_notifications(p_days INTEGER DEFAULT 30)
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM notifications
+    WHERE is_read = TRUE
+    AND created_at < CURRENT_DATE - (p_days || ' days')::INTERVAL;
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_notification_summary(p_user_id INTEGER)
+RETURNS TABLE(
+    notification_type VARCHAR(50),
+    total_count BIGINT,
+    unread_count BIGINT,
+    latest_notification_time TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        n.notification_type,
+        COUNT(*) as total_count,
+        COUNT(*) FILTER (WHERE is_read = FALSE) as unread_count,
+        MAX(created_at) as latest_notification_time
+    FROM notifications n
+    WHERE user_id = p_user_id
+    GROUP BY n.notification_type
+    ORDER BY unread_count DESC, total_count DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION mark_notifications_read_by_type(
+    p_user_id INTEGER,
+    p_notification_type VARCHAR(50)
+)
+RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    UPDATE notifications
+    SET is_read = TRUE
+    WHERE user_id = p_user_id
+    AND notification_type = p_notification_type
+    AND is_read = FALSE;
+    
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_activity_notifications(
+    p_user_id INTEGER,
+    p_limit INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    notification_id INTEGER,
+    actor_name VARCHAR(50),
+    actor_picture VARCHAR(500),
+    notification_type VARCHAR(50),
+    content TEXT,
+    reference_id INTEGER,
+    is_read BOOLEAN,
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        n.id as notification_id,
+        u.name as actor_name,
+        u.profile_picture as actor_picture,
+        n.notification_type,
+        n.content,
+        n.reference_id,
+        n.is_read,
+        n.created_at
+    FROM notifications n
+    LEFT JOIN users u ON n.actor_id = u.id
+    WHERE n.user_id = p_user_id
+    AND n.notification_type IN ('like', 'comment', 'follow', 'mention', 'share')
+    ORDER BY n.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
