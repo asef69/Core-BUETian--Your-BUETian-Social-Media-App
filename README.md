@@ -44,19 +44,43 @@ CSB/
 
 Add your screenshots in `docs/screenshots/` and keep the filenames used below.
 
-### Home Feed
+### Home Page
 
-![Home Feed](docs/screenshots/home-feed.png)
+![Home Page](docs/screenshots/Home_Page.png)
+
+### Authentication
+
+![Login](docs/screenshots/Login.png)
+![Registration](docs/screenshots/Registration.png)
+
+### Profile
+
+![Profile](docs/screenshots/Profile.png)
+
+### Search
+
+![Search](docs/screenshots/Search.png)
 
 ### Chat
 
-![Chat](docs/screenshots/chat.png)
+![Chat](docs/screenshots/Chat.png)
 
-### Marketplace
+### Group
 
-![Marketplace](docs/screenshots/marketplace.png)
+![Group Join](docs/screenshots/Group_Join.png)
+![Group Member](docs/screenshots/Group_Member.png)
 
-> If images do not appear, add matching files in `docs/screenshots/` (for example: `home-feed.png`, `chat.png`, `marketplace.png`).
+### Forum
+
+![Blood Donation](docs/screenshots/Blood_Donation.png)
+![Tuition Post](docs/screenshots/Tution_Post.png)
+
+### Notifications
+
+![Notifications](docs/screenshots/Notification.png)
+
+> If images do not appear, add matching files in `docs/screenshots/`:
+> `Home_Page.png`, `Login.png`, `Registration.png`, `Profile.png`, `Search.png`, `Chat.png`, `Group_Join.png`, `Group_Member.png`, `Blood_Donation.png`, `Tution_Post.png`, `Notification.png`.
 
 ## Prerequisites
 
