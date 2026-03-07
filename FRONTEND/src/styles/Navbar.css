@@ -6,7 +6,7 @@
   z-index: 120;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-color);
-  background: rgba(16, 27, 45, 0.76);
+  background: var(--navbar-bg);
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
 }
@@ -85,7 +85,7 @@
 .nav-link:hover,
 .nav-link.active {
   color: var(--light-color);
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--nav-hover-bg);
   border-color: var(--border-color);
 }
 
@@ -98,12 +98,20 @@
 }
 
 .logout-btn {
-  color: #ffc0cc;
+  color: var(--logout-color);
 }
 
 .logout-btn:hover {
-  color: #ffe4e9;
-  background: rgba(255, 95, 127, 0.22);
+  color: var(--logout-hover-color);
+  background: var(--logout-hover-bg);
+}
+
+.theme-toggle-btn {
+  color: var(--gray-color);
+}
+
+.theme-toggle-btn:hover {
+  color: var(--light-color);
 }
 
 @media (min-width: 1024px) {

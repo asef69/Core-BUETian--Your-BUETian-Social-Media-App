@@ -12,7 +12,7 @@
   padding: 42px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-color);
-  background: linear-gradient(160deg, rgba(18, 31, 52, 0.86), rgba(12, 21, 37, 0.86));
+  background: var(--auth-card-bg);
   box-shadow: var(--shadow-hover);
   backdrop-filter: blur(16px);
   animation: slideUp 0.55s var(--transition-base);

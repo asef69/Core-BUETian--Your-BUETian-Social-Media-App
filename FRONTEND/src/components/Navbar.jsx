@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaHome, FaComments, FaUsers, FaStore, FaBullhorn, FaBell, FaUser, FaSignOutAlt, FaSearch } from 'react-icons/fa';
+import { FaHome, FaComments, FaUsers, FaStore, FaBullhorn, FaBell, FaUser, FaSignOutAlt, FaSearch, FaMoon, FaSun } from 'react-icons/fa';
+import { useTheme } from '../context/ThemeContext';
 import '../styles/Navbar.css';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleLogout = () => {
@@ -82,6 +84,16 @@ const Navbar = () => {
               <FaUser size={20} />
               <span>Profile</span>
             </Link>
+          </li>
+          <li>
+            <button
+              onClick={toggleTheme}
+              className="nav-link theme-toggle-btn"
+              title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            >
+              {isDark ? <FaSun size={20} /> : <FaMoon size={20} />}
+              <span>{isDark ? 'Light' : 'Dark'}</span>
+            </button>
           </li>
           <li>
             <button onClick={handleLogout} className="nav-link logout-btn" title="Logout">
