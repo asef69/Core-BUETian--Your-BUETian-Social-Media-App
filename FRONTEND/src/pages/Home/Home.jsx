@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { postAPI, userAPI } from '../../services/apiService';
+import { Link } from 'react-router-dom';
+import { FaBookOpen, FaComments, FaHome, FaStore, FaUsers } from 'react-icons/fa';
+import { postAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import CreatePost from '../../components/Posts/CreatePost';
 import PostCard from '../../components/Posts/PostCard';
 import SuggestedUsers from '../../components/Users/SuggestedUsers';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/Home.css';
 
 const Home = () => {
+  const { user } = useAuth();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -99,9 +103,43 @@ const Home = () => {
       <div className="main-content">
         <div className="container">
           <div className="home-layout">
-            <div className="feed-section">
+            <aside className="left-rail">
+              <div className="sidebar-card left-rail-card">
+                <h3>{user?.name ? `${user.name}'s Space` : 'Your Space'}</h3>
+                <p>Jump back into your favorite sections.</p>
+                <div className="shortcut-list">
+                  <Link to="/" className="shortcut-item">
+                    <FaHome />
+                    <span>News Feed</span>
+                  </Link>
+                  <Link to="/groups" className="shortcut-item">
+                    <FaUsers />
+                    <span>Groups</span>
+                  </Link>
+                  <Link to="/chat" className="shortcut-item">
+                    <FaComments />
+                    <span>Messages</span>
+                  </Link>
+                  <Link to="/marketplace" className="shortcut-item">
+                    <FaStore />
+                    <span>Marketplace</span>
+                  </Link>
+                  <Link to="/forums" className="shortcut-item">
+                    <FaBookOpen />
+                    <span>Forums</span>
+                  </Link>
+                </div>
+              </div>
+            </aside>
+
+            <main className="feed-section">
+              <div className="feed-headline">
+                <h2>Home Feed</h2>
+                <span>See what your network is sharing right now</span>
+              </div>
+
               <CreatePost onPostCreated={handlePostCreated} />
-              
+
               {loading ? (
                 <div className="loading">Loading feed...</div>
               ) : (
@@ -121,18 +159,19 @@ const Home = () => {
                       ))}
                       {hasMore && (
                         <button onClick={loadMore} className="btn btn-secondary load-more">
-                          Load More
+                          Load More Stories
                         </button>
                       )}
                     </>
                   )}
                 </>
               )}
-            </div>
+            </main>
 
-            <div className="sidebar">
+            <aside className="sidebar">
+              <div className="sidebar-label">People you may know</div>
               <SuggestedUsers />
-            </div>
+            </aside>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FaHome, FaComments, FaUsers, FaStore, FaBullhorn, FaBell, FaUser, FaSignOutAlt, FaSearch, FaMoon, FaSun } from 'react-icons/fa';
 import { useTheme } from '../context/ThemeContext';
@@ -44,46 +44,46 @@ const Navbar = () => {
 
         <ul className="navbar-menu">
           <li>
-            <Link to="/" className="nav-link" title="Home">
+            <NavLink to="/" className="nav-link" title="Home" end>
               <FaHome size={20} />
               <span>Home</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/chat" className="nav-link" title="Messages">
+            <NavLink to="/chat" className="nav-link" title="Messages">
               <FaComments size={20} />
               <span>Chat</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/groups" className="nav-link" title="Groups">
+            <NavLink to="/groups" className="nav-link" title="Groups">
               <FaUsers size={20} />
               <span>Groups</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/marketplace" className="nav-link" title="Marketplace">
+            <NavLink to="/marketplace" className="nav-link" title="Marketplace">
               <FaStore size={20} />
               <span>Marketplace</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/forums" className="nav-link" title="Forums">
+            <NavLink to="/forums" className="nav-link" title="Forums">
               <FaBullhorn size={20} />
               <span>Forums</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/notifications" className="nav-link" title="Notifications">
+            <NavLink to="/notifications" className="nav-link" title="Notifications">
               <FaBell size={20} />
               <span>Notifications</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to={`/profile/${user?.id}`} className="nav-link" title="Profile">
+            <NavLink to={`/profile/${user?.id}`} className="nav-link" title="Profile">
               <FaUser size={20} />
               <span>Profile</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
             <button

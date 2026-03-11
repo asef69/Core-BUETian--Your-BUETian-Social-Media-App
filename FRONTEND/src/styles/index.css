@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap');
 
 * {
   margin: 0;
@@ -12,29 +12,33 @@ html {
 }
 
 :root {
-  --bg-primary: #070b12;
-  --bg-secondary: #0d1524;
-  --bg-tertiary: #111d31;
-  --surface: rgba(18, 29, 49, 0.78);
-  --surface-solid: #132138;
-  --surface-elevated: rgba(26, 41, 68, 0.92);
-  --surface-soft: rgba(255, 255, 255, 0.08);
-  --primary-color: #5c8bff;
-  --secondary-color: #3fd4a6;
-  --danger-color: #ff5f7f;
-  --warning-color: #ffbf66;
-  --dark-color: #eaf2ff;
-  --light-color: #d9e7ff;
-  --gray-color: #9fb0cc;
-  --muted-color: #7f93b2;
-  --border-color: rgba(149, 176, 221, 0.24);
-  --shadow: 0 8px 24px rgba(3, 10, 22, 0.35);
-  --shadow-hover: 0 18px 42px rgba(0, 0, 0, 0.48);
-  --shadow-glow: 0 0 0 1px rgba(92, 139, 255, 0.35), 0 0 30px rgba(92, 139, 255, 0.22);
-  --bg-accent-1: rgba(92, 139, 255, 0.22);
-  --bg-accent-2: rgba(63, 212, 166, 0.18);
-  --navbar-bg: rgba(16, 27, 45, 0.76);
-  --nav-hover-bg: rgba(255, 255, 255, 0.09);
+  --bg-primary: #171a20;
+  --bg-secondary: #1d2128;
+  --bg-tertiary: #232832;
+  --surface: rgba(31, 36, 46, 0.9);
+  --surface-solid: #2a303a;
+  --surface-elevated: rgba(40, 46, 58, 0.96);
+  --surface-soft: rgba(255, 255, 255, 0.06);
+  --primary-color: #2374e1;
+  --secondary-color: #42b883;
+  --danger-color: #ff5d76;
+  --warning-color: #ffb347;
+  --dark-color: #e9edf5;
+  --light-color: #f2f4f8;
+  --gray-color: #c4cad4;
+  --muted-color: #a7b0be;
+  --border-color: rgba(224, 232, 246, 0.14);
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  --shadow-hover: 0 12px 28px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 0 1px rgba(35, 116, 225, 0.45), 0 0 24px rgba(35, 116, 225, 0.24);
+  --bg-accent-1: rgba(35, 116, 225, 0.2);
+  --bg-accent-2: rgba(66, 184, 131, 0.16);
+  --navbar-bg: rgba(35, 40, 50, 0.88);
+  --nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --search-bg: rgba(255, 255, 255, 0.08);
+  --brand-color: #4c9cff;
+  --nav-link-border: rgba(255, 255, 255, 0.07);
+  --nav-active-border: rgba(76, 156, 255, 0.38);
   --logout-color: #ffc0cc;
   --logout-hover-color: #ffe4e9;
   --logout-hover-bg: rgba(255, 95, 127, 0.22);
@@ -55,25 +59,29 @@ html {
 }
 
 body[data-theme='light'] {
-  --bg-primary: #f4f7fd;
-  --bg-secondary: #edf2fb;
-  --bg-tertiary: #e6edf9;
+  --bg-primary: #f0f2f5;
+  --bg-secondary: #e8ebf0;
+  --bg-tertiary: #dfe3eb;
   --surface: rgba(255, 255, 255, 0.86);
   --surface-solid: #f8fbff;
   --surface-elevated: rgba(255, 255, 255, 0.96);
-  --surface-soft: rgba(15, 30, 58, 0.08);
-  --dark-color: #16233a;
-  --light-color: #1c2b45;
-  --gray-color: #3f5475;
-  --muted-color: #5f7495;
-  --border-color: rgba(67, 101, 156, 0.22);
-  --shadow: 0 8px 24px rgba(42, 68, 112, 0.16);
-  --shadow-hover: 0 18px 42px rgba(42, 68, 112, 0.2);
-  --shadow-glow: 0 0 0 1px rgba(92, 139, 255, 0.28), 0 0 24px rgba(92, 139, 255, 0.16);
-  --bg-accent-1: rgba(92, 139, 255, 0.12);
-  --bg-accent-2: rgba(63, 212, 166, 0.1);
-  --navbar-bg: rgba(255, 255, 255, 0.9);
-  --nav-hover-bg: rgba(18, 35, 62, 0.08);
+  --surface-soft: rgba(18, 45, 92, 0.06);
+  --dark-color: #1a2432;
+  --light-color: #182032;
+  --gray-color: #40506a;
+  --muted-color: #627089;
+  --border-color: rgba(64, 80, 106, 0.18);
+  --shadow: 0 6px 18px rgba(31, 43, 64, 0.11);
+  --shadow-hover: 0 12px 28px rgba(31, 43, 64, 0.16);
+  --shadow-glow: 0 0 0 1px rgba(35, 116, 225, 0.22), 0 0 20px rgba(35, 116, 225, 0.16);
+  --bg-accent-1: rgba(35, 116, 225, 0.09);
+  --bg-accent-2: rgba(66, 184, 131, 0.08);
+  --navbar-bg: rgba(255, 255, 255, 0.92);
+  --nav-hover-bg: rgba(24, 34, 52, 0.06);
+  --search-bg: rgba(24, 34, 52, 0.06);
+  --brand-color: #2374e1;
+  --nav-link-border: rgba(35, 116, 225, 0.1);
+  --nav-active-border: rgba(35, 116, 225, 0.28);
   --logout-color: #d35370;
   --logout-hover-color: #b43f5b;
   --logout-hover-bg: rgba(213, 83, 112, 0.15);
@@ -83,13 +91,12 @@ body[data-theme='light'] {
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background:
-    radial-gradient(circle at 10% 10%, var(--bg-accent-1), transparent 40%),
-    radial-gradient(circle at 80% 5%, var(--bg-accent-2), transparent 30%),
-    linear-gradient(135deg, var(--bg-primary), var(--bg-secondary) 52%, var(--bg-tertiary));
+    radial-gradient(circle at 10% 12%, var(--bg-accent-1), transparent 36%),
+    linear-gradient(160deg, var(--bg-primary), var(--bg-secondary) 56%, var(--bg-tertiary));
   color: var(--dark-color);
   line-height: 1.6;
   overflow-y: scroll;
@@ -99,6 +106,31 @@ body {
 
 a {
   color: inherit;
+  transition: color var(--transition-fast);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 #root {
@@ -149,10 +181,10 @@ a {
 
 /* Buttons */
 .btn {
-  padding: 10px 20px;
+  padding: 10px 16px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-size: 0.95rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
@@ -172,13 +204,13 @@ a {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #6595ff, #4d79e2);
+  background: linear-gradient(135deg, #358ffb, #2374e1);
   color: #f2f6ff;
-  box-shadow: 0 10px 18px rgba(77, 121, 226, 0.35);
+  box-shadow: 0 8px 14px rgba(35, 116, 225, 0.28);
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 14px 24px rgba(77, 121, 226, 0.45);
+  box-shadow: 0 10px 18px rgba(35, 116, 225, 0.36);
 }
 
 .btn-secondary {
@@ -224,7 +256,7 @@ a {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   font-size: 0.95rem;
   color: var(--dark-color);
   background: rgba(255, 255, 255, 0.08);
@@ -259,9 +291,9 @@ a {
 .card {
   background: var(--surface);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  margin-bottom: 20px;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
   backdrop-filter: blur(10px);
   box-shadow: var(--shadow);
 }
@@ -297,7 +329,15 @@ a {
 
 .main-content {
   flex: 1;
-  padding-top: 90px;
+  padding-top: 86px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Modal */
