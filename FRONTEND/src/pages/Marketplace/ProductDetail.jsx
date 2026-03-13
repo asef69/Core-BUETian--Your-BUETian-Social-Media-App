@@ -4,7 +4,7 @@ import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { FaDollarSign, FaMapMarkerAlt, FaUser } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaUser } from 'react-icons/fa';
 
 const ProductDetail = () => {
   const { productId } = useParams();
@@ -125,7 +125,7 @@ const ProductDetail = () => {
             <div className="product-details">
               <h1>{product.title}</h1>
               <div className="product-price">
-                <FaDollarSign /> {product.price}
+                BDT {product.price}
               </div>
               <div className="product-meta">
                 <span className="condition-badge">{product.condition}</span>

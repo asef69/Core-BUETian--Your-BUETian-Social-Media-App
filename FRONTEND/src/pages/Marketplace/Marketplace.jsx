@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaPlus, FaDollarSign } from 'react-icons/fa';
+import { FaPlus } from 'react-icons/fa';
 import '../../styles/Marketplace.css';
 
 const Marketplace = () => {
@@ -23,6 +23,16 @@ const Marketplace = () => {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  const getProductId = (product) =>
+    product?.product_id || product?.id || product?.pk;
+
+  const getProductImage = (product) => {
+    if (Array.isArray(product?.images) && product.images.length > 0) {
+      return product.images[0];
+    }
+    return product?.image || '/default-product.png';
+  };
 
   const loadProducts = async () => {
     try {
@@ -83,23 +93,28 @@ const Marketplace = () => {
               {products.length === 0 ? (
                 <p>No products available</p>
               ) : (
-                products.map((product) => (
-                  <Link to={`/marketplace/${product.id}`} key={product.id} className="product-card">
+                products.map((product) => {
+                  const productId = getProductId(product);
+                  if (!productId) return null;
+
+                  return (
+                  <Link to={`/marketplace/${productId}`} key={productId} className="product-card">
                     <img
-                      src={product.images?.[0] || '/default-product.png'}
+                      src={getProductImage(product)}
                       alt={product.title}
                       className="product-image"
                     />
                     <div className="product-info">
                       <h3>{product.title}</h3>
                       <p className="product-price">
-                        <FaDollarSign /> {product.price}
+                        BDT {product.price}
                       </p>
                       <p className="product-condition">{product.condition}</p>
                       <p className="product-location">{product.location}</p>
                     </div>
                   </Link>
-                ))
+                );
+                })
               )}
             </div>
           )}

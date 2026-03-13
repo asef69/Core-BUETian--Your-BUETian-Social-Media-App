@@ -129,7 +129,7 @@ const GroupDetail = () => {
         groupAPI.getGroup(groupId),
         groupAPI.getGroupPosts(groupId),
         groupAPI.getMembers(groupId),
-        groupAPI.getPending(groupId),
+        groupAPI.getPending(groupId).catch(() => ({ data: [] })),
       ]);
       const groupData = extractGroup(groupRes.data);
       const postsData = extractItems(postsRes.data).map(normalizePost);
@@ -145,11 +145,15 @@ const GroupDetail = () => {
       setSearchPage(1);
 
       if (currentUser?.id) {
-        const followersRes = await userAPI.getFollowers(currentUser.id);
-        const followerItems = extractItems(followersRes.data).map(normalizeUser);
-        const memberIds = new Set(membersData.map((member) => member.user_id));
-        const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
-        setFollowersToInvite(filteredFollowers);
+        try {
+          const followersRes = await userAPI.getFollowers(currentUser.id);
+          const followerItems = extractItems(followersRes.data).map(normalizeUser);
+          const memberIds = new Set(membersData.map((member) => member.user_id));
+          const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
+          setFollowersToInvite(filteredFollowers);
+        } catch (error) {
+          setFollowersToInvite([]);
+        }
       }
     } catch (error) {
       toast.error('Failed to load group');

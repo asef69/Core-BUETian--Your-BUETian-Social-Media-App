@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION get_user_groups(p_user_id INTEGER)
+﻿CREATE OR REPLACE FUNCTION get_user_groups(p_user_id INTEGER)
 RETURNS TABLE(
     group_id INTEGER,
     name VARCHAR(100),
@@ -128,76 +128,4 @@ BEGIN
         (SELECT COALESCE(SUM(comments_count), 0) FROM posts WHERE group_id = p_group_id AND created_at > CURRENT_DATE - (p_days || ' days')::INTERVAL) as total_comments;
 END;
 $$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION transfer_group_admin(p_group_id INTEGER, p_current_admin_id INTEGER, p_new_admin_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE
-    is_valid BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_current_admin_id
-    ) INTO is_valid;
-    
-    IF NOT is_valid THEN
-        RETURN FALSE;
-    END IF;
-    
-    SELECT EXISTS(
-        SELECT 1 FROM group_members 
-        WHERE group_id = p_group_id AND user_id = p_new_admin_id AND status = 'accepted'
-    ) INTO is_valid;
-    
-    IF NOT is_valid THEN
-        RETURN FALSE;
-    END IF;
-    
-    UPDATE groups SET admin_id = p_new_admin_id, updated_at = CURRENT_TIMESTAMP WHERE id = p_group_id;
-    
-    UPDATE group_members SET role = 'member' WHERE group_id = p_group_id AND user_id = p_current_admin_id;
-    UPDATE group_members SET role = 'admin' WHERE group_id = p_group_id AND user_id = p_new_admin_id;
-    
-    RETURN TRUE;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION promote_to_moderator(p_group_id INTEGER, p_admin_id INTEGER, p_user_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE
-    is_admin BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_admin_id
-    ) INTO is_admin;
-    
-    IF NOT is_admin THEN
-        RETURN FALSE;
-    END IF;
-    
-    UPDATE group_members 
-    SET role = 'moderator' 
-    WHERE group_id = p_group_id AND user_id = p_user_id AND status = 'accepted';
-    
-    RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION demote_moderator(p_group_id INTEGER, p_admin_id INTEGER, p_user_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE
-    is_admin BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_admin_id
-    ) INTO is_admin;
-    
-    IF NOT is_admin THEN
-        RETURN FALSE;
-    END IF;
-    
-    UPDATE group_members 
-    SET role = 'member' 
-    WHERE group_id = p_group_id AND user_id = p_user_id AND role = 'moderator';
-    
-    RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql;
+

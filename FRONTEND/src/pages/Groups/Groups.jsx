@@ -27,8 +27,14 @@ const Groups = () => {
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.results)) return data.results;
     if (Array.isArray(data?.value)) return data.value;
+    if (Array.isArray(data?.groups)) return data.groups;
+    if (Array.isArray(data?.my_groups)) return data.my_groups;
+    if (Array.isArray(data?.items)) return data.items;
     return [];
   };
+
+  const getGroupId = (group) =>
+    group?.group_id || group?.id || group?.pk;
 
   const toUserId = (item) =>
     item?.user_id ||
@@ -143,8 +149,12 @@ const Groups = () => {
                   {myGroups.length === 0 ? (
                     <p>You haven't joined any groups yet</p>
                   ) : (
-                    myGroups.map((group) => (
-                      <Link to={`/groups/${group.group_id}`} key={group.group_id} className="group-card">
+                    myGroups.map((group) => {
+                      const groupId = getGroupId(group);
+                      if (!groupId) return null;
+
+                      return (
+                      <Link to={`/groups/${groupId}`} key={groupId} className="group-card">
                         <img
                           src={group.cover_image || '/default-group.png'}
                           alt={group.name}
@@ -159,7 +169,8 @@ const Groups = () => {
                           </div>
                         </div>
                       </Link>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </section>
@@ -170,8 +181,12 @@ const Groups = () => {
                   {suggested.length === 0 ? (
                     <p>No suggestions available</p>
                   ) : (
-                    suggested.map((group) => (
-                      <div key={group.group_id} className="group-card">
+                    suggested.map((group) => {
+                      const groupId = getGroupId(group);
+                      if (!groupId) return null;
+
+                      return (
+                      <div key={groupId} className="group-card">
                         <img
                           src={group.cover_image || '/default-group.png'}
                           alt={group.name}
@@ -186,13 +201,14 @@ const Groups = () => {
                           </div>
                           <button
                             className="btn btn-primary"
-                            onClick={() => handleJoinGroup(group.group_id)}
+                            onClick={() => handleJoinGroup(groupId)}
                           >
                             Join Group
                           </button>
                         </div>
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </section>
