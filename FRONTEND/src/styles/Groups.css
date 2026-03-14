@@ -265,6 +265,98 @@
   color: var(--light-color);
 }
 
+.group-admin-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-panel {
+  background: linear-gradient(150deg, rgba(25, 31, 45, 0.92), rgba(17, 22, 32, 0.88));
+  border: 1px solid rgba(113, 146, 196, 0.2);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.dashboard-heading {
+  margin-bottom: 12px;
+}
+
+.dashboard-heading h3 {
+  margin-bottom: 6px;
+  color: var(--light-color);
+  font-size: 1.18rem;
+}
+
+.dashboard-heading p {
+  color: var(--muted-color);
+  font-size: 0.9rem;
+}
+
+.dashboard-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.dashboard-stat-card {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--muted-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-stat-card strong {
+  font-size: 1.5rem;
+  color: var(--light-color);
+  line-height: 1;
+}
+
+.queue-panel {
+  border-color: rgba(60, 146, 255, 0.28);
+  background: linear-gradient(150deg, rgba(17, 30, 54, 0.9), rgba(14, 26, 48, 0.85));
+}
+
+.queue-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.queue-item {
+  border-radius: 12px;
+  border: 1px solid rgba(60, 146, 255, 0.35);
+  background: rgba(35, 116, 225, 0.16);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queue-label {
+  font-size: 0.8rem;
+  color: #b8d3ff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.queue-item strong {
+  font-size: 1.6rem;
+  color: #e5f0ff;
+  line-height: 1;
+}
+
 @media (max-width: 768px) {
   .groups-grid {
     grid-template-columns: 1fr;
@@ -276,5 +368,21 @@
 
   .group-tabs {
     flex-direction: column;
+  }
+
+  .dashboard-panel {
+    padding: 14px;
+  }
+
+  .dashboard-stats-grid,
+  .queue-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-stats-grid,
+  .queue-metrics {
+    grid-template-columns: 1fr;
   }
 }

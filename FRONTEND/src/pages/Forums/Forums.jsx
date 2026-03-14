@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { forumAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
@@ -226,7 +227,7 @@ const Forums = () => {
                           <p><strong>Contact:</strong> {request.contact_number}</p>
                           {request.description && <p>{request.description}</p>}
                           <div className="post-meta">
-                            <span>Posted {moment(request.created_at).fromNow()}</span>
+                            <span>Posted {moment.utc(request.created_at).local().fromNow()}</span>
                             <span className="status-badge">{request.status}</span>
                           </div>
                           {currentUser?.id && Number(currentUser.id) === Number(request.requester_id) && (
@@ -237,6 +238,16 @@ const Forums = () => {
                               <button className="btn btn-danger" onClick={() => handleDeleteBlood(request.id || request.request_id)}>
                                 Delete
                               </button>
+                            </div>
+                          )}
+                          {currentUser?.id && Number(currentUser.id) !== Number(request.requester_id) && request.requester_id && (
+                            <div className="post-meta">
+                              <Link
+                                to={`/chat/${request.requester_id}?message=${encodeURIComponent(`Hi, I saw your blood request for ${request.blood_group} at ${request.hospital_name}. I want to help.`)}`}
+                                className="btn btn-primary"
+                              >
+                                Message Requester
+                              </Link>
                             </div>
                           )}
                         </div>
@@ -272,7 +283,7 @@ const Forums = () => {
                           {post.requirements && <p><strong>Requirements:</strong> {post.requirements}</p>}
                           <p><strong>Contact:</strong> {post.contact_number}</p>
                           <div className="post-meta">
-                            <span>Posted {moment(post.created_at).fromNow()}</span>
+                            <span>Posted {moment.utc(post.created_at).local().fromNow()}</span>
                             <span className="status-badge">{post.status}</span>
                           </div>
                           {currentUser?.id && Number(currentUser.id) === Number(post.poster_id) && (
@@ -283,6 +294,16 @@ const Forums = () => {
                               <button className="btn btn-danger" onClick={() => handleDeleteTuition(post.id || post.tuition_id)}>
                                 Delete
                               </button>
+                            </div>
+                          )}
+                          {currentUser?.id && Number(currentUser.id) !== Number(post.poster_id) && post.poster_id && (
+                            <div className="post-meta">
+                              <Link
+                                to={`/chat/${post.poster_id}?message=${encodeURIComponent(`Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`)}`}
+                                className="btn btn-primary"
+                              >
+                                Message Poster
+                              </Link>
                             </div>
                           )}
                         </div>

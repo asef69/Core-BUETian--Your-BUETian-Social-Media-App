@@ -78,6 +78,7 @@
 }
 
 .nav-link {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -110,8 +111,24 @@
   font-weight: 700;
 }
 
-.nav-link span {
-  display: none;
+
+.nav-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e84866;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .logout-btn {
@@ -129,12 +146,6 @@
 
 .theme-toggle-btn:hover {
   color: var(--light-color);
-}
-
-@media (min-width: 1024px) {
-  .nav-link span {
-    display: inline;
-  }
 }
 
 @media (max-width: 768px) {

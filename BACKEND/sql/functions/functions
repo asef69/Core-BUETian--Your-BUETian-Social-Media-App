@@ -77,30 +77,84 @@ $$ LANGUAGE plpgsql;
 
 --FAMOUS POST
 
+--TRENDING POSTS (sorted by engagement score = likes*2 + comments, last 7 days)
+
 CREATE OR REPLACE FUNCTION get_trending_posts(p_limit INTEGER DEFAULT 10)
 RETURNS TABLE(
     post_id INTEGER,
+    id INTEGER,
     content TEXT,
+    media_type VARCHAR(20),
+    visibility VARCHAR(20),
+    user_id INTEGER,
+    user_name VARCHAR(50),
+    profile_picture VARCHAR(500),
+    author_id INTEGER,
     author_name VARCHAR(50),
+    author_picture VARCHAR(500),
+    created_at TIMESTAMP,
     likes_count INTEGER,
     comments_count INTEGER,
-    created_at TIMESTAMP
+    has_liked BOOLEAN,
+    media_urls JSON
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
-        p.id as post_id,
+    SELECT
+        p.id AS post_id,
+        p.id AS id,
         p.content,
-        u.name as author_name,
+        p.media_type,
+        p.visibility,
+        u.id AS user_id,
+        u.name AS user_name,
+        u.profile_picture AS profile_picture,
+        u.id AS author_id,
+        u.name AS author_name,
+        u.profile_picture AS author_picture,
+        p.created_at,
         p.likes_count,
         p.comments_count,
-        p.created_at
+        FALSE AS has_liked,
+        COALESCE(
+            JSON_AGG(
+                JSON_BUILD_OBJECT('media_url', m.media_url, 'media_type', m.media_type)
+            ) FILTER (WHERE m.id IS NOT NULL),
+            '[]'::JSON
+        ) AS media_urls
     FROM posts p
     INNER JOIN users u ON p.user_id = u.id
-    WHERE p.created_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
-    AND p.visibility = 'public'
-    AND p.group_id IS NULL
-    ORDER BY p.likes_count DESC, p.comments_count DESC
+    LEFT JOIN media_urls m ON p.id = m.post_id
+    WHERE p.visibility = 'public'
+      AND p.group_id IS NULL
+      AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+    GROUP BY p.id, u.id
+    ORDER BY (p.likes_count * 2 + p.comments_count) DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+--TRENDING HASHTAGS (extracted from post content, ranked by total engagement)
+
+CREATE OR REPLACE FUNCTION get_trending_hashtags(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE(
+    hashtag TEXT,
+    post_count BIGINT,
+    total_engagement BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        lower(m.tag) AS hashtag,
+        COUNT(DISTINCT p.id) AS post_count,
+        COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
+    FROM posts p
+    CROSS JOIN LATERAL regexp_matches(p.content, '#([A-Za-z0-9_]+)', 'g') AS m(tag)
+    WHERE p.visibility = 'public'
+      AND p.group_id IS NULL
+      AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+    GROUP BY lower(m.tag)
+    ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;

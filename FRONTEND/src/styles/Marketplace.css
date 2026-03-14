@@ -63,6 +63,35 @@
   margin-bottom: 3px;
 }
 
+.market-status {
+  margin-top: 8px;
+  width: fit-content;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+}
+
+.market-status.status-available {
+  color: #87e4bc;
+  background: rgba(66, 184, 131, 0.18);
+  border-color: rgba(66, 184, 131, 0.35);
+}
+
+.market-status.status-reserved {
+  color: #ffd48b;
+  background: rgba(244, 163, 32, 0.18);
+  border-color: rgba(244, 163, 32, 0.35);
+}
+
+.market-status.status-sold {
+  color: #ffc2c8;
+  background: rgba(220, 53, 69, 0.18);
+  border-color: rgba(220, 53, 69, 0.35);
+}
+
 .product-detail {
   display: grid;
   grid-template-columns: 1fr 1fr;

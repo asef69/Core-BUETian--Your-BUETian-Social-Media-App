@@ -317,7 +317,7 @@ class ProductListView(APIView):
         category = request.query_params.get('category')
         raw_status_filter = request.query_params.get('status', 'available')
         status_filter = str(raw_status_filter).strip().lower()
-        if status_filter not in VALID_PRODUCT_STATUSES:
+        if status_filter != 'all' and status_filter not in VALID_PRODUCT_STATUSES:
             status_filter = 'available'
         condition = request.query_params.get('condition')
         min_price = request.query_params.get('min_price')
@@ -345,9 +345,14 @@ class ProductListView(APIView):
             ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images
         FROM marketplace_products p
         INNER JOIN users u ON p.seller_id = u.id
-        WHERE p.status = %s AND u.is_active = TRUE
+        WHERE u.is_active = TRUE
         """
-        params = [status_filter]
+
+        params = []
+
+        if status_filter in VALID_PRODUCT_STATUSES:
+            query += " AND p.status = %s"
+            params.append(status_filter)
         
         if category:
             query += " AND p.category = %s"

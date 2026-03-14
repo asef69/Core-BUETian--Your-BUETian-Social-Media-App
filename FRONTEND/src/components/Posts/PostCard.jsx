@@ -15,9 +15,26 @@ const PostCard = ({ post, onLike }) => {
   const [commentsCount, setCommentsCount] = useState(post.comments_count);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content || '');
+  const [editVisibility, setEditVisibility] = useState(post.visibility || 'public');
   const [showPostMenu, setShowPostMenu] = useState(false);
   const postMenuRef = useRef(null);
   const postId = post.id || post.post_id;
+
+  const renderContentWithHashtags = (content) => {
+    const text = content || '';
+    const parts = text.split(/(#[A-Za-z0-9_]+)/g);
+    return parts.map((part, index) => {
+      if (/^#[A-Za-z0-9_]+$/.test(part)) {
+        const hashtag = part.slice(1);
+        return (
+          <Link key={`${hashtag}-${index}`} to={`/search?q=${encodeURIComponent(hashtag)}`} className="hashtag-link">
+            {part}
+          </Link>
+        );
+      }
+      return <React.Fragment key={`text-${index}`}>{part}</React.Fragment>;
+    });
+  };
 
   // Debug: Log post data structure
   React.useEffect(() => {
@@ -180,7 +197,7 @@ const PostCard = ({ post, onLike }) => {
         toast.error('Cannot update: Post ID is missing');
         return;
       }
-      await postAPI.updatePost(postId, { content: editContent });
+      await postAPI.updatePost(postId, { content: editContent, visibility: editVisibility });
       toast.success('Post updated');
       setEditing(false);
       window.location.reload();
@@ -190,29 +207,41 @@ const PostCard = ({ post, onLike }) => {
   };
 
   const mediaItems = normalizeMediaItems(post);
+  const authorName = post.user_name || post.author_name || post.owner_name || post.created_by_name || 'Unknown User';
+  const authorPicture = toAbsoluteUrl(post.profile_picture || post.author_picture || post.owner_picture) || '/default-avatar.png';
+  const canOpenProfile = Boolean(post.user_id);
 
   return (
     <div className="post-card">
       <div className="post-header">
-        {post.user_id ? (
+        {canOpenProfile ? (
           <Link to={`/profile/${post.user_id}`} className="post-author">
             <img
-              src={toAbsoluteUrl(post.profile_picture) || '/default-avatar.png'}
-              alt={post.user_name || 'User'}
+              src={authorPicture}
+              alt={authorName}
               className="avatar"
               onError={(e) => { e.target.src = '/default-avatar.png'; }}
             />
             <div className="author-info">
-              <h4>{post.user_name || 'Unknown User'}</h4>
-              <p className="post-time">{moment.utc(post.created_at).local().fromNow()}</p>
+              <h4>{authorName}</h4>
+              <p className="post-time">
+                {moment.utc(post.created_at).local().fromNow()} · {(post.visibility || 'public').toLowerCase()}
+              </p>
             </div>
           </Link>
         ) : (
-          <div className="post-author-error">
-            <img src="/default-avatar.png" alt="Unknown" className="avatar" />
+          <div className="post-author">
+            <img
+              src={authorPicture}
+              alt={authorName}
+              className="avatar"
+              onError={(e) => { e.target.src = '/default-avatar.png'; }}
+            />
             <div className="author-info">
-              <h4>Unknown User</h4>
-              <p className="post-time">Post creator data missing</p>
+              <h4>{authorName}</h4>
+              <p className="post-time">
+                {moment.utc(post.created_at).local().fromNow()} · {(post.visibility || 'public').toLowerCase()}
+              </p>
             </div>
           </div>
         )}
@@ -264,13 +293,22 @@ const PostCard = ({ post, onLike }) => {
               onChange={(e) => setEditContent(e.target.value)}
               rows="3"
             />
+            <select
+              value={editVisibility}
+              onChange={(e) => setEditVisibility(e.target.value)}
+              style={{ marginBottom: '10px' }}
+            >
+              <option value="public">Public</option>
+              <option value="followers">Followers</option>
+              <option value="private">Private</option>
+            </select>
             <div className="post-actions">
               <button className="action-btn" onClick={handleUpdate}>Save</button>
               <button className="action-btn" onClick={() => setEditing(false)}>Cancel</button>
             </div>
           </div>
         ) : (
-          <p>{post.content}</p>
+          <p>{renderContentWithHashtags(post.content)}</p>
         )}
         
         {mediaItems.length > 0 && (
@@ -288,25 +326,28 @@ const PostCard = ({ post, onLike }) => {
         )}
       </div>
 
-      <div className="post-stats">
-        <span>{likesCount} likes</span>
-        <span>{commentsCount} comments</span>
-      </div>
-
       <div className="post-actions">
         <button
           className={`action-btn ${liked ? 'liked' : ''}`}
           onClick={handleLike}
         >
           {liked ? <FaHeart color="#e74c3c" /> : <FaRegHeart />}
-          <span>Like</span>
+          {likesCount > 0 ? (
+            <span className="count-pill">{likesCount}</span>
+          ) : (
+            <span>Like</span>
+          )}
         </button>
         <button
           className="action-btn"
           onClick={() => setShowComments(!showComments)}
         >
           <FaComment />
-          <span>Comment</span>
+          {commentsCount > 0 ? (
+            <span className="count-pill">{commentsCount}</span>
+          ) : (
+            <span>Comment</span>
+          )}
         </button>
       </div>
 

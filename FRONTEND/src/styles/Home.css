@@ -82,6 +82,68 @@
   font-size: 0.92rem;
 }
 
+.feed-filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: var(--muted-color);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.filter-chip.active {
+  color: var(--light-color);
+  border-color: rgba(35, 116, 225, 0.42);
+  background: rgba(35, 116, 225, 0.2);
+}
+
+.filter-select {
+  outline: none;
+}
+
+.hashtag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hashtag-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid rgba(35, 116, 225, 0.36);
+  border-radius: 10px;
+  background: rgba(35, 116, 225, 0.10);
+  color: #b7d3ff;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+  width: 100%;
+}
+.hashtag-chip:hover {
+  background: rgba(35, 116, 225, 0.22);
+  border-color: rgba(35, 116, 225, 0.6);
+}
+.hashtag-chip-tag {
+  font-weight: 600;
+  color: #7bbcff;
+}
+.hashtag-chip-meta {
+  font-size: 0.73rem;
+  color: var(--muted-color);
+}
+
 .sidebar {
   height: fit-content;
 }
@@ -354,6 +416,16 @@
   color: var(--light-color);
 }
 
+.hashtag-link {
+  color: #8ebcff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.hashtag-link:hover {
+  text-decoration: underline;
+}
+
 .post-media {
   margin-top: 12px;
   border-radius: 10px;
@@ -385,6 +457,15 @@
   color: var(--muted-color);
 }
 
+.post-stats a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.post-stats a:hover {
+  text-decoration: underline;
+}
+
 .post-card .post-actions {
   display: flex;
   justify-content: space-around;
@@ -412,6 +493,25 @@
 
 .action-btn.liked {
   color: var(--danger-color);
+}
+
+.count-pill {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--light-color);
+}
+
+.action-btn.liked .count-pill {
+  background: rgba(220, 53, 69, 0.2);
+  color: #ffb3bd;
 }
 
 .comments-section {
