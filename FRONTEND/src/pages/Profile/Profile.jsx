@@ -306,6 +306,12 @@ const Profile = () => {
                           <strong>{profile.following_count || 0}</strong>
                           <span>Following</span>
                         </div>
+                        {!isOwnProfile && (
+                          <div className="stat">
+                            <strong>{profile.mutual_friends_count || 0}</strong>
+                            <span>Mutual Friends</span>
+                          </div>
+                        )}
                       </div>
 
                       {isOwnProfile ? (
