@@ -28,6 +28,7 @@ const GroupDetail = () => {
   const [followersPageSize] = useState(5);
   const [searchPage, setSearchPage] = useState(1);
   const [searchPageSize] = useState(5);
+  const [activity, setActivity] = useState({});
 
   useEffect(() => {
     loadGroupData();
@@ -125,11 +126,12 @@ const GroupDetail = () => {
 
   const loadGroupData = async () => {
     try {
-      const [groupRes, postsRes, membersRes, pendingRes] = await Promise.all([
+      const [groupRes, postsRes, membersRes, pendingRes, activityRes] = await Promise.all([
         groupAPI.getGroup(groupId),
         groupAPI.getGroupPosts(groupId),
         groupAPI.getMembers(groupId),
-        groupAPI.getPending(groupId),
+        groupAPI.getPending(groupId).catch(() => ({ data: [] })),
+        groupAPI.getActivity(groupId).catch(() => ({ data: {} })),
       ]);
       const groupData = extractGroup(groupRes.data);
       const postsData = extractItems(postsRes.data).map(normalizePost);
@@ -140,16 +142,21 @@ const GroupDetail = () => {
       setPosts(postsData);
       setMembers(membersData);
       setPendingMembers(pendingData);
+      setActivity(activityRes?.data || {});
       setCoverImageFile(null);
       setFollowersPage(1);
       setSearchPage(1);
 
       if (currentUser?.id) {
-        const followersRes = await userAPI.getFollowers(currentUser.id);
-        const followerItems = extractItems(followersRes.data).map(normalizeUser);
-        const memberIds = new Set(membersData.map((member) => member.user_id));
-        const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
-        setFollowersToInvite(filteredFollowers);
+        try {
+          const followersRes = await userAPI.getFollowers(currentUser.id);
+          const followerItems = extractItems(followersRes.data).map(normalizeUser);
+          const memberIds = new Set(membersData.map((member) => member.user_id));
+          const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
+          setFollowersToInvite(filteredFollowers);
+        } catch (error) {
+          setFollowersToInvite([]);
+        }
       }
     } catch (error) {
       toast.error('Failed to load group');
@@ -382,6 +389,14 @@ const GroupDetail = () => {
               >
                 Members ({members.length})
               </button>
+              {canManageMembers && (
+                <button
+                  className={`tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('dashboard')}
+                >
+                  Admin Dashboard
+                </button>
+              )}
             </div>
 
             {activeTab === 'posts' && (
@@ -603,6 +618,58 @@ const GroupDetail = () => {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {activeTab === 'dashboard' && canManageMembers && (
+              <div className="group-admin-dashboard">
+                <div className="dashboard-panel">
+                  <div className="dashboard-heading">
+                    <h3>30-Day Group Activity</h3>
+                    <p>Track how your group is growing and engaging this month.</p>
+                  </div>
+
+                  <div className="dashboard-stats-grid">
+                    <div className="dashboard-stat-card">
+                      <span className="stat-label">Posts</span>
+                      <strong>{activity.posts_count || 0}</strong>
+                    </div>
+                    <div className="dashboard-stat-card">
+                      <span className="stat-label">Active Members</span>
+                      <strong>{activity.active_members_count || 0}</strong>
+                    </div>
+                    <div className="dashboard-stat-card">
+                      <span className="stat-label">New Members</span>
+                      <strong>{activity.new_members_count || 0}</strong>
+                    </div>
+                    <div className="dashboard-stat-card">
+                      <span className="stat-label">Likes</span>
+                      <strong>{activity.total_likes || 0}</strong>
+                    </div>
+                    <div className="dashboard-stat-card">
+                      <span className="stat-label">Comments</span>
+                      <strong>{activity.total_comments || 0}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="dashboard-panel queue-panel">
+                  <div className="dashboard-heading">
+                    <h3>Member Queue</h3>
+                    <p>Quickly monitor approvals and total group size.</p>
+                  </div>
+
+                  <div className="queue-metrics">
+                    <div className="queue-item">
+                      <span className="queue-label">Pending Requests</span>
+                      <strong>{pendingMembers.length}</strong>
+                    </div>
+                    <div className="queue-item">
+                      <span className="queue-label">Total Members</span>
+                      <strong>{members.length}</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

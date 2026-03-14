@@ -164,6 +164,16 @@ Use two terminals:
 - Terminal 1: run backend (`python manage.py runserver 8000`) inside `BACKEND`
 - Terminal 2: run frontend (`npm run dev`) inside `FRONTEND`
 
+Or Use run_fullstack.py:
+
+```powershell
+python run_fullstack.py
+```
+
+It will run the whole project through this one python script
+
+
+
 Then open `http://localhost:3000` in your browser.
 
 ## Main API Route Groups

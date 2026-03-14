@@ -184,27 +184,22 @@ const Register = () => {
           <div className="form-row">
             <div className="form-group">
               <label>Hall Attachment</label>
-              <div className="radio-group">
-                <label>
-                  <input
-                    type="radio"
-                    name="hall_attachement"
-                    value="Resident"
-                    checked={formData.hall_attachement === 'Resident'}
-                    onChange={handleChange}
-                  />
-                  Resident
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="hall_attachement"
-                    value="Attached"
-                    checked={formData.hall_attachement === 'Attached'}
-                    onChange={handleChange}
-                  />
-                  Attached
-                </label>
+              <div className="hall-toggle">
+                {['Resident', 'Attached'].map((opt) => (
+                  <label
+                    key={opt}
+                    className={`hall-toggle-option${formData.hall_attachement === opt ? ' active' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="hall_attachement"
+                      value={opt}
+                      checked={formData.hall_attachement === opt}
+                      onChange={handleChange}
+                    />
+                    {opt}
+                  </label>
+                ))}
               </div>
             </div>
 

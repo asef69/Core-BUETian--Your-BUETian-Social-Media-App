@@ -4,7 +4,20 @@ import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { FaDollarSign, FaMapMarkerAlt, FaUser } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaUser } from 'react-icons/fa';
+
+const HARD_CODED_CATEGORIES = [
+  'Electronics',
+  'Books',
+  'Academic Notes',
+  'Lab Equipment',
+  'Hostel Essentials',
+  'Furniture',
+  'Bikes & Cycles',
+  'Fashion',
+  'Sports',
+  'Others',
+];
 
 const ProductDetail = () => {
   const { productId } = useParams();
@@ -14,6 +27,9 @@ const ProductDetail = () => {
   const [selectedImage, setSelectedImage] = useState(0);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
+  const [editCategoryMode, setEditCategoryMode] = useState('existing');
+  const [customEditCategory, setCustomEditCategory] = useState('');
+  const [similarProducts, setSimilarProducts] = useState([]);
 
   const isOwnProduct =
     !!user &&
@@ -26,8 +42,12 @@ const ProductDetail = () => {
 
   const loadProduct = async () => {
     try {
-      const response = await marketplaceAPI.getProduct(productId);
+      const [response, similarRes] = await Promise.all([
+        marketplaceAPI.getProduct(productId),
+        marketplaceAPI.getSimilarProducts(productId, 4).catch(() => ({ data: [] })),
+      ]);
       setProduct(response.data);
+      setSimilarProducts(Array.isArray(similarRes.data) ? similarRes.data : similarRes.data?.results || []);
       setEditData({
         title: response.data.title || '',
         description: response.data.description || '',
@@ -37,6 +57,15 @@ const ProductDetail = () => {
         location: response.data.location || '',
         status: response.data.status || 'available',
       });
+
+      const loadedCategory = response.data.category || '';
+      if (HARD_CODED_CATEGORIES.includes(loadedCategory)) {
+        setEditCategoryMode('existing');
+        setCustomEditCategory('');
+      } else {
+        setEditCategoryMode('new');
+        setCustomEditCategory(loadedCategory);
+      }
     } catch (error) {
       toast.error('Failed to load product');
     } finally {
@@ -54,6 +83,16 @@ const ProductDetail = () => {
     }
   };
 
+  const handleMarkSold = async () => {
+    try {
+      await marketplaceAPI.markSold(productId);
+      toast.success('Product marked as sold');
+      loadProduct();
+    } catch (error) {
+      toast.error('Failed to mark sold');
+    }
+  };
+
   const handleDelete = async () => {
     if (!window.confirm('Delete this product?')) return;
     try {
@@ -67,7 +106,19 @@ const ProductDetail = () => {
 
   const handleUpdate = async () => {
     try {
-      await marketplaceAPI.updateProduct(productId, editData);
+      const finalCategory = editCategoryMode === 'new'
+        ? customEditCategory.trim()
+        : editData.category;
+
+      if (!finalCategory) {
+        toast.error('Please select or add a category');
+        return;
+      }
+
+      await marketplaceAPI.updateProduct(productId, {
+        ...editData,
+        category: finalCategory,
+      });
       toast.success('Product updated');
       setEditing(false);
       loadProduct();
@@ -125,7 +176,7 @@ const ProductDetail = () => {
             <div className="product-details">
               <h1>{product.title}</h1>
               <div className="product-price">
-                <FaDollarSign /> {product.price}
+                BDT {product.price}
               </div>
               <div className="product-meta">
                 <span className="condition-badge">{product.condition}</span>
@@ -167,12 +218,50 @@ const ProductDetail = () => {
                       onChange={(e) => setEditData({ ...editData, location: e.target.value })}
                       placeholder="Location"
                     />
-                    <input
-                      type="text"
-                      value={editData.category}
-                      onChange={(e) => setEditData({ ...editData, category: e.target.value })}
-                      placeholder="Category"
-                    />
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <button
+                        type="button"
+                        className={`btn ${editCategoryMode === 'existing' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => {
+                          setEditCategoryMode('existing');
+                          setEditData({
+                            ...editData,
+                            category: HARD_CODED_CATEGORIES.includes(editData.category)
+                              ? editData.category
+                              : HARD_CODED_CATEGORIES[0],
+                          });
+                        }}
+                      >
+                        Choose Existing
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${editCategoryMode === 'new' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setEditCategoryMode('new')}
+                      >
+                        Add New Category
+                      </button>
+                    </div>
+
+                    {editCategoryMode === 'existing' ? (
+                      <select
+                        value={editData.category}
+                        onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                      >
+                        {HARD_CODED_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={customEditCategory}
+                        onChange={(e) => setCustomEditCategory(e.target.value)}
+                        placeholder="Type new category"
+                      />
+                    )}
                     <select
                       value={editData.condition}
                       onChange={(e) => setEditData({ ...editData, condition: e.target.value })}
@@ -205,12 +294,17 @@ const ProductDetail = () => {
                 </Link>
               </div>
 
-              {product.status === 'available' && !isOwnProduct && (
+              {!isOwnProduct && (
                 <div className="product-actions">
-                  <button className="btn btn-primary" onClick={handleReserve}>
-                    Reserve Product
-                  </button>
-                  <Link to="/chat" className="btn btn-secondary">
+                  {product.status === 'available' && (
+                    <button className="btn btn-primary" onClick={handleReserve}>
+                      Reserve Product
+                    </button>
+                  )}
+                  <Link
+                    to={`/chat/${product.seller_id}?message=${encodeURIComponent(`Hi, I am interested in \"${product.title}\" (Product #${productId}). Is it still available?`)}`}
+                    className="btn btn-secondary"
+                  >
                     Contact Seller
                   </Link>
                 </div>
@@ -229,6 +323,11 @@ const ProductDetail = () => {
                     </>
                   ) : (
                     <>
+                      {product.status !== 'sold' && (
+                        <button className="btn btn-primary" onClick={handleMarkSold}>
+                          Mark as Sold
+                        </button>
+                      )}
                       <button className="btn btn-secondary" onClick={() => setEditing(true)}>
                         Edit Product
                       </button>
@@ -237,6 +336,23 @@ const ProductDetail = () => {
                       </button>
                     </>
                   )}
+                </div>
+              )}
+
+              {similarProducts.length > 0 && (
+                <div className="product-info-section">
+                  <h3>Similar Products</h3>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {similarProducts.map((item, index) => {
+                      const similarId = item.product_id || item.id;
+                      if (!similarId) return null;
+                      return (
+                        <Link key={`${similarId}-${index}`} to={`/marketplace/${similarId}`} className="seller-info">
+                          {item.title} - BDT {item.price}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

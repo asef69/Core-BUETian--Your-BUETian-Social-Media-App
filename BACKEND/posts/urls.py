@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     CreatePostView, UserFeedView, PostDetailView,
     LikePostView, CommentView, TrendingPostsView,
-    UploadPostMediaView, CreatePostWithMediaView
+    UploadPostMediaView, CreatePostWithMediaView, PublicFeedView
 )
 from .extended_views import (
     PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
@@ -15,6 +15,7 @@ urlpatterns = [
     path('create-with-media/', CreatePostWithMediaView.as_view()),
     path('upload-media/', UploadPostMediaView.as_view()),
     path('feed/', UserFeedView.as_view()),
+    path('public/', PublicFeedView.as_view()),
     path('trending/', TrendingPostsView.as_view()),
     path('search/', SearchPostsView.as_view()),
     

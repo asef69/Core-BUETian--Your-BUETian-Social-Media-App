@@ -35,11 +35,6 @@ class CreateBlogPostView(APIView):
 
 class BlogPostDetailView(APIView):
     def get(self, request, blog_id):
-        DatabaseManager.execute_update(
-            "UPDATE blog_posts SET views_count = views_count + 1 WHERE id = %s",
-            (blog_id,)
-        )
-        
         query = """
         SELECT b.*, u.name as author_name, u.profile_picture as author_picture,
                ARRAY(SELECT tag_name FROM blog_post_tags WHERE blog_post_id = b.id) as tags,
@@ -53,6 +48,26 @@ class BlogPostDetailView(APIView):
         if not result:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
         return Response(result[0])
+
+class BlogPostViewTrackView(APIView):
+    def post(self, request, blog_id):
+        result = DatabaseManager.execute_query(
+            """
+            UPDATE blog_posts
+            SET views_count = views_count + 1
+            WHERE id = %s
+            RETURNING views_count
+            """,
+            (blog_id,)
+        )
+
+        if not result:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'message': 'Blog view tracked',
+            'views_count': result[0].get('views_count', 0),
+        })
 
 class PublishedBlogsView(APIView):
     def get(self, request):

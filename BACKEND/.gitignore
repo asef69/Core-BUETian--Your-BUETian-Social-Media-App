@@ -11,3 +11,4 @@ __pycache__/
 *.sqlite3
 *.log
 *.pot
+required_sql_exam_questions.txt

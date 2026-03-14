@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaHome, FaComments, FaUsers, FaStore, FaBullhorn, FaBell, FaUser, FaSignOutAlt, FaSearch, FaMoon, FaSun } from 'react-icons/fa';
+import { FaHome, FaComments, FaUsers, FaStore, FaBullhorn, FaBell, FaUser, FaSignOutAlt, FaSearch, FaMoon, FaSun, FaPenNib } from 'react-icons/fa';
 import { useTheme } from '../context/ThemeContext';
+import { chatAPI, notificationAPI } from '../services/apiService';
 import '../styles/Navbar.css';
 
 const Navbar = () => {
@@ -10,6 +11,40 @@ const Navbar = () => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadChats, setUnreadChats] = useState(0);
+
+  const loadUnreadCounts = async () => {
+    try {
+      const [notificationRes, chatRes] = await Promise.all([
+        notificationAPI.getCount().catch(() => ({ data: { count: 0 } })),
+        chatAPI.getUnreadCount().catch(() => ({ data: { total_unread: 0 } })),
+      ]);
+
+      setUnreadNotifications(Number(notificationRes?.data?.count) || 0);
+      setUnreadChats(Number(chatRes?.data?.total_unread) || 0);
+    } catch (error) {
+      setUnreadNotifications(0);
+      setUnreadChats(0);
+    }
+  };
+
+  useEffect(() => {
+    loadUnreadCounts();
+
+    const intervalId = setInterval(loadUnreadCounts, 15000);
+    const refreshOnFocus = () => loadUnreadCounts();
+    const refreshEvent = () => loadUnreadCounts();
+
+    window.addEventListener('focus', refreshOnFocus);
+    window.addEventListener('counts:refresh', refreshEvent);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', refreshOnFocus);
+      window.removeEventListener('counts:refresh', refreshEvent);
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -44,46 +79,46 @@ const Navbar = () => {
 
         <ul className="navbar-menu">
           <li>
-            <Link to="/" className="nav-link" title="Home">
+            <NavLink to="/" className="nav-link" title="Home" end>
               <FaHome size={20} />
-              <span>Home</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/chat" className="nav-link" title="Messages">
+            <NavLink to="/chat" className="nav-link" title="Messages">
               <FaComments size={20} />
-              <span>Chat</span>
-            </Link>
+              {unreadChats > 0 && <span className="nav-badge">{unreadChats > 99 ? '99+' : unreadChats}</span>}
+            </NavLink>
           </li>
           <li>
-            <Link to="/groups" className="nav-link" title="Groups">
+            <NavLink to="/groups" className="nav-link" title="Groups">
               <FaUsers size={20} />
-              <span>Groups</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/marketplace" className="nav-link" title="Marketplace">
+            <NavLink to="/marketplace" className="nav-link" title="Marketplace">
               <FaStore size={20} />
-              <span>Marketplace</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/forums" className="nav-link" title="Forums">
+            <NavLink to="/forums" className="nav-link" title="Forums">
               <FaBullhorn size={20} />
-              <span>Forums</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
-            <Link to="/notifications" className="nav-link" title="Notifications">
+            <NavLink to="/blogs" className="nav-link" title="Blogs">
+              <FaPenNib size={20} />
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/notifications" className="nav-link" title="Notifications">
               <FaBell size={20} />
-              <span>Notifications</span>
-            </Link>
+              {unreadNotifications > 0 && <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
+            </NavLink>
           </li>
           <li>
-            <Link to={`/profile/${user?.id}`} className="nav-link" title="Profile">
+            <NavLink to={`/profile/${user?.id}`} className="nav-link" title="Profile">
               <FaUser size={20} />
-              <span>Profile</span>
-            </Link>
+            </NavLink>
           </li>
           <li>
             <button
@@ -92,13 +127,11 @@ const Navbar = () => {
               title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >
               {isDark ? <FaSun size={20} /> : <FaMoon size={20} />}
-              <span>{isDark ? 'Light' : 'Dark'}</span>
             </button>
           </li>
           <li>
             <button onClick={handleLogout} className="nav-link logout-btn" title="Logout">
               <FaSignOutAlt size={20} />
-              <span>Logout</span>
             </button>
           </li>
         </ul>

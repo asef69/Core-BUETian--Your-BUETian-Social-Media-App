@@ -3,43 +3,44 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 20px;
+  padding: 24px 14px;
 }
 
 .auth-card {
   width: 100%;
-  max-width: 520px;
-  padding: 42px;
-  border-radius: var(--radius-xl);
+  max-width: 460px;
+  padding: 28px;
+  border-radius: 16px;
   border: 1px solid var(--border-color);
   background: var(--auth-card-bg);
   box-shadow: var(--shadow-hover);
   backdrop-filter: blur(16px);
-  animation: slideUp 0.55s var(--transition-base);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .auth-header {
   text-align: center;
-  margin-bottom: 26px;
+  margin-bottom: 20px;
 }
 
 .auth-header h1 {
-  color: var(--light-color);
-  font-size: 2rem;
-  font-weight: 800;
-  margin-bottom: 8px;
+  color: var(--brand-color);
+  font-family: 'Sora', 'Segoe UI', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 7px;
   letter-spacing: -0.02em;
 }
 
 .auth-header p {
   color: var(--muted-color);
-  font-size: 0.96rem;
+  font-size: 0.9rem;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .auth-form .form-group {
@@ -47,7 +48,7 @@
 }
 
 .auth-form .form-group label {
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted-color);
@@ -55,33 +56,76 @@
 
 .auth-form button[type="submit"] {
   width: 100%;
-  padding: 14px;
-  font-size: 1rem;
-  margin-top: 8px;
+  padding: 12px;
+  font-size: 0.95rem;
+  margin-top: 6px;
+  border-radius: 10px;
 }
 
 .auth-footer {
   text-align: center;
-  margin-top: 22px;
-  padding-top: 18px;
+  margin-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-color);
   color: var(--muted-color);
+  font-size: 0.9rem;
 }
 
 .auth-footer a {
-  color: var(--light-color);
+  color: var(--brand-color);
   text-decoration: none;
-  font-weight: 600;
-  transition: color var(--transition-fast);
+  font-weight: 700;
 }
 
 .auth-footer a:hover {
-  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+/* Hall Attachment pill toggle */
+.hall-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hall-toggle-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 0;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted-color);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.hall-toggle-option input[type='radio'] {
+  display: none;
+}
+
+.hall-toggle-option:hover {
+  border-color: var(--primary-color);
+  color: var(--light-color);
+  background: rgba(35, 116, 225, 0.08);
+}
+
+.hall-toggle-option.active {
+  border-color: var(--primary-color);
+  background: rgba(35, 116, 225, 0.18);
+  color: #7bbcff;
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {
   .auth-card {
-    padding: 30px 20px;
+    padding: 22px 16px;
   }
 
   .auth-header h1 {

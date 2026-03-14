@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
 
 
@@ -124,10 +125,44 @@ class GroupDetailView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request, group_id):
-        result = DatabaseManager.execute_function(
-            'get_group_details',
-            (group_id, request.user.id)
-        )
+        try:
+            result = DatabaseManager.execute_function(
+                'get_group_details',
+                (group_id, request.user.id)
+            )
+        except ProgrammingError:
+            result = DatabaseManager.execute_query(
+                """
+                SELECT
+                    g.id as group_id,
+                    g.name,
+                    g.description,
+                    g.admin_id,
+                    u.name as admin_name,
+                    g.is_private,
+                    g.cover_image,
+                    (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id AND gm.status = 'accepted') as members_count,
+                    (SELECT COUNT(*) FROM posts p WHERE p.group_id = g.id) as posts_count,
+                    EXISTS(
+                        SELECT 1 FROM group_members gm
+                        WHERE gm.group_id = g.id AND gm.user_id = %s AND gm.status = 'accepted'
+                    ) as is_member,
+                    COALESCE(
+                        (
+                            SELECT gm.status FROM group_members gm
+                            WHERE gm.group_id = g.id AND gm.user_id = %s
+                            ORDER BY gm.joined_at DESC
+                            LIMIT 1
+                        ),
+                        'none'
+                    ) as member_status,
+                    g.created_at
+                FROM groups g
+                INNER JOIN users u ON u.id = g.admin_id
+                WHERE g.id = %s
+                """,
+                (request.user.id, request.user.id, group_id)
+            )
         if not result:
             return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
         return Response(result[0])
@@ -801,7 +836,28 @@ class UserGroupsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        result = DatabaseManager.execute_function('get_user_groups', (request.user.id,))
+        try:
+            result = DatabaseManager.execute_function('get_user_groups', (request.user.id,))
+        except ProgrammingError:
+            result = DatabaseManager.execute_query(
+                """
+                SELECT
+                    g.id as group_id,
+                    g.name,
+                    g.description,
+                    g.cover_image,
+                    gm.role,
+                    (SELECT COUNT(*) FROM group_members gm2 WHERE gm2.group_id = g.id AND gm2.status = 'accepted') as members_count,
+                    g.is_private,
+                    gm.joined_at
+                FROM groups g
+                INNER JOIN group_members gm ON g.id = gm.group_id
+                WHERE gm.user_id = %s
+                  AND gm.status = 'accepted'
+                ORDER BY gm.joined_at DESC
+                """,
+                (request.user.id,)
+            )
         return Response(result)
 
 class SuggestedGroupsView(APIView):

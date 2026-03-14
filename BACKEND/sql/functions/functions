@@ -1,66 +1,4 @@
---User Profile
-CREATE OR REPLACE FUNCTION get_user_profile(p_user_id INTEGER, p_viewer_id INTEGER DEFAULT NULL)
-RETURNS TABLE(
-    id INTEGER,
-    student_id INTEGER,
-    name VARCHAR(50),
-    email VARCHAR(100),
-    profile_picture VARCHAR(500),
-    blood_group VARCHAR(5),
-    batch INTEGER,
-    hall_name VARCHAR(100),
-    hall_attachement VARCHAR(20),
-    department_name VARCHAR(100),
-    bio TEXT,
-    posts_count BIGINT,
-    followers_count BIGINT,
-    following_count BIGINT,
-    is_following BOOLEAN,
-    created_at TIMESTAMP
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        u.id,
-        u.student_id,
-        u.name,
-        u.email,
-        u.profile_picture,
-        u.blood_group,
-        u.batch,
-        u.hall_name,
-        u.hall_attachement,
-        u.department_name,
-        u.bio,
-        (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS posts_count,
-        (SELECT COUNT(*) FROM follows f WHERE f.following_id=u.id AND f.status='accepted') AS followers_count,
-        (SELECT COUNT(*) FROM follows f WHERE f.follower_id=u.id AND f.status='accepted') AS following_count,
-        CASE 
-            WHEN p_viewer_id IS NOT NULL AND p_viewer_id != p_user_id THEN 
-                EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = p_viewer_id AND f.following_id = p_user_id AND f.status = 'accepted')
-            ELSE FALSE 
-        END as is_following,
-        u.created_at
-    FROM users u
-    WHERE u.id = p_user_id AND u.is_active = TRUE;
-END;
-$$ LANGUAGE plpgsql;
-
---follow check
-CREATE OR REPLACE FUNCTION is_following(p_follower_id INTEGER,p_following_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE 
-    follow_exists BOOLEAN;
-BEGIN
-    SELECT EXISTS (
-        SELECT 1 FROM follows
-        WHERE follower_id=p_follower_id 
-          AND following_id=p_following_id 
-          AND status='accepted'
-    ) INTO follow_exists;
-    RETURN follow_exists;
-END;
-$$ LANGUAGE plpgsql;
+﻿
 
 --mutual followers 
 CREATE OR REPLACE FUNCTION  get_mutual_followers(p_user_id INTEGER)
@@ -90,111 +28,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
---suggestion user
-CREATE OR REPLACE FUNCTION get_suggested_users(p_user_id INTEGER,p_limit INTEGER DEFAULT 10)
-RETURNS TABLE(
-    id INTEGER,
-    name VARCHAR(50),
-    profile_picture VARCHAR(500),
-    department_name VARCHAR(100),
-    batch INTEGER,
-    mutual_friends_count BIGINT
-) AS $$
-DECLARE
-    user_dept VARCHAR(100);
-    user_batch INTEGER;
-BEGIN
-    SELECT u_temp.department_name, u_temp.batch INTO user_dept, user_batch
-    FROM users u_temp
-    WHERE u_temp.id = p_user_id;
-    RETURN QUERY
-    SELECT
-        u.id,
-        u.name,
-        u.profile_picture,    
-        u.department_name,
-        u.batch,
-        count(DISTINCT mf.following_id) AS mutual_friends_count
-    FROM users u
-    LEFT JOIN follows mf ON(
-        mf.follower_id=p_user_id
-        AND mf.status='accepted'
-        AND mf.following_id IN(
-            SELECT f2.follower_id FROM follows f2
-            WHERE f2.following_id=u.id AND f2.status='accepted'
-        )
-    )
-    WHERE u.id!=p_user_id
-    AND u.is_active = TRUE
-    AND u.id NOT IN(
-        SELECT f3.following_id FROM follows f3
-        WHERE f3.follower_id=p_user_id 
-    )
-    AND (u.department_name = user_dept OR u.batch = user_batch)
-    GROUP BY u.id,u.name,u.profile_picture,u.department_name,u.batch
-    ORDER BY mutual_friends_count DESC,u.batch DESC
-    LIMIT p_limit;
-END;
-$$ LANGUAGE plpgsql;
+
 
 --POST FUNCTIONS
-CREATE OR REPLACE FUNCTION get_user_feed(
-    p_user_id INTEGER,
-    p_limit INTEGER DEFAULT 20,
-    p_offset INTEGER DEFAULT 0
-)
-RETURNS TABLE(
-    post_id INTEGER,
-    content TEXT,
-    media_type VARCHAR(20),
-    visibility VARCHAR(20),
-    created_at TIMESTAMP,
-    user_id INTEGER,
-    user_name VARCHAR(50),
-    profile_picture VARCHAR(500),
-    likes_count INTEGER,
-    comments_count INTEGER,
-    is_liked BOOLEAN,
-    media_urls JSON
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        p.id as post_id,
-        p.content,
-        p.media_type,
-        p.visibility,
-        p.created_at,
-        u.id as user_id,
-        u.name as user_name,
-        u.profile_picture as profile_picture,
-        p.likes_count,
-        p.comments_count,
-        EXISTS(
-            SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=p_user_id
-        ) AS is_liked,
-        COALESCE(JSON_AGG(JSON_BUILD_OBJECT('media_url', m.media_url, 'media_type', m.media_type)) FILTER (WHERE m.id IS NOT NULL), '[]'::JSON) as media_urls
-    FROM posts p
-    INNER JOIN users u ON p.user_id=u.id
-    LEFT JOIN media_urls m ON p.id = m.post_id
-    WHERE (p.group_id IS NULL OR p.group_id = 0)
-    AND (
-        
-        p.user_id=p_user_id
-        
-        OR (p.user_id IN(
-            SELECT f.following_id FROM follows f
-            WHERE f.follower_id=p_user_id AND f.status='accepted'
-        ) AND (p.visibility='public' OR p.visibility='followers'))
-        
-        OR (p.visibility='public' AND p.user_id != p_user_id)
-    )
-    GROUP BY p.id, u.id
-    ORDER BY p.created_at DESC
-    OFFSET p_offset
-    LIMIT p_limit;
-END;
-$$ LANGUAGE plpgsql;
 
 --DETAILS POST
 CREATE OR REPLACE FUNCTION get_post_details(p_post_id INTEGER, p_current_user_id INTEGER DEFAULT NULL)
@@ -241,30 +77,84 @@ $$ LANGUAGE plpgsql;
 
 --FAMOUS POST
 
+--TRENDING POSTS (sorted by engagement score = likes*2 + comments, last 7 days)
+
 CREATE OR REPLACE FUNCTION get_trending_posts(p_limit INTEGER DEFAULT 10)
 RETURNS TABLE(
     post_id INTEGER,
+    id INTEGER,
     content TEXT,
+    media_type VARCHAR(20),
+    visibility VARCHAR(20),
+    user_id INTEGER,
+    user_name VARCHAR(50),
+    profile_picture VARCHAR(500),
+    author_id INTEGER,
     author_name VARCHAR(50),
+    author_picture VARCHAR(500),
+    created_at TIMESTAMP,
     likes_count INTEGER,
     comments_count INTEGER,
-    created_at TIMESTAMP
+    has_liked BOOLEAN,
+    media_urls JSON
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
-        p.id as post_id,
+    SELECT
+        p.id AS post_id,
+        p.id AS id,
         p.content,
-        u.name as author_name,
+        p.media_type,
+        p.visibility,
+        u.id AS user_id,
+        u.name AS user_name,
+        u.profile_picture AS profile_picture,
+        u.id AS author_id,
+        u.name AS author_name,
+        u.profile_picture AS author_picture,
+        p.created_at,
         p.likes_count,
         p.comments_count,
-        p.created_at
+        FALSE AS has_liked,
+        COALESCE(
+            JSON_AGG(
+                JSON_BUILD_OBJECT('media_url', m.media_url, 'media_type', m.media_type)
+            ) FILTER (WHERE m.id IS NOT NULL),
+            '[]'::JSON
+        ) AS media_urls
     FROM posts p
     INNER JOIN users u ON p.user_id = u.id
-    WHERE p.created_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
-    AND p.visibility = 'public'
-    AND p.group_id IS NULL
-    ORDER BY p.likes_count DESC, p.comments_count DESC
+    LEFT JOIN media_urls m ON p.id = m.post_id
+    WHERE p.visibility = 'public'
+      AND p.group_id IS NULL
+      AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+    GROUP BY p.id, u.id
+    ORDER BY (p.likes_count * 2 + p.comments_count) DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+--TRENDING HASHTAGS (extracted from post content, ranked by total engagement)
+
+CREATE OR REPLACE FUNCTION get_trending_hashtags(p_limit INTEGER DEFAULT 10)
+RETURNS TABLE(
+    hashtag TEXT,
+    post_count BIGINT,
+    total_engagement BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        lower(m.tag) AS hashtag,
+        COUNT(DISTINCT p.id) AS post_count,
+        COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
+    FROM posts p
+    CROSS JOIN LATERAL regexp_matches(p.content, '#([A-Za-z0-9_]+)', 'g') AS m(tag)
+    WHERE p.visibility = 'public'
+      AND p.group_id IS NULL
+      AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+    GROUP BY lower(m.tag)
+    ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
@@ -298,21 +188,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 --GROUP MEMBER CHECK
-CREATE OR REPLACE FUNCTION is_group_member(p_user_id INTEGER, p_group_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE
-    is_member BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1 FROM group_members 
-        WHERE user_id = p_user_id 
-        AND group_id = p_group_id 
-        AND status = 'accepted'
-    ) INTO is_member;
-    
-    RETURN is_member;
-END;
-$$ LANGUAGE plpgsql;
 
 --ADMIN OR MODERATOR OR MEMBER IN GROUP
 
@@ -347,45 +222,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 --GROUP DETAILS
-CREATE OR REPLACE FUNCTION get_group_details(p_group_id INTEGER, p_user_id INTEGER DEFAULT NULL)
-RETURNS TABLE(
-    group_id INTEGER,
-    name VARCHAR(100),
-    description TEXT,
-    admin_id INTEGER,
-    admin_name VARCHAR(50),
-    is_private BOOLEAN,
-    cover_image VARCHAR(500),
-    members_count BIGINT,
-    posts_count BIGINT,
-    is_member BOOLEAN,
-    member_status VARCHAR(20),
-    created_at TIMESTAMP
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        g.id as group_id,
-        g.name,
-        g.description,
-        g.admin_id,
-        u.name as admin_name,
-        g.is_private,
-        g.cover_image,
-        (SELECT COUNT(*) FROM group_members gm1 WHERE gm1.group_id = g.id AND gm1.status = 'accepted') as members_count,
-        (SELECT COUNT(*) FROM posts p2 WHERE p2.group_id = g.id) as posts_count,
-        CASE 
-            WHEN p_user_id IS NOT NULL THEN 
-                EXISTS(SELECT 1 FROM group_members gm2 WHERE gm2.group_id = g.id AND gm2.user_id = p_user_id AND gm2.status = 'accepted')
-            ELSE FALSE 
-        END as is_member,
-        (SELECT gm3.status FROM group_members gm3 WHERE gm3.group_id = g.id AND gm3.user_id = p_user_id) as member_status,
-        g.created_at
-    FROM groups g
-    INNER JOIN users u ON g.admin_id = u.id
-    WHERE g.id = p_group_id;
-END;
-$$ LANGUAGE plpgsql;
 
 --MARKETPLACE PRODUCTS
 CREATE OR REPLACE FUNCTION get_product_details(p_product_id INTEGER)
@@ -519,57 +355,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 --SEARCH USER
-CREATE OR REPLACE FUNCTION search_users_advanced(
-    p_search_term VARCHAR(255),
-    p_department VARCHAR(100) DEFAULT NULL,
-    p_batch INTEGER DEFAULT NULL,
-    p_blood_group VARCHAR(5) DEFAULT NULL,
-    p_limit INTEGER DEFAULT 20
-)
-RETURNS TABLE(
-    id INTEGER,
-    student_id INTEGER,
-    name VARCHAR(50),
-    email VARCHAR(100),
-    profile_picture VARCHAR(500),
-    department_name VARCHAR(100),
-    batch INTEGER,
-    blood_group VARCHAR(5),
-    relevance REAL
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        u.id,
-        u.student_id,
-        u.name,
-        u.email,
-        u.profile_picture,
-        u.department_name,
-        u.batch,
-        u.blood_group,
-        (CASE
-            WHEN LOWER(u.name) = LOWER(p_search_term) THEN 100.0
-            WHEN LOWER(u.name) LIKE LOWER(p_search_term) || '%' THEN 50.0
-            WHEN LOWER(u.name) LIKE '%' || LOWER(p_search_term) || '%' THEN 25.0
-            WHEN CAST(u.student_id AS TEXT) = p_search_term THEN 75.0
-            WHEN CAST(u.student_id AS TEXT) LIKE '%' || p_search_term || '%' THEN 10.0
-            ELSE 1.0
-        END)::REAL as relevance
-    FROM users u
-    WHERE u.is_active = TRUE
-    AND (
-        LOWER(u.name) LIKE '%' || LOWER(p_search_term) || '%'
-        OR CAST(u.student_id AS TEXT) LIKE '%' || p_search_term || '%'
-        OR LOWER(u.email) LIKE '%' || LOWER(p_search_term) || '%'
-    )
-    AND (p_department IS NULL OR u.department_name = p_department)
-    AND (p_batch IS NULL OR u.batch = p_batch)
-    AND (p_blood_group IS NULL OR u.blood_group = p_blood_group)
-    ORDER BY relevance DESC, u.name ASC
-    LIMIT p_limit;
-END;
-$$ LANGUAGE plpgsql;
 
 --POST SEARCH
 CREATE OR REPLACE FUNCTION search_posts(
@@ -606,33 +391,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 --NOTIFICATION COUNT
-CREATE OR REPLACE FUNCTION get_unread_notification_count(p_user_id INTEGER)
-RETURNS INTEGER AS $$
-DECLARE
-    count INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO count
-    FROM notifications
-    WHERE user_id = p_user_id AND is_read = FALSE;
-    
-    RETURN count;
-END;
-$$ LANGUAGE plpgsql;
 
 --MARK AS READ
-CREATE OR REPLACE FUNCTION mark_all_notifications_read(p_user_id INTEGER)
-RETURNS INTEGER AS $$
-DECLARE
-    updated_count INTEGER;
-BEGIN
-    UPDATE notifications 
-    SET is_read = TRUE 
-    WHERE user_id = p_user_id AND is_read = FALSE;
-    
-    GET DIAGNOSTICS updated_count = ROW_COUNT;
-    RETURN updated_count;
-END;
-$$ LANGUAGE plpgsql;
 
 --CHAT RELATED WORKS
 CREATE OR REPLACE FUNCTION get_recent_conversations(p_user_id INTEGER)
@@ -679,24 +439,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 --CHAT SYSTEM( ONLY CAN BE DONE IF THEY FOLLOW EACH OTHER OR HAVE PREVIOUS CHAT)
-CREATE OR REPLACE FUNCTION can_users_chat(p_user1_id INTEGER, p_user2_id INTEGER)
-RETURNS BOOLEAN AS $$
-DECLARE
-    can_chat BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1 FROM follows 
-        WHERE (follower_id = p_user1_id AND following_id = p_user2_id AND status = 'accepted')
-           OR (follower_id = p_user2_id AND following_id = p_user1_id AND status = 'accepted')
-    ) OR EXISTS(
-        SELECT 1 FROM messages 
-        WHERE (sender_id = p_user1_id AND receiver_id = p_user2_id)
-           OR (sender_id = p_user2_id AND receiver_id = p_user1_id)
-    ) INTO can_chat;
-    
-    RETURN can_chat;
-END;
-$$ LANGUAGE plpgsql;
 
 --USER SUMMARY WORKS
 CREATE OR REPLACE FUNCTION get_user_activity_summary(p_user_id INTEGER)
@@ -758,16 +500,4 @@ END;
 $$ LANGUAGE plpgsql;
 
 --CLEAN PREVIOUS NOTIFICATION
-CREATE OR REPLACE FUNCTION cleanup_old_notifications()
-RETURNS INTEGER AS $$
-DECLARE
-    deleted_count INTEGER;
-BEGIN
-    DELETE FROM notifications
-    WHERE is_read = TRUE 
-    AND created_at < CURRENT_DATE - INTERVAL '30 days';
-    
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RETURN deleted_count;
-END;
-$$ LANGUAGE plpgsql;
+

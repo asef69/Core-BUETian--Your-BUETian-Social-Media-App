@@ -39,6 +39,7 @@ export const postAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   getFeed: (page = 1) => api.get(`/posts/feed/?page=${page}`),
+  getPublicPosts: (limit = 30) => api.get(`/posts/public/?limit=${limit}`),
   getTrending: () => api.get('/posts/trending/'),
   getPost: (postId) => api.get(`/posts/${postId}/`),
   updatePost: (postId, data) => api.patch(`/posts/${postId}/`, data),
@@ -50,6 +51,9 @@ export const postAPI = {
   deleteComment: (commentId) => api.delete(`/posts/comments/${commentId}/delete/`),
   searchPosts: (query) => api.get(`/posts/search/?q=${query}`),
   getPostsByHashtag: (hashtag) => api.get(`/posts/hashtag/${hashtag}/`),
+  getTrendingHashtags: (limit = 10) => api.get(`/posts/hashtags/trending/?limit=${limit}`),
+  getPostsByMediaType: (mediaType, limit = 20) => api.get(`/posts/media/${mediaType}/?limit=${limit}`),
+  getEngagement: (postId) => api.get(`/posts/${postId}/engagement/`),
 };
 
 
@@ -89,6 +93,7 @@ export const groupAPI = {
   getUserGroups: () => api.get('/groups/my-groups/'),
   getSuggested: () => api.get('/groups/suggested/'),
   searchGroups: (query) => api.get(`/groups/search/?q=${query}`),
+  getActivity: (groupId, days = 30) => api.get(`/groups/${groupId}/activity/?days=${days}`),
 };
 
 
@@ -96,15 +101,20 @@ export const marketplaceAPI = {
   createProduct: (formData) => api.post('/marketplace/products/create/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  getProducts: (page = 1) => api.get(`/marketplace/products/?page=${page}`),
+  getProducts: (page = 1, status = 'available') => api.get(`/marketplace/products/?page=${page}&status=${encodeURIComponent(status)}`),
   getProduct: (productId) => api.get(`/marketplace/products/${productId}/`),
   updateProduct: (productId, data) => api.patch(`/marketplace/products/${productId}/`, data),
   deleteProduct: (productId) => api.delete(`/marketplace/products/${productId}/`),
   markSold: (productId) => api.post(`/marketplace/products/${productId}/mark-sold/`),
   reserveProduct: (productId) => api.post(`/marketplace/products/${productId}/reserve/`),
   getMyProducts: () => api.get('/marketplace/my-products/'),
+  getMyProductsByStatus: (status) => api.get(`/marketplace/my-products/?status=${status}`),
   getUserProducts: (userId) => api.get(`/marketplace/users/${userId}/products/`),
+  getUserStats: (userId) => api.get(`/marketplace/users/${userId}/stats/`),
+  getMyStats: () => api.get('/marketplace/my-stats/'),
   getTrending: () => api.get('/marketplace/trending/'),
+  getPriceRanges: () => api.get('/marketplace/price-ranges/'),
+  getSimilarProducts: (productId, limit = 5) => api.get(`/marketplace/products/${productId}/similar/?limit=${limit}`),
   searchProducts: (query) => api.get(`/marketplace/search/?q=${query}`),
   getCategories: () => api.get('/marketplace/categories/'),
 };
@@ -136,8 +146,24 @@ export const notificationAPI = {
   getAll: () => api.get('/notifications/'),
   getUnread: () => api.get('/notifications/unread/'),
   getCount: () => api.get('/notifications/count/'),
+  getSummary: () => api.get('/notifications/summary/'),
+  getActivity: (limit = 20) => api.get(`/notifications/activity/?limit=${limit}`),
+  getPreferences: () => api.get('/notifications/preferences/'),
+  updatePreferences: (data) => api.patch('/notifications/preferences/', data),
+  markByType: (type) => api.post(`/notifications/mark-read/${type}/`),
   markAsRead: (notificationId) => api.post(`/notifications/${notificationId}/read/`),
   markAllRead: () => api.post('/notifications/read-all/'),
   deleteNotification: (notificationId) => api.delete(`/notifications/${notificationId}/`),
   clearAll: () => api.delete('/notifications/clear/'),
+};
+
+
+export const blogAPI = {
+  getPublishedBlogs: (params = {}) => api.get('/blogs/', { params }),
+  getBlogDetail: (blogId) => api.get(`/blogs/${blogId}/`),
+  trackView: (blogId) => api.post(`/blogs/${blogId}/view/`),
+  createBlog: (data) => api.post('/blogs/create/', data),
+  toggleLike: (blogId) => api.post(`/blogs/${blogId}/like/`),
+  getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
+  addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),
 };

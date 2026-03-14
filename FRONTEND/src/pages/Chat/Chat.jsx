@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { chatAPI, userAPI } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,7 @@ import '../../styles/Chat.css';
 
 const Chat = () => {
   const { userId: chatUserId } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [followers, setFollowers] = useState([]);
@@ -22,6 +23,7 @@ const Chat = () => {
   const [activeList, setActiveList] = useState('conversations');
   const messagesEndRef = useRef(null);
   const selectedUserRef = useRef(null);
+  const prefillAppliedRef = useRef(false);
 
   useEffect(() => {
     loadConversations();
@@ -40,6 +42,13 @@ const Chat = () => {
       loadMessages(chatUserId);
     }
   }, [chatUserId]);
+
+  useEffect(() => {
+    const starterMessage = searchParams.get('message');
+    if (!chatUserId || !starterMessage || prefillAppliedRef.current) return;
+    setNewMessage(starterMessage);
+    prefillAppliedRef.current = true;
+  }, [chatUserId, searchParams]);
 
   useEffect(() => {
     scrollToBottom();

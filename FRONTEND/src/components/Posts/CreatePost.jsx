@@ -7,6 +7,7 @@ const CreatePost = ({ onPostCreated }) => {
   const [content, setContent] = useState('');
   const [mediaFiles, setMediaFiles] = useState([]);
   const [mediaType, setMediaType] = useState('text');
+  const [visibility, setVisibility] = useState('public');
   const [loading, setLoading] = useState(false);
   const [previews, setPreviews] = useState([]);
 
@@ -48,6 +49,7 @@ const CreatePost = ({ onPostCreated }) => {
         const formData = new FormData();
         formData.append('content', content);
         formData.append('media_type', mediaType);
+        formData.append('visibility', visibility);
         mediaFiles.forEach((file) => {
           formData.append('media_files', file);
         });
@@ -57,7 +59,8 @@ const CreatePost = ({ onPostCreated }) => {
         console.log(' Creating text post:', { content });
         response = await postAPI.createPost({
           content,
-          media_type: 'text'
+          media_type: 'text',
+          visibility,
         });
       }
 
@@ -67,6 +70,7 @@ const CreatePost = ({ onPostCreated }) => {
       setMediaFiles([]);
       setPreviews([]);
       setMediaType('text');
+      setVisibility('public');
       if (onPostCreated) {
         onPostCreated(response.data);
       }
@@ -129,6 +133,15 @@ const CreatePost = ({ onPostCreated }) => {
 
         <div className="post-actions">
           <div className="media-buttons">
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
+              className="media-btn"
+            >
+              <option value="public">Public</option>
+              <option value="followers">Followers</option>
+              <option value="private">Private</option>
+            </select>
             <label className="media-btn">
               <FaImage />
               <span>Photo</span>

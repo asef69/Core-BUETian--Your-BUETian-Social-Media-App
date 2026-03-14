@@ -42,6 +42,9 @@ const Search = () => {
     }
   };
 
+  const getProductId = (product) =>
+    product?.product_id || product?.id || product?.pk;
+
   const renderUsers = () => (
     <div className="search-results-section">
       <h3>Users ({users.length})</h3>
@@ -119,13 +122,18 @@ const Search = () => {
         <p className="no-results">No products found</p>
       ) : (
         <div className="search-results-grid">
-          {products.map(product => (
-            <Link key={product.id} to={`/marketplace/${product.id}`} className="search-result-card product-card">
+          {products.map(product => {
+            const productId = getProductId(product);
+            if (!productId) return null;
+
+            return (
+            <Link key={productId} to={`/marketplace/${productId}`} className="search-result-card product-card">
               {product.image && <img src={product.image} alt={product.title} className="product-image" />}
               <h4>{product.title}</h4>
               <p className="product-price">{product.price} Tk</p>
             </Link>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

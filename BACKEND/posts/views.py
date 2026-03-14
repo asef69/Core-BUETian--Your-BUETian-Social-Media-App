@@ -209,6 +209,60 @@ class UserFeedView(APIView):
             return Response([], status=status.HTTP_500_INTERNAL_SERVER_ERROR)        
 
 
+class PublicFeedView(APIView):
+    """
+    Get recent public posts for discovery feed.
+
+    API Endpoint: GET /api/posts/public/
+    Authentication: Required (JWT)
+
+    Query Parameters:
+        limit (int): Number of posts to return (default: 20)
+    """
+    def get(self, request):
+        limit = int(request.query_params.get('limit', 20))
+
+        query = """
+        SELECT
+            p.id AS post_id,
+            p.id AS id,
+            p.user_id,
+            u.name AS user_name,
+            u.profile_picture,
+            p.content,
+            p.media_type,
+            p.visibility,
+            p.created_at,
+            p.likes_count,
+            p.comments_count,
+            EXISTS (
+                SELECT 1
+                FROM likes l
+                WHERE l.post_id = p.id AND l.user_id = %s
+            ) AS has_liked,
+            COALESCE(
+                JSON_AGG(
+                    JSON_BUILD_OBJECT(
+                        'media_url', m.media_url,
+                        'media_type', m.media_type
+                    )
+                ) FILTER (WHERE m.id IS NOT NULL),
+                '[]'::JSON
+            ) AS media_urls
+        FROM posts p
+        INNER JOIN users u ON u.id = p.user_id
+        LEFT JOIN media_urls m ON m.post_id = p.id
+        WHERE p.visibility = 'public'
+          AND p.group_id IS NULL
+        GROUP BY p.id, u.id
+        ORDER BY p.created_at DESC
+        LIMIT %s
+        """
+
+        result = DatabaseManager.execute_query(query, (request.user.id, limit))
+        return Response(result or [])
+
+
 class PostDetailView(APIView):
     """
     Retrieve or delete a specific post.

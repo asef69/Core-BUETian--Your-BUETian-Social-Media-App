@@ -7,6 +7,9 @@ from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 
 
+VALID_PRODUCT_STATUSES = {'available', 'sold', 'reserved'}
+
+
 def _normalize_media_url(url):
     if not url:
         return url
@@ -62,6 +65,11 @@ class CreateProductView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        raw_status = (data.get('status') or 'available')
+        normalized_status = str(raw_status).strip().lower()
+        if normalized_status not in VALID_PRODUCT_STATUSES:
+            normalized_status = 'available'
+
         query = """
         INSERT INTO marketplace_products (
             seller_id, title, description, price, category,
@@ -74,7 +82,7 @@ class CreateProductView(APIView):
             query,
             (request.user.id, title, data.get('description'),
              price, data.get('category'), data.get('condition', 'good'),
-             data.get('location'), data.get('status', 'available'))
+               data.get('location'), normalized_status)
         )
 
         image_urls = []
@@ -165,7 +173,32 @@ class ProductDetailView(APIView):
         return [permission() for permission in self.permission_classes]
     
     def get(self, request, product_id):
-        result = DatabaseManager.execute_function('get_product_details', (product_id,))
+        try:
+            result = DatabaseManager.execute_function('get_product_details', (product_id,))
+        except ProgrammingError:
+            result = DatabaseManager.execute_query(
+                """
+                SELECT
+                    p.id as product_id,
+                    p.title,
+                    p.description,
+                    p.price,
+                    p.category,
+                    p.condition,
+                    p.location,
+                    p.status,
+                    u.id as seller_id,
+                    u.name as seller_name,
+                    u.profile_picture as seller_picture,
+                    u.department_name as seller_department,
+                    ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
+                    p.created_at
+                FROM marketplace_products p
+                INNER JOIN users u ON p.seller_id = u.id
+                WHERE p.id = %s
+                """,
+                (product_id,)
+            )
         if not result:
             return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
         product = result[0]
@@ -282,7 +315,10 @@ class ProductListView(APIView):
 
     def get(self, request):
         category = request.query_params.get('category')
-        status_filter = request.query_params.get('status', 'available')
+        raw_status_filter = request.query_params.get('status', 'available')
+        status_filter = str(raw_status_filter).strip().lower()
+        if status_filter != 'all' and status_filter not in VALID_PRODUCT_STATUSES:
+            status_filter = 'available'
         condition = request.query_params.get('condition')
         min_price = request.query_params.get('min_price')
         max_price = request.query_params.get('max_price')
@@ -309,9 +345,14 @@ class ProductListView(APIView):
             ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images
         FROM marketplace_products p
         INNER JOIN users u ON p.seller_id = u.id
-        WHERE p.status = %s AND u.is_active = TRUE
+        WHERE u.is_active = TRUE
         """
-        params = [status_filter]
+
+        params = []
+
+        if status_filter in VALID_PRODUCT_STATUSES:
+            query += " AND p.status = %s"
+            params.append(status_filter)
         
         if category:
             query += " AND p.category = %s"
@@ -323,26 +364,23 @@ class ProductListView(APIView):
         
         if min_price:
             query += " AND p.price >= %s"
-            params.append(float(min_price))
+            params.append(float(min_price)) # type: ignore
         
         if max_price:
             query += " AND p.price <= %s"
-            params.append(float(max_price))
+            params.append(float(max_price)) # type: ignore
         
         if search:
             query += " AND (p.title ILIKE %s OR p.description ILIKE %s)"
             search_pattern = f"%{search}%"
             params.extend([search_pattern, search_pattern])
         
-        count_query = query.replace(
-            "SELECT p.id, p.title, p.description, p.price, p.category, p.condition, p.location, p.status, p.created_at, u.id as seller_id, u.name as seller_name, u.profile_picture as seller_picture, u.department_name as seller_department, ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images",
-            "SELECT COUNT(*) as total"
-        )
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as count_subquery"
         count_result = DatabaseManager.execute_query(count_query, tuple(params))
         total = count_result[0]['total'] if count_result else 0
         
         query += " ORDER BY p.created_at DESC LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
+        params.extend([limit, offset]) # type: ignore
         
         result = DatabaseManager.execute_query(query, tuple(params))
         for product in result:
@@ -416,10 +454,7 @@ class UserProductsView(APIView):
             query += " AND p.status = %s"
             params.append(status_filter)
         
-        count_query = query.replace(
-            "SELECT p.id, p.title, p.description, p.price, p.category, p.condition, p.location, p.status, p.created_at, ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images",
-            "SELECT COUNT(*) as total"
-        )
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as count_subquery"
         count_result = DatabaseManager.execute_query(count_query, tuple(params))
         total = count_result[0]['total'] if count_result else 0
         
@@ -493,10 +528,7 @@ class MyProductsView(APIView):
             query += " AND p.status = %s"
             params.append(status_filter)
         
-        count_query = query.replace(
-            "SELECT p.id, p.title, p.description, p.price, p.category, p.condition, p.location, p.status, p.created_at, p.updated_at, ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images",
-            "SELECT COUNT(*) as total"
-        )
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as count_subquery"
         count_result = DatabaseManager.execute_query(count_query, tuple(params))
         total = count_result[0]['total'] if count_result else 0
         

@@ -9,6 +9,8 @@ import '../../styles/Notifications.css';
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
+  const [summary, setSummary] = useState([]);
+  const [preferences, setPreferences] = useState({ email_notifications: true, push_notifications: true });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
@@ -18,15 +20,24 @@ const Notifications = () => {
 
   const loadNotifications = async () => {
     try {
-      const response = filter === 'unread'
-        ? await notificationAPI.getUnread()
-        : await notificationAPI.getAll();
+      const [response, summaryRes, preferencesRes] = await Promise.all([
+        filter === 'unread' ? notificationAPI.getUnread() : notificationAPI.getAll(),
+        notificationAPI.getSummary().catch(() => ({ data: [] })),
+        notificationAPI.getPreferences().catch(() => ({ data: { email_notifications: true, push_notifications: true } })),
+      ]);
+
       setNotifications(response.data.results || response.data);
+      setSummary(Array.isArray(summaryRes.data) ? summaryRes.data : summaryRes.data?.results || []);
+      setPreferences(preferencesRes.data || { email_notifications: true, push_notifications: true });
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const emitCountsRefresh = () => {
+    window.dispatchEvent(new Event('counts:refresh'));
   };
 
   const handleMarkAsRead = async (notificationId) => {
@@ -35,6 +46,7 @@ const Notifications = () => {
       setNotifications(notifications.map(notif =>
         notif.id === notificationId ? { ...notif, is_read: true } : notif
       ));
+      emitCountsRefresh();
     } catch (error) {
       toast.error('Failed to mark as read');
     }
@@ -45,8 +57,21 @@ const Notifications = () => {
       await notificationAPI.markAllRead();
       setNotifications(notifications.map(notif => ({ ...notif, is_read: true })));
       toast.success('All notifications marked as read');
+      emitCountsRefresh();
+      loadNotifications();
     } catch (error) {
       toast.error('Failed to mark all as read');
+    }
+  };
+
+  const handleMarkTypeRead = async (type) => {
+    try {
+      await notificationAPI.markByType(type);
+      toast.success(`${type} notifications marked as read`);
+      emitCountsRefresh();
+      loadNotifications();
+    } catch (error) {
+      toast.error('Failed to mark type as read');
     }
   };
 
@@ -55,6 +80,7 @@ const Notifications = () => {
       await notificationAPI.deleteNotification(notificationId);
       setNotifications(notifications.filter(notif => notif.id !== notificationId));
       toast.success('Notification deleted');
+      emitCountsRefresh();
     } catch (error) {
       toast.error('Failed to delete notification');
     }
@@ -67,20 +93,38 @@ const Notifications = () => {
       await notificationAPI.clearAll();
       setNotifications([]);
       toast.success('All notifications cleared');
+      emitCountsRefresh();
     } catch (error) {
       toast.error('Failed to clear notifications');
     }
   };
 
+  const handlePreferenceToggle = async (key) => {
+    const updated = {
+      ...preferences,
+      [key]: !preferences[key],
+    };
+
+    try {
+      await notificationAPI.updatePreferences(updated);
+      setPreferences(updated);
+      toast.success('Notification preferences updated');
+    } catch (error) {
+      toast.error('Failed to update preferences');
+    }
+  };
+
   const getNotificationLink = (notif) => {
-    switch (notif.notification_type) {
+    const type = notif.notification_type || notif.type;
+    const referenceId = notif.reference_id || notif.target_id;
+    switch (type) {
       case 'like':
       case 'comment':
-        return `/posts/${notif.reference_id}`;
+        return `/posts/${referenceId}`;
       case 'follow':
         return `/profile/${notif.actor_id}`;
       case 'group_invite':
-        return `/groups/${notif.reference_id}`;
+        return `/groups/${referenceId}`;
       case 'message':
         return `/chat/${notif.actor_id}`;
       default:
@@ -119,6 +163,36 @@ const Notifications = () => {
               Unread
             </button>
           </div>
+
+          <div className="notifications-filter" style={{ marginTop: '10px', alignItems: 'center' }}>
+            <button
+              className={`filter-btn ${preferences.email_notifications ? 'active' : ''}`}
+              onClick={() => handlePreferenceToggle('email_notifications')}
+            >
+              Email Alerts {preferences.email_notifications ? 'On' : 'Off'}
+            </button>
+            <button
+              className={`filter-btn ${preferences.push_notifications ? 'active' : ''}`}
+              onClick={() => handlePreferenceToggle('push_notifications')}
+            >
+              Push Alerts {preferences.push_notifications ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          {summary.length > 0 && (
+            <div className="notifications-filter" style={{ marginTop: '10px' }}>
+              {summary.map((item, index) => {
+                const type = item.notification_type || item.type || `type-${index}`;
+                const unread = item.unread_count || 0;
+                const total = item.total_count || 0;
+                return (
+                  <button key={`${type}-${index}`} className="filter-btn" onClick={() => handleMarkTypeRead(type)}>
+                    {type}: {unread}/{total}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {loading ? (
             <div className="loading">Loading notifications...</div>
