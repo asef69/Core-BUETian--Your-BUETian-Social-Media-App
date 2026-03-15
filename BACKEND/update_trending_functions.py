@@ -79,15 +79,18 @@ RETURNS TABLE(
 BEGIN
     RETURN QUERY
     SELECT
-        lower(m.tag) AS hashtag,
-        COUNT(DISTINCT p.id) AS post_count,
+        m.hashtag,
+        COUNT(*) AS post_count,
         COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
     FROM posts p
-    CROSS JOIN LATERAL regexp_matches(p.content, '#([A-Za-z0-9_]+)', 'g') AS m(tag)
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT lower(match[1]) AS hashtag
+        FROM regexp_matches(COALESCE(p.content, ''), '#([A-Za-z0-9_]+)', 'g') AS match
+    ) AS m
     WHERE p.visibility = 'public'
       AND p.group_id IS NULL
       AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
-    GROUP BY lower(m.tag)
+    GROUP BY m.hashtag
     ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;

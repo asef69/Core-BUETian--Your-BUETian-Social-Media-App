@@ -11,6 +11,13 @@ def _normalize_media_url(url):
         return url
     return f"/{str(url).lstrip('/')}"
 
+
+def _delete_follow_request_notification(follow_id):
+    DatabaseManager.execute_update(
+        "DELETE FROM notifications WHERE notification_type = 'follow_request' AND reference_id = %s",
+        (follow_id,)
+    )
+
 class UserFollowersView(APIView):
     """
     Get list of users following the specified user.
@@ -137,10 +144,27 @@ class PendingFollowRequestsView(APIView):
         Display list of users waiting for follow approval
     """
     def get(self, request):
-        result = DatabaseManager.execute_function(
-            'get_pending_follow_requests',
+        result = DatabaseManager.execute_query(
+            """
+            SELECT
+                f.id AS follow_id,
+                u.id AS follower_id,
+                u.name AS follower_name,
+                u.profile_picture AS follower_picture,
+                u.department_name AS follower_department,
+                u.batch AS follower_batch,
+                f.created_at AS requested_at
+            FROM follows f
+            INNER JOIN users u ON u.id = f.follower_id
+            WHERE f.following_id = %s
+              AND f.status = 'pending'
+              AND u.is_active = TRUE
+            ORDER BY f.created_at DESC
+            """,
             (request.user.id,)
         )
+        for row in result:
+            row['follower_picture'] = _normalize_media_url(row.get('follower_picture'))
         return Response(result or [])
 
 
@@ -174,12 +198,18 @@ class RejectFollowRequestView(APIView):
         Deletes the follow record instead of updating status
     """
     def post(self, request, follow_id):
-        result = DatabaseManager.execute_function(
-            'reject_follow_request',
+        deleted = DatabaseManager.execute_update(
+            """
+            DELETE FROM follows
+            WHERE id = %s
+              AND following_id = %s
+              AND status = 'pending'
+            """,
             (follow_id, request.user.id)
         )
-        
-        if result and result[0]['reject_follow_request']:
+
+        if deleted:
+            _delete_follow_request_notification(follow_id)
             return Response({'message': 'Follow request rejected'})
         
         return Response(

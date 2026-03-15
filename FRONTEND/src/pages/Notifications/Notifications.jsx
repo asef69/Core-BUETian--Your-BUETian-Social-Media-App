@@ -122,6 +122,8 @@ const Notifications = () => {
       case 'comment':
         return `/posts/${referenceId}`;
       case 'follow':
+      case 'follow_request':
+      case 'follow_accepted':
         return `/profile/${notif.actor_id}`;
       case 'group_invite':
         return `/groups/${referenceId}`;

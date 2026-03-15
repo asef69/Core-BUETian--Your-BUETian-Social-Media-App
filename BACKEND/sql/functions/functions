@@ -145,15 +145,18 @@ RETURNS TABLE(
 BEGIN
     RETURN QUERY
     SELECT
-        lower(m.tag) AS hashtag,
-        COUNT(DISTINCT p.id) AS post_count,
+        m.hashtag,
+        COUNT(*) AS post_count,
         COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
     FROM posts p
-    CROSS JOIN LATERAL regexp_matches(p.content, '#([A-Za-z0-9_]+)', 'g') AS m(tag)
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT lower(match[1]) AS hashtag
+        FROM regexp_matches(COALESCE(p.content, ''), '#([A-Za-z0-9_]+)', 'g') AS match
+    ) AS m
     WHERE p.visibility = 'public'
       AND p.group_id IS NULL
       AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
-    GROUP BY lower(m.tag)
+    GROUP BY m.hashtag
     ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;
@@ -582,21 +585,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- Reject a pending follow request
-CREATE OR REPLACE FUNCTION reject_follow_request(
-    p_follow_id INTEGER,
-    p_user_id   INTEGER
-)
-RETURNS TABLE(success BOOLEAN) AS $$
-BEGIN
-    UPDATE follows
-    SET status = 'rejected'
-    WHERE id = p_follow_id
-    AND following_id = p_user_id
-    AND status = 'pending';
-    RETURN QUERY SELECT FOUND;
-END;
-$$ LANGUAGE plpgsql;
+
 
 
 -- Advanced user search with optional department, batch, blood group filters
@@ -1030,4 +1019,87 @@ BEGIN
     WHERE u.id IN (p_user_id, p_other_user_id);
 END;
 $$ LANGUAGE plpgsql;
+
+
+--Tajrian's Function
+--USER FUNCTIONS
+
+--GET USER PROFILE
+CREATE OR REPLACE FUNCTION get_user_profile(p_user_id INTEGER)
+RETURNS TABLE(
+    id INTEGER,
+    student_id INTEGER,
+    name VARCHAR(50),
+    email VARCHAR(100),
+    profile_picture VARCHAR(500),
+    bio TEXT,
+    blood_group VARCHAR(10),
+    batch INTEGER,
+    hall_name VARCHAR(100),
+    hall_attachement VARCHAR(20),
+    department_name VARCHAR(100),
+    followers_count INTEGER,
+    following_count INTEGER,
+    posts_count INTEGER,
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id,
+        u.student_id,
+        u.name,
+        u.email,
+        u.profile_picture,
+        u.bio,
+        u.blood_group,
+        u.batch,
+        u.hall_name,
+        u.hall_attachement,
+        u.department_name,
+        (SELECT COUNT(*) FROM follows f WHERE f.following_id = u.id AND f.status = 'accepted') AS followers_count,
+        (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id AND f.status = 'accepted') AS following_count,
+        (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS posts_count,
+        u.created_at
+    FROM users u
+    WHERE u.id = p_user_id AND u.is_active = TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+--REJECT FOLLOW REQUEST
+CREATE OR REPLACE FUNCTION reject_follow_request(p_follow_id INTEGER, p_user_id INTEGER)
+RETURNS TABLE(reject_follow_request BOOLEAN) AS $$
+BEGIN
+    DELETE FROM follows
+    WHERE id = p_follow_id
+      AND following_id = p_user_id
+      AND status = 'pending';
+
+    RETURN QUERY SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
+--ACCEPT FOLLOW REQUEST
+CREATE OR REPLACE FUNCTION accept_follow_request(
+    p_follow_id INTEGER,
+    p_user_id INTEGER
+) RETURNS TABLE(
+    follow_id INTEGER,
+    follower_id INTEGER,
+    following_id INTEGER,
+    accepted_at TIMESTAMP
+) AS $$
+BEGIN
+    UPDATE follows
+    SET status = 'accepted',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_follow_id
+      AND following_id = p_user_id
+      AND status = 'pending'
+    RETURNING id, follower_id, following_id, updated_at AS accepted_at;
+END;
+$$ LANGUAGE plpgsql;
+
 
