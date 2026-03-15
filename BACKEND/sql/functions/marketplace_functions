@@ -98,6 +98,36 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+    -- Mark a product as sold (seller only)
+    CREATE OR REPLACE FUNCTION mark_product_sold(
+        p_product_id INTEGER,
+        p_seller_id  INTEGER
+    )
+    RETURNS TABLE(success BOOLEAN) AS $$
+    BEGIN
+        UPDATE marketplace_products
+        SET status = 'sold', updated_at = CURRENT_TIMESTAMP
+        WHERE id = p_product_id AND seller_id = p_seller_id AND status != 'sold';
+        RETURN QUERY SELECT FOUND;
+    END;
+    $$ LANGUAGE plpgsql;
+
+
+    -- Reserve a product (set status to reserved)
+    CREATE OR REPLACE FUNCTION reserve_product(
+        p_product_id INTEGER,
+        p_user_id    INTEGER
+    )
+    RETURNS TABLE(success BOOLEAN) AS $$
+    BEGIN
+        UPDATE marketplace_products
+        SET status = 'reserved', updated_at = CURRENT_TIMESTAMP
+        WHERE id = p_product_id AND status = 'available';
+        RETURN QUERY SELECT FOUND;
+    END;
+    $$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION get_price_range_stats()
 RETURNS TABLE(
     price_range TEXT,
@@ -124,7 +154,9 @@ BEGIN
     ORDER BY MIN(price);
 END;
 $$ LANGUAGE plpgsql;
-
+
+
+
 CREATE OR REPLACE FUNCTION get_department_products(p_user_id INTEGER, p_limit INTEGER DEFAULT 20)
 RETURNS TABLE(
     product_id INTEGER,
