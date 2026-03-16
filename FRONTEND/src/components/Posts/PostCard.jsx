@@ -173,6 +173,9 @@ const PostCard = ({ post, onLike }) => {
   const handleCommentAdded = () => {
     setCommentsCount(commentsCount + 1);
   };
+  const handleCommentRemoved = () => {
+    setCommentsCount(commentsCount - 1);
+  }; 
 
   const isOwner = user && Number(user.id) === Number(post.user_id);
 
@@ -355,6 +358,7 @@ const PostCard = ({ post, onLike }) => {
         <CommentSection
           postId={postId}
           onCommentAdded={handleCommentAdded}
+          onCommentRemoved={handleCommentRemoved}
         />
       )}
     </div>

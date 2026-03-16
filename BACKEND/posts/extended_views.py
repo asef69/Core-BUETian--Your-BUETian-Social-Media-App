@@ -1,6 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from utils.database import DatabaseManager
 
 
@@ -299,37 +301,42 @@ class DeleteCommentView(APIView):
     Database:
         Deletes from comments table with authorization check
     """
+    permission_classes = [IsAuthenticated]
     def delete(self, request, comment_id):
-        query = """
-        SELECT c.user_id, p.user_id as post_author_id
-        FROM comments c
-        INNER JOIN posts p ON c.post_id = p.id
-        WHERE c.id = %s
-        """
-        result = DatabaseManager.execute_query(query, (comment_id,))
-        
-        if not result:
-            return Response(
-                {'error': 'Comment not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        comment_author = result[0]['user_id']
-        post_author = result[0]['post_author_id']
-        current_user = request.user.id
-        
-        if current_user != comment_author and current_user != post_author:
-            return Response(
-                {'error': 'Unauthorized'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        DatabaseManager.execute_update(
-            "DELETE FROM comments WHERE id = %s",
-            (comment_id,)
-        )
-        
-        return Response({'message': 'Comment deleted successfully'})
+        user_id = getattr(request.user, 'id', None)
+        if not user_id:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            # Fetch comment and post authors
+            query = """
+                SELECT c.user_id AS comment_author, p.user_id AS post_author
+                FROM comments c
+                LEFT JOIN posts p ON c.post_id = p.id
+                WHERE c.id = %s
+            """
+            result = DatabaseManager.execute_query(query, (comment_id,))
+            if not result:
+                return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            row = result[0]
+            comment_author = row.get('comment_author') if isinstance(row, dict) else row[0]
+            post_author = row.get('post_author') if isinstance(row, dict) else row[1]
+
+            # Authorization check
+            if user_id != comment_author and user_id != post_author:
+                return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+
+            # Delete comment
+            rows_deleted = DatabaseManager.execute_update("DELETE FROM comments WHERE id = %s", (comment_id,))
+            if not rows_deleted:
+                return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            return Response({'message': 'Comment deleted successfully'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("DeleteCommentView error:", e)
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UpdateCommentView(APIView):
@@ -364,27 +371,52 @@ class UpdateCommentView(APIView):
     Database:
         Updates comments.content and updated_at timestamp
     """
+    permission_classes = [IsAuthenticated]
     def patch(self, request, comment_id):
-        content = request.data.get('content')
+        content = request.data.get('content', '').strip()
         
         if not content:
             return Response(
-                {'error': 'Content is required'},
+                {'error': 'Content is required and cannot be empty'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        query = "SELECT user_id FROM comments WHERE id = %s"
+        query = "SELECT id, user_id, content FROM comments WHERE id = %s"
         result = DatabaseManager.execute_query(query, (comment_id,))
         
-        if not result or result[0]['user_id'] != request.user.id:
+        if not result:
+            return Response(
+                {'error': 'Comment not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        comment = result[0]
+
+        # Authorization check
+        if comment['user_id'] != request.user.id:
             return Response(
                 {'error': 'Unauthorized'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        DatabaseManager.execute_update(
-            "UPDATE comments SET content = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (content, comment_id)
-        )
-        
-        return Response({'message': 'Comment updated successfully'})
+         # Update comment
+        update_query = """
+        UPDATE comments
+        SET content = %s,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+        """
+
+        DatabaseManager.execute_update(update_query, (content.strip(), comment_id))
+
+        # Return updated response
+        return Response({
+            'message': 'Comment updated successfully',
+            'comment': {
+                'id': comment_id,
+                'content': content
+            }
+        }, status=status.HTTP_200_OK)
+
+    def put(self, request, comment_id):
+        return self.patch(request, comment_id)

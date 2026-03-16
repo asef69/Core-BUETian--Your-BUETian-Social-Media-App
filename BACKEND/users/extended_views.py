@@ -18,6 +18,35 @@ def _delete_follow_request_notification(follow_id):
         (follow_id,)
     )
 
+
+def _viewer_follows_author(viewer_id, author_id):
+    if not viewer_id or not author_id:
+        return False
+
+    query = """
+    SELECT 1
+    FROM follows
+    WHERE follower_id = %s
+      AND following_id = %s
+      AND status = 'accepted'
+    LIMIT 1
+    """
+    result = DatabaseManager.execute_query(query, (viewer_id, author_id))
+    return bool(result)
+
+
+def _can_view_post(viewer_id, author_id, visibility):
+    if viewer_id == author_id:
+        return True
+
+    if visibility == 'public':
+        return True
+
+    if visibility == 'followers':
+        return _viewer_follows_author(viewer_id, author_id)
+
+    return False
+
 class UserFollowersView(APIView):
     """
     Get list of users following the specified user.
@@ -408,9 +437,17 @@ class UserPostsView(APIView):
             (user_id, request.user.id, limit, offset)
         )
         posts = result or []
+        filtered_posts = []
         for post in posts:
+            post_visibility = post.get('visibility', 'public')
+            author_id = post.get('author_id') or post.get('user_id') or user_id
+
+            if not _can_view_post(request.user.id, author_id, post_visibility):
+                continue
+
             post_id_value = post.get('post_id') or post.get('id')
             if post_id_value:
                 post['id'] = post_id_value
                 post['post_id'] = post_id_value
-        return Response(posts)
+            filtered_posts.append(post)
+        return Response(filtered_posts)

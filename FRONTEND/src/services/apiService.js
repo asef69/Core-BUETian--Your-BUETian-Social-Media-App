@@ -64,7 +64,7 @@ export const postAPI = {
   likePost: (postId) => api.post(`/posts/${postId}/like/`),
   getComments: (postId) => api.get(`/posts/${postId}/comments/`),
   addComment: (postId, data) => api.post(`/posts/${postId}/comments/`, data),
-  updateComment: (commentId, data) => api.put(`/posts/comments/${commentId}/`, data),
+  updateComment: (commentId, data) => api.patch(`/posts/comments/${commentId}/`, data),
   deleteComment: (commentId) => api.delete(`/posts/comments/${commentId}/delete/`),
   searchPosts: (query) => api.get(`/posts/search/?q=${query}`),
   getPostsByHashtag: (hashtag) => api.get(`/posts/hashtag/${hashtag}/`),

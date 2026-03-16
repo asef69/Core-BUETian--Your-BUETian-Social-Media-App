@@ -5,6 +5,43 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 
+
+def _can_user_access_post(viewer_user_id, post_owner_id, visibility):
+    """Server-side visibility guard for post access."""
+    if not viewer_user_id or not post_owner_id:
+        return False
+
+    if viewer_user_id == post_owner_id:
+        return True
+
+    if visibility == 'public':
+        return True
+
+    if visibility == 'followers':
+        follow_query = """
+        SELECT 1
+        FROM follows
+        WHERE follower_id = %s
+          AND following_id = %s
+          AND status = 'accepted'
+        LIMIT 1
+        """
+        follow_result = DatabaseManager.execute_query(
+            follow_query,
+            (viewer_user_id, post_owner_id)
+        )
+        return bool(follow_result)
+
+    return False
+
+
+def _get_post_owner_and_visibility(post_id):
+    query = "SELECT user_id, visibility FROM posts WHERE id = %s LIMIT 1"
+    result = DatabaseManager.execute_query(query, (post_id,))
+    if not result:
+        return None
+    return result[0]
+
 class CreatePostView(APIView):
     """
     Create a new post with optional media URLs.
@@ -194,14 +231,22 @@ class UserFeedView(APIView):
                 result = []
             
             # Ensure both 'id' and 'post_id' fields exist for frontend compatibility
+            filtered_result = []
             for post in result:
+                post_owner_id = post.get('user_id') or post.get('author_id')
+                post_visibility = post.get('visibility', 'public')
+
+                if not _can_user_access_post(request.user.id, post_owner_id, post_visibility):
+                    continue
+
                 # Use post_id if available, otherwise try id
                 post_id_value = post.get('post_id') or post.get('id')
                 if post_id_value:
                     post['id'] = post_id_value
                     post['post_id'] = post_id_value
+                filtered_result.append(post)
             
-            return Response(result)
+            return Response(filtered_result)
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -316,6 +361,18 @@ class PostDetailView(APIView):
             )
         
         post_data = result[0]
+        if not _can_user_access_post(
+            request.user.id,
+            post_data.get('user_id'),
+            post_data.get('visibility', 'public')
+        ):
+            return Response(
+                {
+                    'error': 'Post not found'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         # Ensure both 'id' and 'post_id' exist
         id_value = post_data.get('post_id') or post_data.get('id') or post_id
         post_data['id'] = id_value
@@ -433,6 +490,14 @@ class LikePostView(APIView):
     """
     def post(self, request, post_id):
         user_id = request.user.id
+
+        post_context = _get_post_owner_and_visibility(post_id)
+        if not post_context or not _can_user_access_post(
+            user_id,
+            post_context.get('user_id'),
+            post_context.get('visibility', 'public')
+        ):
+            return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
         query = """
         SELECT id FROM likes WHERE user_id = %s AND post_id = %s
@@ -483,7 +548,15 @@ class CommentView(APIView):
         Database:
             Function: get_post_comments(post_id)
         """
-        result = DatabaseManager.execute_function('get_post_comments', (post_id,))
+        post_context = _get_post_owner_and_visibility(post_id)
+        if not post_context or not _can_user_access_post(
+            request.user.id,
+            post_context.get('user_id'),
+            post_context.get('visibility', 'public')
+        ):
+            return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        result = DatabaseManager.execute_function('get_post_comments', (post_id,)) or []
         for comment in result:
             if 'profile_picture' not in comment and 'user_picture' in comment:
                 comment['profile_picture'] = comment['user_picture']
@@ -514,6 +587,14 @@ class CommentView(APIView):
             Supports nested comments via parent_comment_id
         """
         data = request.data
+
+        post_context = _get_post_owner_and_visibility(post_id)
+        if not post_context or not _can_user_access_post(
+            request.user.id,
+            post_context.get('user_id'),
+            post_context.get('visibility', 'public')
+        ):
+            return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
         # Validate required field
         if not data.get('content'):
