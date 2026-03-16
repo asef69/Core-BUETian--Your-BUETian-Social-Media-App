@@ -1,0 +1,13 @@
+1.Register User:
+
+INSERT INTO users (student_id, name, email, password, batch, department_name, blood_group, hall_name, hall_attachement, profile_picture, is_active)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+RETURNING id, student_id, name, email
+
+
+2. LOGIN:
+
+SELECT id, student_id, name, email, password, is_active
+FROM users
+WHERE email = %s;
+

@@ -1,0 +1,131 @@
+Required Queries
+Authentication:
+1.Register User
+2.Login
+3.JWT Authentication(not mandatory for you, cause eta ami backend thekei korbo)
+
+
+User:
+1.Get User Profile
+2.Update Profile
+3.Follow/Unfollow User
+4.Accept Follow Request
+5.Get Suggested Users
+6.Get Mutual Followers
+7.Get User Activity
+8.Get Followers List
+9.Get Following List
+
+Post:
+1.Create Post
+2.Get User Feed
+3.Get Post Details
+-------------->4.Update Post
+--------------->5.Delete Post
+6.Like Post
+-----------------> 7.Get Post Likes
+8.Get Comments
+9.Add Comment
+10.Update Comment
+11.Delete Comment
+12.Get Trending Posts
+13.Get User's Posts
+
+Group:
+1.Create Group
+2.Get Group Details
+3.Update Group
+4.Delete Group
+5.Get Group Members
+6.Join Group
+7.Accept Group Member
+8.Reject Group Member
+9.Leave Group
+10.Promote to Moderator
+11.Get Group Posts
+12.Check Group Membership
+
+Marketplace:
+1.Create Product
+2.Get Product Details
+3.Update Product
+4.Update Product Status
+5.Delete Product
+6.List Products with Filters
+7.Get User's Products
+8.Search Products
+
+Forums:
+1.Create Blood Request
+2.Get Blood Request Details
+3.Update Blood Request
+4.Delete Blood Request
+5.List of Active Blood Requests
+6.Create Tuition Post
+7.Get Tuition Post Details
+8.Update Tuition Post
+9.Delete Tuition Post
+10.List of Active Tuition Posts
+11.Create Blog Post
+12.Get Blog Post Details
+13.Update Blog Post
+14.Delete Blog Post
+15.List of Published Blogs
+16.Like Blog
+17.Get Blog Comments
+18.Add Blog Comment
+19.Delete Blog Comment
+20.Get User's Blogs
+
+Chat:
+1.Send Message
+2.Get Conversation
+3.Get Recent Conversations
+4.Mark Message as Read
+5.Delete Message
+6.Get Unread Message Count
+
+Notifications:
+1.Get All Notifications
+2.Get Unread Notifications
+3.Get Notification Count
+4.Mark Notification as Read
+5.Mark All Notifications as Read
+6.Delete Notification
+7.Delete Old Notifications
+
+Searching:
+1.Search Users
+2.Search Posts
+3.Search Groups
+4.Global Search
+5.Platform Statistics
+6.User Statistics
+7.Department Statistics
+8.Batch Statistics
+9.Trending Content
+10.Active Users
+11.Get All Users
+12.Deactivate User
+13.Delete Inactive Users
+14.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

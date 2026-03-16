@@ -2,24 +2,7 @@ import api from './api';
 
 
 export const authAPI = {
-  register: (data) => {
-
-    const hasFile = data.profile_picture instanceof File;
-    
-    if (hasFile) {
-
-      const formData = new FormData();
-      Object.keys(data).forEach(key => {
-        if (data[key] !== null && data[key] !== undefined) {
-          formData.append(key, data[key]);
-        }
-      });
-      return api.post('/users/register/', formData);
-    } else {
-
-      return api.post('/users/register/', data);
-    }
-  },
+  register: (data) => api.post('/users/register/', data),
   login: (data) => api.post('/users/login/', data),
 };
 
@@ -64,7 +47,7 @@ export const postAPI = {
   likePost: (postId) => api.post(`/posts/${postId}/like/`),
   getComments: (postId) => api.get(`/posts/${postId}/comments/`),
   addComment: (postId, data) => api.post(`/posts/${postId}/comments/`, data),
-  updateComment: (commentId, data) => api.put(`/posts/comments/${commentId}/`, data),
+  updateComment: (commentId, data) => api.patch(`/posts/comments/${commentId}/`, data),
   deleteComment: (commentId) => api.delete(`/posts/comments/${commentId}/delete/`),
   searchPosts: (query) => api.get(`/posts/search/?q=${query}`),
   getPostsByHashtag: (hashtag) => api.get(`/posts/hashtag/${hashtag}/`),
@@ -147,8 +130,8 @@ export const forumAPI = {
   searchBloodRequests: (location, blood_group, limit) => api.get('/forums/blood/search/location/', {
     params: { location, blood_group, limit }
   }),
-  
-  
+
+
   createTuitionPost: (data) => api.post('/forums/tuition/create/', data),
   getTuitionPosts: () => api.get('/forums/tuition/'),
   getTuitionPost: (postId) => api.get(`/forums/tuition/${postId}/`),

@@ -1,3 +1,53 @@
+﻿﻿CREATE OR REPLACE FUNCTION get_user_posts(
+    p_user_id INTEGER,
+    p_viewer_id INTEGER DEFAULT NULL,
+    p_limit INTEGER DEFAULT 20,
+    p_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE(
+    post_id INTEGER,
+    content TEXT,
+    media_type VARCHAR(20),
+    visibility VARCHAR(20),
+    author_id INTEGER,
+    author_name VARCHAR(50),
+    author_picture VARCHAR(500),
+    created_at TIMESTAMP,
+    likes_count INTEGER,
+    comments_count INTEGER,
+    is_liked BOOLEAN,
+    media_urls JSON
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id as post_id,
+        p.content,
+        p.media_type,
+        p.visibility,
+        u.id as author_id,
+        u.name as author_name,
+        u.profile_picture as author_picture,
+        p.created_at,
+        p.likes_count,
+        p.comments_count,
+        CASE 
+            WHEN p_viewer_id IS NOT NULL THEN 
+                EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = p_viewer_id)
+            ELSE FALSE 
+        END as is_liked,
+        COALESCE(JSON_AGG(JSON_BUILD_OBJECT('media_url', m.media_url, 'media_type', m.media_type)) FILTER (WHERE m.id IS NOT NULL), '[]'::JSON) as media_urls
+    FROM posts p
+    INNER JOIN users u ON p.user_id = u.id
+    LEFT JOIN media_urls m ON p.id = m.post_id
+    WHERE p.user_id = p_user_id
+    AND (p.group_id IS NULL OR p.group_id = 0)
+    GROUP BY p.id, u.id, u.name, u.profile_picture
+    ORDER BY p.created_at DESC
+    LIMIT p_limit OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;
+
 ﻿CREATE OR REPLACE FUNCTION get_user_posts(
     p_user_id INTEGER,
     p_viewer_id INTEGER DEFAULT NULL,
@@ -47,4 +97,64 @@ BEGIN
     LIMIT p_limit OFFSET p_offset;
 END;
 $$ LANGUAGE plpgsql;
-
+
+
+
+-- FEED: posts from users the current user follows (accepted), excluding group posts
+CREATE OR REPLACE FUNCTION get_user_feed(
+    p_user_id INTEGER,
+    p_limit   INTEGER DEFAULT 20,
+    p_offset  INTEGER DEFAULT 0
+)
+RETURNS TABLE(
+    post_id       INTEGER,
+    content       TEXT,
+    media_type    VARCHAR(20),
+    visibility    VARCHAR(20),
+    author_id     INTEGER,
+    author_name   VARCHAR(50),
+    author_picture VARCHAR(500),
+    created_at    TIMESTAMP,
+    likes_count   INTEGER,
+    comments_count INTEGER,
+    is_liked      BOOLEAN,
+    media_urls    JSON
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id                          AS post_id,
+        p.content,
+        p.media_type,
+        p.visibility,
+        u.id                          AS author_id,
+        u.name                        AS author_name,
+        u.profile_picture             AS author_picture,
+        p.created_at,
+        p.likes_count,
+        p.comments_count,
+        EXISTS(
+            SELECT 1 FROM likes l
+            WHERE l.post_id = p.id AND l.user_id = p_user_id
+        )                             AS is_liked,
+        COALESCE(
+            JSON_AGG(
+                JSON_BUILD_OBJECT('media_url', m.media_url, 'media_type', m.media_type)
+            ) FILTER (WHERE m.id IS NOT NULL),
+            '[]'::JSON
+        )                             AS media_urls
+    FROM posts p
+    INNER JOIN users u ON u.id = p.user_id
+    LEFT JOIN media_urls m ON m.post_id = p.id
+    WHERE p.user_id IN (
+        -- only posts from people the current user mutually follows (accepted)
+        SELECT following_id FROM follows
+        WHERE follower_id = p_user_id AND status = 'accepted'
+    )
+    AND (p.group_id IS NULL OR p.group_id = 0)   -- exclude group posts
+    AND p.visibility IN ('public', 'followers')   -- exclude private posts
+    GROUP BY p.id, u.id, u.name, u.profile_picture
+    ORDER BY p.created_at DESC
+    LIMIT p_limit OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;

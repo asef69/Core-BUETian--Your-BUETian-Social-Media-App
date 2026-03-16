@@ -1,0 +1,11 @@
+# Ignore all files in media directories
+*
+
+# But keep the .gitkeep files to track directory structure
+!.gitkeep
+
+# Keep the README
+!README.md
+
+# Keep this .gitignore
+!.gitignore
