@@ -38,6 +38,7 @@ const Profile = () => {
   const [followActionLoading, setFollowActionLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
+  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -66,7 +67,7 @@ const Profile = () => {
       const nextRelationshipStatus = getRelationshipState(response.data);
 
       setProfile(response.data);
-      setIsOwnProfile(Boolean(currentUser?.id) && currentUser.id === parseInt(userId));
+      setIsOwnProfile(Boolean(currentUser?.id) && Number(currentUser.id) === Number(userId));
       setIsFollowing(Boolean(response.data.is_following));
       setRelationshipStatus(nextRelationshipStatus);
       setIncomingFollowRequestId(response.data.incoming_follow_request_id || null);
@@ -260,13 +261,46 @@ const Profile = () => {
   };
 
   const handleUpdateProfile = async () => {
-    try {
-      await userAPI.updateProfile(editData);
-      setProfile({ ...profile, ...editData });
+    if (profileSaveLoading) return;
+
+    const fieldsToCompare = [
+      'name',
+      'bio',
+      'blood_group',
+      'hall_name',
+      'hall_attachement',
+      'department_name',
+    ];
+
+    const payload = fieldsToCompare.reduce((acc, key) => {
+      const original = (profile?.[key] ?? '').toString();
+      const next = (editData?.[key] ?? '').toString();
+
+      if (original !== next) {
+        acc[key] = next;
+      }
+
+      return acc;
+    }, {});
+
+    if (Object.keys(payload).length === 0) {
       setEditMode(false);
+      toast.info('No profile changes to save');
+      return;
+    }
+
+    try {
+      setProfileSaveLoading(true);
+      await userAPI.updateProfile(payload);
+      setProfile({ ...profile, ...payload });
+      setEditMode(false);
+      await loadProfile();
       toast.success('Profile updated successfully!');
     } catch (error) {
-      toast.error('Failed to update profile');
+      const message = error?.response?.data?.error || error?.response?.data?.message || 'Failed to update profile';
+      toast.error(message);
+    } finally {
+      setProfileSaveLoading(false);
     }
   };
 
@@ -397,8 +431,8 @@ const Profile = () => {
                         placeholder="Department"
                       />
                       <div className="edit-actions">
-                        <button className="btn btn-primary" onClick={handleUpdateProfile}>
-                          Save
+                        <button className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
+                          {profileSaveLoading ? 'Saving...' : 'Save'}
                         </button>
                         <button className="btn btn-secondary" onClick={() => setEditMode(false)}>
                           Cancel

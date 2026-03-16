@@ -289,7 +289,7 @@ class UpdateProfileView(APIView):
         - Automatically updates authenticated user (from JWT token)
         - For profile picture upload, use POST /api/users/profile/upload-picture/
     """
-    def patch(self,request):
+    def _update_profile(self, request):
         user_id=request.user.id
         data=request.data
 
@@ -318,6 +318,12 @@ class UpdateProfileView(APIView):
 
         DatabaseManager.execute_update(query,tuple(params))
         return Response({'message': 'Profile updated successfully'})
+
+    def patch(self,request):
+        return self._update_profile(request)
+
+    def put(self, request):
+        return self._update_profile(request)
     
 class FollowUserView(APIView):
     """
