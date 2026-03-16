@@ -6,6 +6,46 @@ from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 
+
+def _normalize_media_url(url):
+    if not url:
+        return url
+    if isinstance(url, str) and (url.startswith('http://') or url.startswith('https://') or url.startswith('/')):
+        return url
+    return f"/{str(url).lstrip('/')}"
+
+
+def _get_follow_counts(user_id):
+    counts = DatabaseManager.execute_query(
+        """
+        SELECT
+            (SELECT COUNT(*)::int FROM follows WHERE following_id = %s AND status = 'accepted') AS followers_count,
+            (SELECT COUNT(*)::int FROM follows WHERE follower_id = %s AND status = 'accepted') AS following_count
+        """,
+        (user_id, user_id)
+    )
+    return counts[0] if counts else {'followers_count': 0, 'following_count': 0}
+
+
+def _delete_follow_request_notification(follow_id):
+    DatabaseManager.execute_update(
+        "DELETE FROM notifications WHERE notification_type = 'follow_request' AND reference_id = %s",
+        (follow_id,)
+    )
+
+
+def _mark_follow_request_notification_read(user_id, follow_id):
+    DatabaseManager.execute_update(
+        """
+        UPDATE notifications
+        SET is_read = TRUE
+        WHERE user_id = %s
+          AND notification_type = 'follow_request'
+          AND reference_id = %s
+        """,
+        (user_id, follow_id)
+    )
+
 class UserProfileView(APIView):
     """
     Retrieve user profile information.
@@ -92,6 +132,72 @@ class UserProfileView(APIView):
                 ELSE 0
             END AS mutual_friends_count,
             CASE
+                WHEN %s IS NOT NULL AND %s <> u.id THEN (
+                    SELECT f.id
+                    FROM follows f
+                    WHERE f.follower_id = %s
+                      AND f.following_id = u.id
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS follow_id,
+            CASE
+                WHEN %s IS NOT NULL AND %s <> u.id THEN (
+                    SELECT f.status
+                    FROM follows f
+                    WHERE f.follower_id = %s
+                      AND f.following_id = u.id
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS follow_status,
+            CASE
+                WHEN %s IS NOT NULL AND %s <> u.id THEN (
+                    SELECT f.id
+                    FROM follows f
+                    WHERE f.follower_id = u.id
+                      AND f.following_id = %s
+                      AND f.status = 'pending'
+                    LIMIT 1
+                )
+                ELSE NULL
+            END AS incoming_follow_request_id,
+            CASE
+                WHEN %s IS NOT NULL AND %s <> u.id THEN EXISTS(
+                    SELECT 1
+                    FROM follows f
+                    WHERE f.follower_id = u.id
+                      AND f.following_id = %s
+                      AND f.status = 'accepted'
+                )
+                ELSE FALSE
+            END AS follows_you,
+            CASE
+                WHEN %s IS NULL OR %s = u.id THEN 'self'
+                WHEN EXISTS(
+                    SELECT 1
+                    FROM follows f
+                    WHERE f.follower_id = %s
+                      AND f.following_id = u.id
+                      AND f.status = 'accepted'
+                ) THEN 'accepted'
+                WHEN EXISTS(
+                    SELECT 1
+                    FROM follows f
+                    WHERE f.follower_id = %s
+                      AND f.following_id = u.id
+                      AND f.status = 'pending'
+                ) THEN 'pending_sent'
+                WHEN EXISTS(
+                    SELECT 1
+                    FROM follows f
+                    WHERE f.follower_id = u.id
+                      AND f.following_id = %s
+                      AND f.status = 'pending'
+                ) THEN 'pending_received'
+                ELSE 'none'
+            END AS relationship_status,
+            CASE
                 WHEN %s IS NOT NULL AND %s <> u.id THEN EXISTS(
                     SELECT 1
                     FROM follows f
@@ -116,14 +222,29 @@ class UserProfileView(APIView):
                 viewer_id,
                 viewer_id,
                 viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
+                viewer_id,
                 user_id,
             )
         )
 
         if result and result[0].get('profile_picture'):
-            picture = result[0]['profile_picture']
-            if isinstance(picture, str) and not (picture.startswith('http://') or picture.startswith('https://') or picture.startswith('/')):
-                result[0]['profile_picture'] = f"/{picture.lstrip('/')}"
+            result[0]['profile_picture'] = _normalize_media_url(result[0]['profile_picture'])
 
         if not result:
             return Response({
@@ -255,47 +376,47 @@ class FollowUserView(APIView):
             (follower_id, user_id)
         )
 
-        is_following = False
-        message = 'Followed successfully'
+        follow_status = None
+        relationship_status = 'none'
+        message = 'Follow request sent'
 
         if existing:
+            follow_id = existing[0]['id']
             current_status = existing[0]['status']
             if current_status == 'accepted':
                 DatabaseManager.execute_update(
                     "DELETE FROM follows WHERE id = %s",
-                    (existing[0]['id'],)
+                    (follow_id,)
                 )
                 message = 'Unfollowed successfully'
-                is_following = False
+                follow_status = None
+                relationship_status = 'none'
             else:
                 DatabaseManager.execute_update(
-                    "UPDATE follows SET status = 'accepted' WHERE id = %s",
-                    (existing[0]['id'],)
+                    "DELETE FROM follows WHERE id = %s",
+                    (follow_id,)
                 )
-                message = 'Followed successfully'
-                is_following = True
+                _delete_follow_request_notification(follow_id)
+                message = 'Follow request cancelled'
+                follow_status = None
+                relationship_status = 'none'
         else:
             DatabaseManager.execute_insert(
-                "INSERT INTO follows (follower_id, following_id, status) VALUES (%s, %s, 'accepted')",
+                "INSERT INTO follows (follower_id, following_id, status) VALUES (%s, %s, 'pending')",
                 (follower_id, user_id)
             )
-            message = 'Followed successfully'
-            is_following = True
+            follow_status = 'pending'
+            relationship_status = 'pending_sent'
 
-        followers_count_result = DatabaseManager.execute_query(
-            "SELECT COUNT(*)::int AS count FROM follows WHERE following_id = %s AND status = 'accepted'",
-            (user_id,)
-        )
-        following_count_result = DatabaseManager.execute_query(
-            "SELECT COUNT(*)::int AS count FROM follows WHERE follower_id = %s AND status = 'accepted'",
-            (follower_id,)
-        )
+        target_counts = _get_follow_counts(user_id)
 
         return Response({
             'message': message,
-            'is_following': is_following,
-            'followers_count': followers_count_result[0]['count'] if followers_count_result else 0,
-            'following_count': following_count_result[0]['count'] if following_count_result else 0,
+            'is_following': follow_status == 'accepted',
+            'follow_status': follow_status,
+            'relationship_status': relationship_status,
+            'followers_count': target_counts['followers_count'],
+            'following_count': target_counts['following_count'],
         })
         
 class AcceptFollowView(APIView):
@@ -333,22 +454,46 @@ class AcceptFollowView(APIView):
         4. User A can now see User B's follower-only posts
     """
     def post(self,request,follow_id):
-        query = """
-        UPDATE follows SET status = 'accepted'
-        WHERE id = %s AND following_id = %s AND status = 'pending'
-        """
+        follow_request = DatabaseManager.execute_query(
+            """
+            SELECT id, follower_id, following_id
+            FROM follows
+            WHERE id = %s AND following_id = %s AND status = 'pending'
+            """,
+            (follow_id, request.user.id)
+        )
 
-        result=DatabaseManager.execute_update(query,(follow_id,request.user.id))
+        if not follow_request:
+            return Response({
+                'error':'Follow request can not be found'
+            },status=status.HTTP_404_NOT_FOUND)
 
-        if result:
-            return Response(
-                {
-                    'message':'Follow request accepted'
+        DatabaseManager.execute_update(
+            "UPDATE follows SET status = 'accepted' WHERE id = %s",
+            (follow_id,)
+        )
+        _mark_follow_request_notification_read(request.user.id, follow_id)
+
+        accepted_follow = follow_request[0]
+        follower_counts = _get_follow_counts(accepted_follow['follower_id'])
+        following_counts = _get_follow_counts(accepted_follow['following_id'])
+
+        return Response(
+            {
+                'message':'Follow request accepted',
+                'follow_id': follow_id,
+                'follower_id': accepted_follow['follower_id'],
+                'following_id': accepted_follow['following_id'],
+                'follower_profile': {
+                    'followers_count': follower_counts['followers_count'],
+                    'following_count': follower_counts['following_count'],
+                },
+                'following_profile': {
+                    'followers_count': following_counts['followers_count'],
+                    'following_count': following_counts['following_count'],
                 }
-            )
-        return Response({
-            'error':'Follow request can not be found'
-        },status=status.HTTP_404_NOT_FOUND)
+            }
+        )
     
 class SuggestedUsersView(APIView):
     """

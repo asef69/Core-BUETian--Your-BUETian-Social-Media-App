@@ -111,6 +111,18 @@ class RegisterView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
+        profile_picture_url = None
+        if 'profile_picture' in request.FILES:
+            try:
+                profile_file = request.FILES['profile_picture']
+                FileUploadHandler.validate_file(profile_file, file_type='image')
+                profile_picture_url = FileUploadHandler.upload_file(profile_file, folder='profile_pictures')
+            except ValueError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
         query = """
         INSERT INTO users (student_id, name, email, password, batch, department_name, blood_group, hall_name, hall_attachement, profile_picture, is_active)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)

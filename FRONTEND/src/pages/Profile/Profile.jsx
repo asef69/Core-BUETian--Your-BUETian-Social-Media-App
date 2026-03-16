@@ -8,6 +8,22 @@ import { toast } from 'react-toastify';
 import { FaEdit, FaUserPlus, FaUserCheck } from 'react-icons/fa';
 import '../../styles/Profile.css';
 
+const getRelationshipState = (data) => {
+  if (data?.relationship_status) {
+    return data.relationship_status;
+  }
+
+  if (data?.is_following) {
+    return 'accepted';
+  }
+
+  if (data?.follow_status === 'pending') {
+    return 'pending_sent';
+  }
+
+  return 'none';
+};
+
 const Profile = () => {
   const { userId } = useParams();
   const { user: currentUser } = useAuth();
@@ -17,6 +33,9 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('posts');
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [relationshipStatus, setRelationshipStatus] = useState('none');
+  const [incomingFollowRequestId, setIncomingFollowRequestId] = useState(null);
+  const [followActionLoading, setFollowActionLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
 
@@ -44,9 +63,13 @@ const Profile = () => {
   const loadProfile = async () => {
     try {
       const response = await userAPI.getProfile(userId);
+      const nextRelationshipStatus = getRelationshipState(response.data);
+
       setProfile(response.data);
       setIsOwnProfile(Boolean(currentUser?.id) && currentUser.id === parseInt(userId));
       setIsFollowing(Boolean(response.data.is_following));
+      setRelationshipStatus(nextRelationshipStatus);
+      setIncomingFollowRequestId(response.data.incoming_follow_request_id || null);
       setEditData({
         name: response.data.name,
         bio: response.data.bio || '',
@@ -117,23 +140,123 @@ const Profile = () => {
     }
   };
 
+  const refreshRelationshipState = async () => {
+    await Promise.all([loadProfile(), loadFollowCounts()]);
+  };
+
   const handleFollow = async () => {
-    if (isFollowing) return;
+    if (followActionLoading) return;
 
     try {
+      setFollowActionLoading(true);
       const response = await userAPI.followUser(userId);
-      const accepted = Boolean(response?.data?.is_following || response?.data?.status === 'accepted');
+      const nextRelationshipStatus = getRelationshipState(response?.data);
 
-      setIsFollowing(accepted);
+      setIsFollowing(Boolean(response?.data?.is_following));
+      setRelationshipStatus(nextRelationshipStatus);
       setProfile((prev) => ({
         ...prev,
         followers_count: response?.data?.followers_count ?? prev?.followers_count,
+        following_count: response?.data?.following_count ?? prev?.following_count,
       }));
-      await loadFollowCounts();
+      await refreshRelationshipState();
       toast.success(response?.data?.message || 'Follow request sent!');
     } catch (error) {
-      toast.error('Failed to follow user');
+      toast.error(error?.response?.data?.error || 'Failed to update follow status');
+    } finally {
+      setFollowActionLoading(false);
     }
+  };
+
+  const handleAcceptFollowRequest = async () => {
+    if (!incomingFollowRequestId || followActionLoading) return;
+
+    try {
+      setFollowActionLoading(true);
+      const response = await userAPI.acceptFollow(incomingFollowRequestId);
+      await refreshRelationshipState();
+      toast.success(response?.data?.message || 'Follow request accepted');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to accept follow request');
+    } finally {
+      setFollowActionLoading(false);
+    }
+  };
+
+  const handleRejectFollowRequest = async () => {
+    if (!incomingFollowRequestId || followActionLoading) return;
+
+    try {
+      setFollowActionLoading(true);
+      const response = await userAPI.rejectFollow(incomingFollowRequestId);
+      await refreshRelationshipState();
+      toast.success(response?.data?.message || 'Follow request rejected');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to reject follow request');
+    } finally {
+      setFollowActionLoading(false);
+    }
+  };
+
+  const renderFollowAction = () => {
+    if (isOwnProfile) {
+      return null;
+    }
+
+    if (incomingFollowRequestId) {
+      return (
+        <div className="profile-action-group">
+          <button
+            className="btn btn-primary"
+            onClick={handleAcceptFollowRequest}
+            disabled={followActionLoading}
+          >
+            Accept Request
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleRejectFollowRequest}
+            disabled={followActionLoading}
+          >
+            Reject
+          </button>
+        </div>
+      );
+    }
+
+    if (relationshipStatus === 'accepted') {
+      return (
+        <button
+          className="btn btn-secondary"
+          onClick={handleFollow}
+          disabled={followActionLoading}
+        >
+          <FaUserCheck /> Unfollow
+        </button>
+      );
+    }
+
+    if (relationshipStatus === 'pending_sent') {
+      return (
+        <button
+          className="btn btn-secondary"
+          onClick={handleFollow}
+          disabled={followActionLoading}
+        >
+          <FaUserCheck /> Cancel Request
+        </button>
+      );
+    }
+
+    return (
+      <button
+        className="btn btn-primary"
+        onClick={handleFollow}
+        disabled={followActionLoading}
+      >
+        <FaUserPlus /> Follow
+      </button>
+    );
   };
 
   const handleUpdateProfile = async () => {
@@ -319,13 +442,7 @@ const Profile = () => {
                           <FaEdit /> Edit Profile
                         </button>
                       ) : (
-                        <button
-                          className={`btn ${isFollowing ? 'btn-secondary' : 'btn-primary'}`}
-                          onClick={handleFollow}
-                          disabled={isFollowing}
-                        >
-                          {isFollowing ? <><FaUserCheck /> Following</> : <><FaUserPlus /> Follow</>}
-                        </button>
+                        renderFollowAction()
                       )}
                     </>
                   )}

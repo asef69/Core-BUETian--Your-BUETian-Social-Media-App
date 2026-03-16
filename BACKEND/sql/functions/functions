@@ -253,15 +253,18 @@ RETURNS TABLE(
 BEGIN
     RETURN QUERY
     SELECT
-        lower(m.tag) AS hashtag,
-        COUNT(DISTINCT p.id) AS post_count,
+        m.hashtag,
+        COUNT(*) AS post_count,
         COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
     FROM posts p
-    CROSS JOIN LATERAL regexp_matches(p.content, '#([A-Za-z0-9_]+)', 'g') AS m(tag)
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT lower(match[1]) AS hashtag
+        FROM regexp_matches(COALESCE(p.content, ''), '#([A-Za-z0-9_]+)', 'g') AS match
+    ) AS m
     WHERE p.visibility = 'public'
       AND p.group_id IS NULL
       AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
-    GROUP BY lower(m.tag)
+    GROUP BY m.hashtag
     ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;
@@ -608,4 +611,603 @@ END;
 $$ LANGUAGE plpgsql;
 
 --CLEAN PREVIOUS NOTIFICATION
+
+
+-- =====================================================================
+-- USER FUNCTIONS
+-- =====================================================================
+
+-- Suggested users (same department or batch, not already followed)
+CREATE OR REPLACE FUNCTION get_suggested_users(
+    p_user_id INTEGER,
+    p_limit   INTEGER DEFAULT 10
+)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    profile_picture VARCHAR(500),
+    department_name VARCHAR(100),
+    batch           INTEGER,
+    mutual_count    BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT DISTINCT
+        u.id AS user_id,
+        u.name,
+        u.profile_picture,
+        u.department_name,
+        u.batch,
+        (
+            SELECT COUNT(*)
+            FROM follows f1
+            INNER JOIN follows f2 ON f1.following_id = f2.follower_id
+            WHERE f1.follower_id = p_user_id
+            AND f2.following_id = u.id
+            AND f1.status = 'accepted'
+            AND f2.status = 'accepted'
+        ) AS mutual_count
+    FROM users u
+    WHERE u.id != p_user_id
+    AND u.is_active = TRUE
+    AND u.id NOT IN (
+        SELECT following_id FROM follows WHERE follower_id = p_user_id
+    )
+    AND (
+        u.department_name = (SELECT department_name FROM users WHERE id = p_user_id)
+        OR u.batch = (SELECT batch FROM users WHERE id = p_user_id)
+    )
+    ORDER BY mutual_count DESC, u.name
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Incoming pending follow requests for a user
+CREATE OR REPLACE FUNCTION get_pending_follow_requests(p_user_id INTEGER)
+RETURNS TABLE(
+    follow_id         INTEGER,
+    requester_id      INTEGER,
+    requester_name    VARCHAR(50),
+    requester_picture VARCHAR(500),
+    department_name   VARCHAR(100),
+    batch             INTEGER,
+    requested_at      TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        f.id AS follow_id,
+        u.id AS requester_id,
+        u.name AS requester_name,
+        u.profile_picture AS requester_picture,
+        u.department_name,
+        u.batch,
+        f.created_at AS requested_at
+    FROM follows f
+    INNER JOIN users u ON u.id = f.follower_id
+    WHERE f.following_id = p_user_id
+    AND f.status = 'pending'
+    ORDER BY f.created_at DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+
+-- Advanced user search with optional department, batch, blood group filters
+CREATE OR REPLACE FUNCTION search_users_advanced(
+    p_search_term VARCHAR(255),
+    p_department  VARCHAR(100) DEFAULT NULL,
+    p_batch       INTEGER      DEFAULT NULL,
+    p_blood_group VARCHAR(5)   DEFAULT NULL,
+    p_limit       INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    profile_picture VARCHAR(500),
+    department_name VARCHAR(100),
+    batch           INTEGER,
+    blood_group     VARCHAR(5)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS user_id,
+        u.name,
+        u.profile_picture,
+        u.department_name,
+        u.batch,
+        u.blood_group
+    FROM users u
+    WHERE u.is_active = TRUE
+    AND (
+        p_search_term IS NULL OR p_search_term = ''
+        OR u.name ILIKE '%' || p_search_term || '%'
+        OR u.student_id::TEXT ILIKE '%' || p_search_term || '%'
+    )
+    AND (p_department IS NULL OR u.department_name = p_department)
+    AND (p_batch IS NULL OR u.batch = p_batch)
+    AND (p_blood_group IS NULL OR u.blood_group = p_blood_group)
+    ORDER BY u.name
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Users in a given department, optionally filtered by batch
+CREATE OR REPLACE FUNCTION get_users_by_department(
+    p_department_name VARCHAR(100),
+    p_batch           INTEGER DEFAULT NULL,
+    p_limit           INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    profile_picture VARCHAR(500),
+    batch           INTEGER,
+    blood_group     VARCHAR(5)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS user_id,
+        u.name,
+        u.profile_picture,
+        u.batch,
+        u.blood_group
+    FROM users u
+    WHERE u.department_name = p_department_name
+    AND u.is_active = TRUE
+    AND (p_batch IS NULL OR u.batch = p_batch)
+    ORDER BY u.batch DESC, u.name
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Users with a specific blood group
+CREATE OR REPLACE FUNCTION get_users_by_blood_group(
+    p_blood_group VARCHAR(5),
+    p_limit       INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    profile_picture VARCHAR(500),
+    department_name VARCHAR(100),
+    batch           INTEGER,
+    hall_name       VARCHAR(100),
+    bio             TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS user_id,
+        u.name,
+        u.profile_picture,
+        u.department_name,
+        u.batch,
+        u.hall_name,
+        u.bio
+    FROM users u
+    WHERE u.blood_group = p_blood_group
+    AND u.is_active = TRUE
+    ORDER BY u.name
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Engagement metrics for a specific user
+CREATE OR REPLACE FUNCTION get_user_engagement_metrics(p_user_id INTEGER)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    department_name VARCHAR(100),
+    batch           INTEGER,
+    posts_count     BIGINT,
+    comments_count  BIGINT,
+    likes_given     BIGINT,
+    likes_received  BIGINT,
+    following_count BIGINT,
+    followers_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS user_id,
+        u.name,
+        u.department_name,
+        u.batch,
+        (SELECT COUNT(*) FROM posts    WHERE user_id = u.id) AS posts_count,
+        (SELECT COUNT(*) FROM comments WHERE user_id = u.id) AS comments_count,
+        (SELECT COUNT(*) FROM likes    WHERE user_id = u.id) AS likes_given,
+        (SELECT COALESCE(SUM(p.likes_count), 0) FROM posts p WHERE p.user_id = u.id) AS likes_received,
+        (SELECT COUNT(*) FROM follows WHERE follower_id  = u.id AND status = 'accepted') AS following_count,
+        (SELECT COUNT(*) FROM follows WHERE following_id = u.id AND status = 'accepted') AS followers_count
+    FROM users u
+    WHERE u.id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- =====================================================================
+-- NOTIFICATION FUNCTIONS
+-- =====================================================================
+
+-- Total unread notification count for a user
+CREATE OR REPLACE FUNCTION get_unread_notification_count(p_user_id INTEGER)
+RETURNS TABLE(unread_count BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT COUNT(*) AS unread_count
+    FROM notifications
+    WHERE user_id = p_user_id AND is_read = FALSE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Mark all notifications as read for a user; returns affected row count
+CREATE OR REPLACE FUNCTION mark_all_notifications_read(p_user_id INTEGER)
+RETURNS TABLE(updated_count INTEGER) AS $$
+DECLARE v_count INTEGER;
+BEGIN
+    UPDATE notifications SET is_read = TRUE
+    WHERE user_id = p_user_id AND is_read = FALSE;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Notification summary counts for a single user
+CREATE OR REPLACE FUNCTION get_notification_summary(p_user_id INTEGER)
+RETURNS TABLE(
+    total_notifications   BIGINT,
+    unread_count          BIGINT,
+    likes_count           BIGINT,
+    comments_count        BIGINT,
+    follow_requests_count BIGINT,
+    last_notification_at  TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        COUNT(*) AS total_notifications,
+        COUNT(*) FILTER (WHERE is_read = FALSE) AS unread_count,
+        COUNT(*) FILTER (WHERE notification_type = 'like') AS likes_count,
+        COUNT(*) FILTER (WHERE notification_type = 'comment') AS comments_count,
+        COUNT(*) FILTER (WHERE notification_type = 'follow_request') AS follow_requests_count,
+        MAX(created_at) AS last_notification_at
+    FROM notifications
+    WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Mark all notifications of a given type as read for a user
+CREATE OR REPLACE FUNCTION mark_notifications_read_by_type(
+    p_user_id           INTEGER,
+    p_notification_type VARCHAR(50)
+)
+RETURNS TABLE(updated_count INTEGER) AS $$
+DECLARE v_count INTEGER;
+BEGIN
+    UPDATE notifications SET is_read = TRUE
+    WHERE user_id = p_user_id
+    AND notification_type = p_notification_type
+    AND is_read = FALSE;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Recent activity notifications for a user (with actor info)
+CREATE OR REPLACE FUNCTION get_activity_notifications(
+    p_user_id INTEGER,
+    p_limit   INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    notification_id   INTEGER,
+    notification_type VARCHAR(50),
+    reference_id      INTEGER,
+    content           TEXT,
+    is_read           BOOLEAN,
+    created_at        TIMESTAMP,
+    actor_id          INTEGER,
+    actor_name        VARCHAR(50),
+    actor_picture     VARCHAR(500)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        n.id AS notification_id,
+        n.notification_type,
+        n.reference_id,
+        n.content,
+        n.is_read,
+        n.created_at,
+        u.id AS actor_id,
+        u.name AS actor_name,
+        u.profile_picture AS actor_picture
+    FROM notifications n
+    INNER JOIN users u ON u.id = n.actor_id
+    WHERE n.user_id = p_user_id
+    ORDER BY n.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- =====================================================================
+-- CHAT / MESSAGING FUNCTIONS
+-- =====================================================================
+
+-- Check if sender is allowed to message receiver
+-- (must follow each other, or have an existing conversation)
+CREATE OR REPLACE FUNCTION can_user_message(
+    p_sender_id   INTEGER,
+    p_receiver_id INTEGER
+)
+RETURNS TABLE(can_message BOOLEAN) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT (
+        EXISTS(
+            SELECT 1 FROM follows
+            WHERE follower_id = p_sender_id AND following_id = p_receiver_id AND status = 'accepted'
+        )
+        OR EXISTS(
+            SELECT 1 FROM messages
+            WHERE (sender_id = p_sender_id   AND receiver_id = p_receiver_id)
+               OR (sender_id = p_receiver_id AND receiver_id = p_sender_id)
+        )
+    ) AS can_message;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Unread message count per conversation partner (inbox overview)
+CREATE OR REPLACE FUNCTION get_unread_messages_count(p_user_id INTEGER)
+RETURNS TABLE(
+    sender_id      INTEGER,
+    sender_name    VARCHAR(50),
+    sender_picture VARCHAR(500),
+    unread_count   BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS sender_id,
+        u.name AS sender_name,
+        u.profile_picture AS sender_picture,
+        COUNT(*) AS unread_count
+    FROM messages m
+    INNER JOIN users u ON u.id = m.sender_id
+    WHERE m.receiver_id = p_user_id AND m.is_read = FALSE
+    GROUP BY u.id, u.name, u.profile_picture
+    ORDER BY unread_count DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Total number of unread messages for a user across all conversations
+CREATE OR REPLACE FUNCTION get_total_unread_messages(p_user_id INTEGER)
+RETURNS TABLE(total_unread BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT COUNT(*) AS total_unread
+    FROM messages
+    WHERE receiver_id = p_user_id AND is_read = FALSE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Full-text search within a user's conversations
+CREATE OR REPLACE FUNCTION search_messages(
+    p_user_id     INTEGER,
+    p_search_term VARCHAR(255),
+    p_limit       INTEGER DEFAULT 20
+)
+RETURNS TABLE(
+    message_id    INTEGER,
+    sender_id     INTEGER,
+    sender_name   VARCHAR(50),
+    receiver_id   INTEGER,
+    receiver_name VARCHAR(50),
+    content       TEXT,
+    created_at    TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        m.id AS message_id,
+        m.sender_id,
+        s.name AS sender_name,
+        m.receiver_id,
+        r.name AS receiver_name,
+        m.content,
+        m.created_at
+    FROM messages m
+    INNER JOIN users s ON s.id = m.sender_id
+    INNER JOIN users r ON r.id = m.receiver_id
+    WHERE (m.sender_id = p_user_id OR m.receiver_id = p_user_id)
+    AND m.content ILIKE '%' || p_search_term || '%'
+    ORDER BY m.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Delete all messages between two users
+CREATE OR REPLACE FUNCTION delete_conversation(
+    p_user_id       INTEGER,
+    p_other_user_id INTEGER
+)
+RETURNS TABLE(deleted_count INTEGER) AS $$
+DECLARE v_count INTEGER;
+BEGIN
+    DELETE FROM messages
+    WHERE (sender_id = p_user_id       AND receiver_id = p_other_user_id)
+       OR (sender_id = p_other_user_id AND receiver_id = p_user_id);
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Mark all messages from a specific sender as read
+CREATE OR REPLACE FUNCTION mark_conversation_read(
+    p_user_id       INTEGER,
+    p_other_user_id INTEGER
+)
+RETURNS TABLE(updated_count INTEGER) AS $$
+DECLARE v_count INTEGER;
+BEGIN
+    UPDATE messages SET is_read = TRUE
+    WHERE sender_id   = p_other_user_id
+    AND receiver_id = p_user_id
+    AND is_read = FALSE;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN QUERY SELECT v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Messaging statistics for a user
+CREATE OR REPLACE FUNCTION get_user_message_stats(p_user_id INTEGER)
+RETURNS TABLE(
+    total_sent          BIGINT,
+    total_received      BIGINT,
+    total_unread        BIGINT,
+    conversations_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        (SELECT COUNT(*) FROM messages WHERE sender_id   = p_user_id) AS total_sent,
+        (SELECT COUNT(*) FROM messages WHERE receiver_id = p_user_id) AS total_received,
+        (SELECT COUNT(*) FROM messages WHERE receiver_id = p_user_id AND is_read = FALSE) AS total_unread,
+        (
+            SELECT COUNT(DISTINCT LEAST(sender_id, receiver_id)::TEXT || '-' || GREATEST(sender_id, receiver_id)::TEXT)
+            FROM messages
+            WHERE sender_id = p_user_id OR receiver_id = p_user_id
+        ) AS conversations_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Profile info for both participants in a conversation
+CREATE OR REPLACE FUNCTION get_conversation_participants(
+    p_user_id       INTEGER,
+    p_other_user_id INTEGER
+)
+RETURNS TABLE(
+    user_id         INTEGER,
+    name            VARCHAR(50),
+    profile_picture VARCHAR(500),
+    department_name VARCHAR(100),
+    batch           INTEGER,
+    is_self         BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id AS user_id,
+        u.name,
+        u.profile_picture,
+        u.department_name,
+        u.batch,
+        (u.id = p_user_id) AS is_self
+    FROM users u
+    WHERE u.id IN (p_user_id, p_other_user_id);
+END;
+$$ LANGUAGE plpgsql;
+
+
+--Tajrian's Function
+--USER FUNCTIONS
+
+--GET USER PROFILE
+CREATE OR REPLACE FUNCTION get_user_profile(p_user_id INTEGER)
+RETURNS TABLE(
+    id INTEGER,
+    student_id INTEGER,
+    name VARCHAR(50),
+    email VARCHAR(100),
+    profile_picture VARCHAR(500),
+    bio TEXT,
+    blood_group VARCHAR(10),
+    batch INTEGER,
+    hall_name VARCHAR(100),
+    hall_attachement VARCHAR(20),
+    department_name VARCHAR(100),
+    followers_count INTEGER,
+    following_count INTEGER,
+    posts_count INTEGER,
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        u.id,
+        u.student_id,
+        u.name,
+        u.email,
+        u.profile_picture,
+        u.bio,
+        u.blood_group,
+        u.batch,
+        u.hall_name,
+        u.hall_attachement,
+        u.department_name,
+        (SELECT COUNT(*) FROM follows f WHERE f.following_id = u.id AND f.status = 'accepted') AS followers_count,
+        (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id AND f.status = 'accepted') AS following_count,
+        (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS posts_count,
+        u.created_at
+    FROM users u
+    WHERE u.id = p_user_id AND u.is_active = TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+--REJECT FOLLOW REQUEST
+CREATE OR REPLACE FUNCTION reject_follow_request(p_follow_id INTEGER, p_user_id INTEGER)
+RETURNS TABLE(reject_follow_request BOOLEAN) AS $$
+BEGIN
+    DELETE FROM follows
+    WHERE id = p_follow_id
+      AND following_id = p_user_id
+      AND status = 'pending';
+
+    RETURN QUERY SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
+--ACCEPT FOLLOW REQUEST
+CREATE OR REPLACE FUNCTION accept_follow_request(
+    p_follow_id INTEGER,
+    p_user_id INTEGER
+) RETURNS TABLE(
+    follow_id INTEGER,
+    follower_id INTEGER,
+    following_id INTEGER,
+    accepted_at TIMESTAMP
+) AS $$
+BEGIN
+    UPDATE follows
+    SET status = 'accepted',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_follow_id
+      AND following_id = p_user_id
+      AND status = 'pending'
+    RETURNING id, follower_id, following_id, updated_at AS accepted_at;
+END;
+$$ LANGUAGE plpgsql;
+
 
