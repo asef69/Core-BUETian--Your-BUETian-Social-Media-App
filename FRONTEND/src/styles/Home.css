@@ -590,7 +590,24 @@
 .comment-content p {
   font-size: 0.92rem;
   color: var(--light-color);
+  
 }
+
+.btn-reply {
+  position: relative;
+  bottom: 0px;
+  left: 400px;
+  background: transparent;
+  border: none;
+  color: #3498db;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-reply:hover {
+  text-decoration: underline;
+}
+
 
 /* Comment Menu Styles */
 .comment-menu {

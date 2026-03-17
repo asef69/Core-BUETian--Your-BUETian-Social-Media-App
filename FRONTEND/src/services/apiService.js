@@ -2,7 +2,24 @@ import api from './api';
 
 
 export const authAPI = {
-  register: (data) => api.post('/users/register/', data),
+  register: (data) => {
+
+    const hasFile = data.profile_picture instanceof File;
+    
+    if (hasFile) {
+
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== null && data[key] !== undefined) {
+          formData.append(key, data[key]);
+        }
+      });
+      return api.post('/users/register/', formData);
+    } else {
+
+      return api.post('/users/register/', data);
+    }
+  },
   login: (data) => api.post('/users/login/', data),
 };
 
@@ -54,6 +71,7 @@ export const postAPI = {
   getTrendingHashtags: (limit = 10) => api.get(`/posts/hashtags/trending/?limit=${limit}`),
   getPostsByMediaType: (mediaType, limit = 20) => api.get(`/posts/media/${mediaType}/?limit=${limit}`),
   getEngagement: (postId) => api.get(`/posts/${postId}/engagement/`),
+  likecomment: (commentId) => api.post(`/posts/comments/${commentId}/like/`),
 };
 
 

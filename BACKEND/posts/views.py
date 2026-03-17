@@ -483,11 +483,34 @@ class CommentView(APIView):
         Database:
             Function: get_post_comments(post_id)
         """
-        result = DatabaseManager.execute_function('get_post_comments', (post_id,))
-        for comment in result:
-            if 'profile_picture' not in comment and 'user_picture' in comment:
-                comment['profile_picture'] = comment['user_picture']
-        return Response(result)
+        try:
+            print(f"DEBUG: get_post_comments called for post_id={post_id}, user_id={request.user.id}")
+
+            # Execute the function
+            result = DatabaseManager.execute_function('get_post_comments', (post_id, request.user.id))
+            print(f"DEBUG: Raw result from DB: {result}")
+
+            # Ensure profile_picture fallback
+            for comment in result:
+                if 'profile_picture' not in comment and 'user_picture' in comment:
+                    comment['profile_picture'] = comment['user_picture']
+            
+            print(f"DEBUG: Normalized result ready to return: {result}")
+            return Response(result)
+
+        except Exception as e:
+            import traceback
+            print("ERROR: Exception while loading comments for post_id=", post_id)
+            print("Traceback:")
+            traceback.print_exc()  # full stack trace
+            return Response(
+                {
+                    "error": str(e),
+                    "post_id": post_id,
+                    "user_id": getattr(request.user, "id", None)
+                },
+                status=500
+            )
     
     def post(self, request, post_id):
         """

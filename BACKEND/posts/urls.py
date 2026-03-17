@@ -5,7 +5,7 @@ from .views import (
     UploadPostMediaView, CreatePostWithMediaView, PublicFeedView
 )
 from .extended_views import (
-    PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
+    LikeCommentView, PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
     TrendingHashtagsView, PostsByMediaTypeView, SearchPostsView,
     DeleteCommentView, UpdateCommentView
 )
@@ -31,4 +31,5 @@ urlpatterns = [
     
     path('comments/<int:comment_id>/', UpdateCommentView.as_view()),
     path('comments/<int:comment_id>/delete/', DeleteCommentView.as_view()),
+    path('comments/<int:comment_id>/like/', LikeCommentView.as_view()),
 ]
