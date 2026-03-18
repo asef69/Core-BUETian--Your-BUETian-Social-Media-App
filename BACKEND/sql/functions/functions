@@ -163,7 +163,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 --COMMENTS
-CREATE OR REPLACE FUNCTION get_post_comments(p_post_id INTEGER)
+CREATE OR REPLACE FUNCTION get_post_comments(
+    p_post_id INTEGER, 
+    p_current_user_id INTEGER DEFAULT NULL
+)
 RETURNS TABLE(
     comment_id INTEGER,
     user_id INTEGER,
@@ -171,25 +174,39 @@ RETURNS TABLE(
     user_picture VARCHAR(500),
     content TEXT,
     parent_comment_id INTEGER,
+    likes_count INTEGER,
+    liked BOOLEAN,
     created_at TIMESTAMP
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
-        c.id as comment_id,
-        u.id as user_id,
-        u.name as user_name,
-        u.profile_picture as user_picture,
+        c.id AS comment_id,
+        u.id AS user_id,
+        u.name AS user_name,
+        u.profile_picture AS user_picture,
         c.content,
-        c.comment_id as parent_comment_id,
+        c.comment_id AS parent_comment_id,  
+        CAST(COUNT(cl.id) AS INTEGER) AS likes_count,       
+        CASE 
+            WHEN p_current_user_id IS NOT NULL AND EXISTS (
+                SELECT 1
+                FROM comment_likes cl2
+                WHERE cl2.comment_id = c.id
+                AND cl2.user_id = p_current_user_id
+            ) THEN TRUE
+            ELSE FALSE
+        END AS liked,                       
         c.created_at
     FROM comments c
     INNER JOIN users u ON c.user_id = u.id
+    LEFT JOIN comment_likes cl ON c.id = cl.comment_id
     WHERE c.post_id = p_post_id
+    GROUP BY 
+        c.id, u.id, u.name, u.profile_picture, c.content, c.comment_id, c.created_at
     ORDER BY c.created_at ASC;
 END;
 $$ LANGUAGE plpgsql;
-
 --GROUP MEMBER CHECK
 
 --ADMIN OR MODERATOR OR MEMBER IN GROUP

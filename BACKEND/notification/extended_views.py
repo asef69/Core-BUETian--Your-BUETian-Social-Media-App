@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from django.db import ProgrammingError
 
 class NotificationSummaryView(APIView):
     """
@@ -209,24 +210,46 @@ class NotificationPreferencesView(APIView):
     Note:
         This requires a notification_preferences table in the database
     """
+    def _ensure_preferences_table(self):
+        DatabaseManager.execute_update(
+            """
+            CREATE TABLE IF NOT EXISTS notification_preferences (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                email_notifications BOOLEAN DEFAULT TRUE,
+                push_notifications BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
     def get(self, request):
+        defaults = {
+            'email_notifications': True,
+            'push_notifications': True,
+            'notification_types': {
+                'likes': True,
+                'comments': True,
+                'follows': True,
+                'mentions': True
+            }
+        }
+
         query = """
         SELECT * FROM notification_preferences
         WHERE user_id = %s
         """
-        result = DatabaseManager.execute_query(query, (request.user.id,))
+        try:
+            self._ensure_preferences_table()
+            result = DatabaseManager.execute_query(query, (request.user.id,))
+        except ProgrammingError:
+            return Response(defaults)
+        except Exception:
+            return Response(defaults)
         
         if not result:
-            return Response({
-                'email_notifications': True,
-                'push_notifications': True,
-                'notification_types': {
-                    'likes': True,
-                    'comments': True,
-                    'follows': True,
-                    'mentions': True
-                }
-            })
+            return Response(defaults)
         
         return Response(result[0])
     
@@ -244,11 +267,17 @@ class NotificationPreferencesView(APIView):
             updated_at = CURRENT_TIMESTAMP
         """
         
-        DatabaseManager.execute_update(
-            query,
-            (request.user.id, 
-             data.get('email_notifications', True),
-             data.get('push_notifications', True))
-        )
+        try:
+            self._ensure_preferences_table()
+            DatabaseManager.execute_update(
+                query,
+                (request.user.id,
+                 data.get('email_notifications', True),
+                 data.get('push_notifications', True))
+            )
+        except ProgrammingError:
+            return Response({'error': 'Notification preferences setup failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            return Response({'error': 'Failed to update preferences'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response({'message': 'Preferences updated successfully'})

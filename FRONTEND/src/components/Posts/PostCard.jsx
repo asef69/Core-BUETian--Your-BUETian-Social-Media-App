@@ -10,9 +10,11 @@ import { useAuth } from '../../context/AuthContext';
 const PostCard = ({ post, onLike }) => {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
-  const [liked, setLiked] = useState(post.has_liked);
-  const [likesCount, setLikesCount] = useState(post.likes_count);
-  const [commentsCount, setCommentsCount] = useState(post.comments_count);
+  const [liked, setLiked] = useState(
+    Boolean(post.has_liked ?? post.is_liked ?? post.liked ?? false),
+  );
+  const [likesCount, setLikesCount] = useState(Number(post.likes_count) || 0);
+  const [commentsCount, setCommentsCount] = useState(Number(post.comments_count) || 0);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content || '');
   const [editVisibility, setEditVisibility] = useState(post.visibility || 'public');
@@ -65,6 +67,12 @@ const PostCard = ({ post, onLike }) => {
     };
   }, []);
 
+  useEffect(() => {
+    setLiked(Boolean(post.has_liked ?? post.is_liked ?? post.liked ?? false));
+    setLikesCount(Number(post.likes_count) || 0);
+    setCommentsCount(Number(post.comments_count) || 0);
+  }, [post.has_liked, post.is_liked, post.liked, post.likes_count, post.comments_count]);
+
   const handleLike = async () => {
     try {
       console.log('🔄 Attempting to like post:', { postId: post.id, postIdType: typeof post.id });
@@ -75,10 +83,18 @@ const PostCard = ({ post, onLike }) => {
         return;
       }
       
-      await postAPI.likePost(postId);
-      console.log('✅ Post liked successfully:', postId);
-      setLiked(!liked);
-      setLikesCount(liked ? likesCount - 1 : likesCount + 1);
+      const response = await postAPI.likePost(postId);
+      console.log('✅ Post liked successfully:', response?.data);
+
+      const nextLiked =
+        response?.data?.liked ?? !liked;
+      const nextLikesCount =
+        typeof response?.data?.likes_count === 'number'
+          ? response.data.likes_count
+          : (nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1));
+
+      setLiked(Boolean(nextLiked));
+      setLikesCount(Number(nextLikesCount) || 0);
       if (onLike) {
         onLike(postId);
       }

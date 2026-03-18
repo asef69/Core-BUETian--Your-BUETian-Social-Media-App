@@ -43,7 +43,18 @@ class NotificationsListView(APIView):
     """
     def get(self, request):
         query = """
-        SELECT n.*, u.name as actor_name, u.profile_picture as actor_picture
+        SELECT
+            n.*,
+            u.name as actor_name,
+            u.profile_picture as actor_picture,
+            CASE
+                WHEN n.notification_type IN ('like', 'comment', 'reply') THEN
+                    COALESCE(
+                        (SELECT p.id FROM posts p WHERE p.id = n.reference_id),
+                        (SELECT c.post_id FROM comments c WHERE c.id = n.reference_id)
+                    )
+                ELSE NULL
+            END AS post_reference_id
         FROM notifications n
         LEFT JOIN users u ON n.actor_id = u.id
         WHERE n.user_id = %s
@@ -80,8 +91,37 @@ class UnreadNotificationsView(APIView):
         - Real-time notification updates
     """
     def get(self, request):
-        query = "SELECT * FROM unread_notifications WHERE user_id = %s LIMIT 50"
+        query = """
+        SELECT
+            n.id,
+            n.user_id,
+            n.actor_id,
+            n.notification_type,
+            n.reference_id,
+            n.content,
+            n.is_read,
+            n.created_at,
+            u.name AS actor_name,
+            u.profile_picture AS actor_picture,
+            CASE
+                WHEN n.notification_type IN ('like', 'comment', 'reply') THEN
+                    COALESCE(
+                        (SELECT p.id FROM posts p WHERE p.id = n.reference_id),
+                        (SELECT c.post_id FROM comments c WHERE c.id = n.reference_id)
+                    )
+                ELSE NULL
+            END AS post_reference_id
+        FROM notifications n
+        LEFT JOIN users u ON n.actor_id = u.id
+        WHERE n.user_id = %s
+          AND n.is_read = FALSE
+        ORDER BY n.created_at DESC
+        LIMIT 50
+        """
         result = DatabaseManager.execute_query(query, (request.user.id,))
+        for notification in result:
+            if 'actor_profile_picture' not in notification and 'actor_picture' in notification:
+                notification['actor_profile_picture'] = notification['actor_picture']
         return Response(result)
 
 class NotificationCountView(APIView):

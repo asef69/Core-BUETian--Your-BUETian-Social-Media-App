@@ -420,3 +420,72 @@ class UpdateCommentView(APIView):
 
     def put(self, request, comment_id):
         return self.patch(request, comment_id)
+    
+    
+class LikeCommentView(APIView):
+    """
+    Like or unlike a comment (toggle functionality).
+
+    API Endpoint: POST /api/posts/comments/<comment_id>/like/
+    Authentication: Required (JWT)
+
+    URL Parameters:
+        comment_id (int): ID of the comment to like/unlike
+
+    Functionality:
+        - If user already liked the comment: Remove like (unlike)
+        - If user hasn't liked the comment: Add like
+
+    Returns:
+        200 OK:
+            {"liked": True/False, "likes_count": int}
+
+    Database:
+        Table: comment_likes (user_id, comment_id)
+        Constraint: UNIQUE(user_id, comment_id)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, comment_id):
+        user_id = request.user.id
+
+        try:
+            comment_exists = DatabaseManager.execute_query(
+                "SELECT id FROM comments WHERE id = %s",
+                (comment_id,)
+            )
+            if not comment_exists:
+                return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if user already liked the comment
+            query = "SELECT id FROM comment_likes WHERE user_id = %s AND comment_id = %s"
+            result = DatabaseManager.execute_query(query, (user_id, comment_id))
+
+            if result:
+                # Unlike
+                DatabaseManager.execute_update(
+                    "DELETE FROM comment_likes WHERE user_id = %s AND comment_id = %s",
+                    (user_id, comment_id)
+                )
+                liked = False
+            else:
+                # Add like
+                DatabaseManager.execute_insert(
+                    "INSERT INTO comment_likes (user_id, comment_id) VALUES (%s, %s)",
+                    (user_id, comment_id)
+                )
+                liked = True
+
+            # Get updated like count
+            count_query = "SELECT COUNT(*) AS count FROM comment_likes WHERE comment_id = %s"
+            count_result = DatabaseManager.execute_query(count_query, (comment_id,))
+            count = count_result[0]['count'] if count_result else 0
+
+            return Response({
+                "liked": liked,
+                "likes_count": count
+            })
+
+        except Exception as e:
+            return Response({'error': 'Failed to toggle comment like'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

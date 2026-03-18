@@ -5,7 +5,7 @@ export const authAPI = {
   register: (data) => {
 
     const hasFile = data.profile_picture instanceof File;
-    
+
     if (hasFile) {
 
       const formData = new FormData();
@@ -71,6 +71,7 @@ export const postAPI = {
   getTrendingHashtags: (limit = 10) => api.get(`/posts/hashtags/trending/?limit=${limit}`),
   getPostsByMediaType: (mediaType, limit = 20) => api.get(`/posts/media/${mediaType}/?limit=${limit}`),
   getEngagement: (postId) => api.get(`/posts/${postId}/engagement/`),
+  likecomment: (commentId) => api.post(`/posts/comments/${commentId}/like/`),
 };
 
 
@@ -147,8 +148,8 @@ export const forumAPI = {
   searchBloodRequests: (location, blood_group, limit) => api.get('/forums/blood/search/location/', {
     params: { location, blood_group, limit }
   }),
-  
-  
+
+
   createTuitionPost: (data) => api.post('/forums/tuition/create/', data),
   getTuitionPosts: () => api.get('/forums/tuition/'),
   getTuitionPost: (postId) => api.get(`/forums/tuition/${postId}/`),
@@ -183,4 +184,5 @@ export const blogAPI = {
   toggleLike: (blogId) => api.post(`/blogs/${blogId}/like/`),
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),
+  likeComment: (commentId) => api.post(`/blogs/comments/${commentId}/like/`),
 };

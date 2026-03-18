@@ -361,9 +361,10 @@ class PostDetailView(APIView):
             )
         
         post_data = result[0]
+        post_owner_id = post_data.get('user_id') or post_data.get('author_id') or post_data.get('owner_id')
         if not _can_user_access_post(
             request.user.id,
-            post_data.get('user_id'),
+            post_owner_id,
             post_data.get('visibility', 'public')
         ):
             return Response(
@@ -377,6 +378,12 @@ class PostDetailView(APIView):
         id_value = post_data.get('post_id') or post_data.get('id') or post_id
         post_data['id'] = id_value
         post_data['post_id'] = id_value
+        if 'user_id' not in post_data and post_data.get('author_id') is not None:
+            post_data['user_id'] = post_data.get('author_id')
+        if 'user_name' not in post_data and post_data.get('author_name') is not None:
+            post_data['user_name'] = post_data.get('author_name')
+        if 'profile_picture' not in post_data and post_data.get('author_picture') is not None:
+            post_data['profile_picture'] = post_data.get('author_picture')
         return Response(post_data)
     
     def delete(self,request,post_id):
@@ -461,6 +468,9 @@ class PostDetailView(APIView):
         DatabaseManager.execute_update(update_query, tuple(params))
         return Response({'message': 'Post updated successfully'})
     
+    
+    
+    
 class LikePostView(APIView):
     """
     Like or unlike a post (toggle functionality).
@@ -503,23 +513,39 @@ class LikePostView(APIView):
         SELECT id FROM likes WHERE user_id = %s AND post_id = %s
         """
         result = DatabaseManager.execute_query(query, (user_id, post_id))
-        
+
         if result:
             DatabaseManager.execute_update(
                 "DELETE FROM likes WHERE user_id = %s AND post_id = %s",
                 (user_id, post_id)
             )
-            return Response({'message': 'Post unliked'})
+            liked = False
+            message = 'Post unliked'
         else:
             DatabaseManager.execute_insert(
-                "INSERT INTO likes (user_id, post_id) VALUES (%s, %s)",
+                """
+                INSERT INTO likes (user_id, post_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, post_id) DO NOTHING
+                RETURNING id
+                """,
                 (user_id, post_id)
             )
-            return Response(
-                {
-                    'message': 'Post liked'
-                }
-            )
+            liked = True
+            message = 'Post liked'
+
+        count_result = DatabaseManager.execute_query(
+            "SELECT COUNT(*) AS count FROM likes WHERE post_id = %s",
+            (post_id,)
+        )
+        likes_count = count_result[0]['count'] if count_result else 0
+
+        return Response({
+            'message': message,
+            'liked': liked,
+            'likes_count': likes_count,
+            'post_id': post_id
+        })
 
 
 class CommentView(APIView):
@@ -556,7 +582,7 @@ class CommentView(APIView):
         ):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        result = DatabaseManager.execute_function('get_post_comments', (post_id,)) or []
+        result = DatabaseManager.execute_function('get_post_comments', (post_id, request.user.id)) or []
         for comment in result:
             if 'profile_picture' not in comment and 'user_picture' in comment:
                 comment['profile_picture'] = comment['user_picture']

@@ -2,12 +2,12 @@ from django.urls import path
 from .views import (
     CreatePostView, UserFeedView, PostDetailView,
     LikePostView, CommentView, TrendingPostsView,
-    UploadPostMediaView, CreatePostWithMediaView, PublicFeedView
+    UploadPostMediaView, CreatePostWithMediaView, PublicFeedView,
 )
 from .extended_views import (
     PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
     TrendingHashtagsView, PostsByMediaTypeView, SearchPostsView,
-    DeleteCommentView, UpdateCommentView
+    DeleteCommentView, UpdateCommentView,LikeCommentView
 )
 
 urlpatterns = [
@@ -31,4 +31,5 @@ urlpatterns = [
     
     path('comments/<int:comment_id>/', UpdateCommentView.as_view()),
     path('comments/<int:comment_id>/delete/', DeleteCommentView.as_view()),
+    path('comments/<int:comment_id>/like/', LikeCommentView.as_view()),
 ]
