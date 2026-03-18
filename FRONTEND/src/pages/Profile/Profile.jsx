@@ -8,6 +8,22 @@ import { toast } from 'react-toastify';
 import { FaEdit, FaUserPlus, FaUserCheck } from 'react-icons/fa';
 import '../../styles/Profile.css';
 
+const getRelationshipState = (data) => {
+  if (data?.relationship_status) {
+    return data.relationship_status;
+  }
+
+  if (data?.is_following) {
+    return 'accepted';
+  }
+
+  if (data?.follow_status === 'pending') {
+    return 'pending_sent';
+  }
+
+  return 'none';
+};
+
 const Profile = () => {
   const { userId } = useParams();
   const { user: currentUser } = useAuth();
@@ -17,8 +33,12 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('posts');
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [relationshipStatus, setRelationshipStatus] = useState('none');
+  const [incomingFollowRequestId, setIncomingFollowRequestId] = useState(null);
+  const [followActionLoading, setFollowActionLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({});
+  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -44,9 +64,13 @@ const Profile = () => {
   const loadProfile = async () => {
     try {
       const response = await userAPI.getProfile(userId);
+      const nextRelationshipStatus = getRelationshipState(response.data);
+
       setProfile(response.data);
-      setIsOwnProfile(Boolean(currentUser?.id) && currentUser.id === parseInt(userId));
+      setIsOwnProfile(Boolean(currentUser?.id) && Number(currentUser.id) === Number(userId));
       setIsFollowing(Boolean(response.data.is_following));
+      setRelationshipStatus(nextRelationshipStatus);
+      setIncomingFollowRequestId(response.data.incoming_follow_request_id || null);
       setEditData({
         name: response.data.name,
         bio: response.data.bio || '',
@@ -117,33 +141,166 @@ const Profile = () => {
     }
   };
 
+  const refreshRelationshipState = async () => {
+    await Promise.all([loadProfile(), loadFollowCounts()]);
+  };
+
   const handleFollow = async () => {
-    if (isFollowing) return;
+    if (followActionLoading) return;
 
     try {
+      setFollowActionLoading(true);
       const response = await userAPI.followUser(userId);
-      const accepted = Boolean(response?.data?.is_following || response?.data?.status === 'accepted');
+      const nextRelationshipStatus = getRelationshipState(response?.data);
 
-      setIsFollowing(accepted);
+      setIsFollowing(Boolean(response?.data?.is_following));
+      setRelationshipStatus(nextRelationshipStatus);
       setProfile((prev) => ({
         ...prev,
         followers_count: response?.data?.followers_count ?? prev?.followers_count,
+        following_count: response?.data?.following_count ?? prev?.following_count,
       }));
-      await loadFollowCounts();
+      await refreshRelationshipState();
       toast.success(response?.data?.message || 'Follow request sent!');
     } catch (error) {
-      toast.error('Failed to follow user');
+      toast.error(error?.response?.data?.error || 'Failed to update follow status');
+    } finally {
+      setFollowActionLoading(false);
     }
   };
 
-  const handleUpdateProfile = async () => {
+  const handleAcceptFollowRequest = async () => {
+    if (!incomingFollowRequestId || followActionLoading) return;
+
     try {
-      await userAPI.updateProfile(editData);
-      setProfile({ ...profile, ...editData });
+      setFollowActionLoading(true);
+      const response = await userAPI.acceptFollow(incomingFollowRequestId);
+      await refreshRelationshipState();
+      toast.success(response?.data?.message || 'Follow request accepted');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to accept follow request');
+    } finally {
+      setFollowActionLoading(false);
+    }
+  };
+
+  const handleRejectFollowRequest = async () => {
+    if (!incomingFollowRequestId || followActionLoading) return;
+
+    try {
+      setFollowActionLoading(true);
+      const response = await userAPI.rejectFollow(incomingFollowRequestId);
+      await refreshRelationshipState();
+      toast.success(response?.data?.message || 'Follow request rejected');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to reject follow request');
+    } finally {
+      setFollowActionLoading(false);
+    }
+  };
+
+  const renderFollowAction = () => {
+    if (isOwnProfile) {
+      return null;
+    }
+
+    if (incomingFollowRequestId) {
+      return (
+        <div className="profile-action-group">
+          <button
+            className="btn btn-primary"
+            onClick={handleAcceptFollowRequest}
+            disabled={followActionLoading}
+          >
+            Accept Request
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleRejectFollowRequest}
+            disabled={followActionLoading}
+          >
+            Reject
+          </button>
+        </div>
+      );
+    }
+
+    if (relationshipStatus === 'accepted') {
+      return (
+        <button
+          className="btn btn-secondary"
+          onClick={handleFollow}
+          disabled={followActionLoading}
+        >
+          <FaUserCheck /> Unfollow
+        </button>
+      );
+    }
+
+    if (relationshipStatus === 'pending_sent') {
+      return (
+        <button
+          className="btn btn-secondary"
+          onClick={handleFollow}
+          disabled={followActionLoading}
+        >
+          <FaUserCheck /> Cancel Request
+        </button>
+      );
+    }
+
+    return (
+      <button
+        className="btn btn-primary"
+        onClick={handleFollow}
+        disabled={followActionLoading}
+      >
+        <FaUserPlus /> Follow
+      </button>
+    );
+  };
+
+  const handleUpdateProfile = async () => {
+    if (profileSaveLoading) return;
+
+    const fieldsToCompare = [
+      'name',
+      'bio',
+      'blood_group',
+      'hall_name',
+      'hall_attachement',
+      'department_name',
+    ];
+
+    const payload = fieldsToCompare.reduce((acc, key) => {
+      const original = (profile?.[key] ?? '').toString();
+      const next = (editData?.[key] ?? '').toString();
+
+      if (original !== next) {
+        acc[key] = next;
+      }
+
+      return acc;
+    }, {});
+
+    if (Object.keys(payload).length === 0) {
       setEditMode(false);
+      toast.info('No profile changes to save');
+      return;
+    }
+
+    try {
+      setProfileSaveLoading(true);
+      await userAPI.updateProfile(payload);
+      setProfile({ ...profile, ...payload });
+      setEditMode(false);
+      await loadProfile();
       toast.success('Profile updated successfully!');
     } catch (error) {
-      toast.error('Failed to update profile');
+      const message = error?.response?.data?.error || error?.response?.data?.message || 'Failed to update profile';
+      toast.error(message);
+    } finally {
+      setProfileSaveLoading(false);
     }
   };
 
@@ -274,8 +431,8 @@ const Profile = () => {
                         placeholder="Department"
                       />
                       <div className="edit-actions">
-                        <button className="btn btn-primary" onClick={handleUpdateProfile}>
-                          Save
+                        <button className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
+                          {profileSaveLoading ? 'Saving...' : 'Save'}
                         </button>
                         <button className="btn btn-secondary" onClick={() => setEditMode(false)}>
                           Cancel
@@ -319,13 +476,7 @@ const Profile = () => {
                           <FaEdit /> Edit Profile
                         </button>
                       ) : (
-                        <button
-                          className={`btn ${isFollowing ? 'btn-secondary' : 'btn-primary'}`}
-                          onClick={handleFollow}
-                          disabled={isFollowing}
-                        >
-                          {isFollowing ? <><FaUserCheck /> Following</> : <><FaUserPlus /> Follow</>}
-                        </button>
+                        renderFollowAction()
                       )}
                     </>
                   )}

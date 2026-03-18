@@ -133,6 +133,13 @@
   justify-content: center;
 }
 
+.profile-action-group {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .profile-tabs {
   display: flex;
   background: var(--surface);
@@ -223,6 +230,10 @@
   }
 
   .profile-tabs {
+    flex-direction: column;
+  }
+
+  .profile-action-group {
     flex-direction: column;
   }
 }

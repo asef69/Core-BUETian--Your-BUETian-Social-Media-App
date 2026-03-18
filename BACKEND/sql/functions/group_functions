@@ -131,42 +131,106 @@ $$ LANGUAGE plpgsql;
 
 
 
-CREATE OR REPLACE FUNCTION get_group_details(p_group_id INTEGER, p_user_id INTEGER DEFAULT NULL)
+-- Full details of a group with membership status for the viewer
+CREATE OR REPLACE FUNCTION get_group_details(
+    p_group_id INTEGER,
+    p_user_id  INTEGER DEFAULT NULL
+)
 RETURNS TABLE(
-    group_id INTEGER,
-    name VARCHAR(100),
-    description TEXT,
-    admin_id INTEGER,
-    admin_name VARCHAR(50),
-    is_private BOOLEAN,
-    cover_image VARCHAR(500),
-    members_count BIGINT,
-    posts_count BIGINT,
-    is_member BOOLEAN,
-    member_status VARCHAR(20),
-    created_at TIMESTAMP
+    group_id          INTEGER,
+    name              VARCHAR(100),
+    description       TEXT,
+    is_private        BOOLEAN,
+    cover_image       VARCHAR(500),
+    created_at        TIMESTAMP,
+    admin_id          INTEGER,
+    admin_name        VARCHAR(50),
+    members_count     BIGINT,
+    posts_count       BIGINT,
+    user_role         VARCHAR(20),
+    membership_status VARCHAR(20)
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
-        g.id as group_id,
+    SELECT
+        g.id AS group_id,
         g.name,
         g.description,
-        g.admin_id,
-        u.name as admin_name,
         g.is_private,
         g.cover_image,
-        (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND status = 'accepted') as members_count,
-        (SELECT COUNT(*) FROM posts WHERE group_id = g.id) as posts_count,
-        CASE 
-            WHEN p_user_id IS NOT NULL THEN 
-                EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = p_user_id AND status = 'accepted')
-            ELSE FALSE 
-        END as is_member,
-        (SELECT status FROM group_members WHERE group_id = g.id AND user_id = p_user_id) as member_status,
-        g.created_at
+        g.created_at,
+        u.id AS admin_id,
+        u.name AS admin_name,
+        (SELECT COUNT(*) FROM group_members gm2 WHERE gm2.group_id = g.id AND gm2.status = 'accepted') AS members_count,
+        (SELECT COUNT(*) FROM posts WHERE group_id = g.id) AS posts_count,
+        (SELECT gm3.role   FROM group_members gm3 WHERE gm3.group_id = g.id AND gm3.user_id = p_user_id AND gm3.status = 'accepted') AS user_role,
+        (SELECT gm4.status FROM group_members gm4 WHERE gm4.group_id = g.id AND gm4.user_id = p_user_id) AS membership_status
     FROM groups g
-    INNER JOIN users u ON g.admin_id = u.id
+    INNER JOIN users u ON u.id = g.admin_id
     WHERE g.id = p_group_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- Transfer group admin rights to another accepted member
+CREATE OR REPLACE FUNCTION transfer_group_admin(
+    p_group_id         INTEGER,
+    p_current_admin_id INTEGER,
+    p_new_admin_id     INTEGER
+)
+RETURNS TABLE(success BOOLEAN) AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_current_admin_id) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM group_members WHERE group_id = p_group_id AND user_id = p_new_admin_id AND status = 'accepted') THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+    UPDATE groups SET admin_id = p_new_admin_id WHERE id = p_group_id;
+    UPDATE group_members SET role = 'admin'  WHERE group_id = p_group_id AND user_id = p_new_admin_id;
+    UPDATE group_members SET role = 'member' WHERE group_id = p_group_id AND user_id = p_current_admin_id;
+    RETURN QUERY SELECT TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Promote an accepted member to moderator (admin only)
+CREATE OR REPLACE FUNCTION promote_to_moderator(
+    p_group_id INTEGER,
+    p_admin_id INTEGER,
+    p_user_id  INTEGER
+)
+RETURNS TABLE(success BOOLEAN) AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_admin_id) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+    UPDATE group_members SET role = 'moderator'
+    WHERE group_id = p_group_id AND user_id = p_user_id AND status = 'accepted';
+    RETURN QUERY SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Demote a moderator back to regular member (admin only)
+CREATE OR REPLACE FUNCTION demote_moderator(
+    p_group_id INTEGER,
+    p_admin_id INTEGER,
+    p_user_id  INTEGER
+)
+RETURNS TABLE(success BOOLEAN) AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM groups WHERE id = p_group_id AND admin_id = p_admin_id) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+    UPDATE group_members SET role = 'member'
+    WHERE group_id = p_group_id AND user_id = p_user_id AND status = 'accepted' AND role = 'moderator';
+    RETURN QUERY SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
+

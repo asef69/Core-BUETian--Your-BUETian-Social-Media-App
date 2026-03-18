@@ -5,7 +5,7 @@ export const authAPI = {
   register: (data) => {
 
     const hasFile = data.profile_picture instanceof File;
-    
+
     if (hasFile) {
 
       const formData = new FormData();
@@ -184,4 +184,5 @@ export const blogAPI = {
   toggleLike: (blogId) => api.post(`/blogs/${blogId}/like/`),
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),
+  likeComment: (commentId) => api.post(`/blogs/comments/${commentId}/like/`),
 };

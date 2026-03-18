@@ -27,6 +27,10 @@ const Home = () => {
 
   const normalizePost = (post) => {
     const userFromObject = post.user || post.author || {};
+    const normalizedHasLiked =
+      post.has_liked ?? post.is_liked ?? post.liked ?? post.user_has_liked ?? false;
+    const normalizedLikesCount = Number(post.likes_count) || 0;
+    const normalizedCommentsCount = Number(post.comments_count) || 0;
 
     return {
       ...post,
@@ -54,6 +58,9 @@ const Home = () => {
         post.owner_picture ||
         post.created_by_picture ||
         userFromObject.profile_picture,
+      has_liked: Boolean(normalizedHasLiked),
+      likes_count: normalizedLikesCount,
+      comments_count: normalizedCommentsCount,
     };
   };
 
@@ -144,16 +151,22 @@ const Home = () => {
   };
 
   const handlePostLike = (postId) => {
-    setPosts(posts.map(post => {
-      if (post.id === postId) {
+    setPosts((prevPosts) =>
+      prevPosts.map((post) => {
+        if (post.id !== postId) {
+          return post;
+        }
+
+        const wasLiked = Boolean(post.has_liked);
+        const currentLikes = Number(post.likes_count) || 0;
+
         return {
           ...post,
-          has_liked: !post.has_liked,
-          likes_count: post.has_liked ? post.likes_count - 1 : post.likes_count + 1
+          has_liked: !wasLiked,
+          likes_count: wasLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1,
         };
-      }
-      return post;
-    }));
+      }),
+    );
   };
 
   const loadMore = async () => {

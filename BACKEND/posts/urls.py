@@ -2,12 +2,12 @@ from django.urls import path
 from .views import (
     CreatePostView, UserFeedView, PostDetailView,
     LikePostView, CommentView, TrendingPostsView,
-    UploadPostMediaView, CreatePostWithMediaView, PublicFeedView
+    UploadPostMediaView, CreatePostWithMediaView, PublicFeedView,
 )
 from .extended_views import (
     LikeCommentView, PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
     TrendingHashtagsView, PostsByMediaTypeView, SearchPostsView,
-    DeleteCommentView, UpdateCommentView
+    DeleteCommentView, UpdateCommentView,LikeCommentView
 )
 
 urlpatterns = [

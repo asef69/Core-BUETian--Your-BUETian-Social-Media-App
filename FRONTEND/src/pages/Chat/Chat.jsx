@@ -5,7 +5,7 @@ import { chatAPI, userAPI } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaPaperPlane, FaImage } from 'react-icons/fa';
+import { FaPaperPlane, FaImage, FaBars, FaTimes } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Chat.css';
 
@@ -19,11 +19,19 @@ const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [ws, setWs] = useState(null);
+  const [isPeerTyping, setIsPeerTyping] = useState(false);
   const [activeList, setActiveList] = useState('conversations');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const selectedUserRef = useRef(null);
   const prefillAppliedRef = useRef(false);
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const typingStopTimeoutRef = useRef(null);
+  const typingHeartbeatRef = useRef(null);
+  const peerTypingTimeoutRef = useRef(null);
+  const isTypingRef = useRef(false);
+  const shouldReconnectRef = useRef(true);
 
   useEffect(() => {
     loadConversations();
@@ -31,11 +39,38 @@ const Chat = () => {
   }, [user?.id]);
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     const websocket = connectWebSocket();
     return () => {
-      if (websocket) websocket.close();
+      shouldReconnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (typingStopTimeoutRef.current) {
+        clearTimeout(typingStopTimeoutRef.current);
+      }
+      if (typingHeartbeatRef.current) {
+        clearInterval(typingHeartbeatRef.current);
+      }
+      if (peerTypingTimeoutRef.current) {
+        clearTimeout(peerTypingTimeoutRef.current);
+      }
+      if (websocket && websocket.readyState < WebSocket.CLOSING) {
+        websocket.close();
+      }
+      wsRef.current = null;
     };
   }, [user?.id]);
+
+  const appendMessageIfNew = (message) => {
+    if (!message) return;
+    setMessages((prev) => {
+      if (message.id && prev.some((item) => item.id === message.id)) {
+        return prev;
+      }
+      return [...prev, message];
+    });
+  };
 
   useEffect(() => {
     if (chatUserId) {
@@ -66,7 +101,12 @@ const Chat = () => {
         id: item.other_user_id || item.user_id,
         name: item.other_user_name || item.name,
         profile_picture: item.other_user_picture || item.profile_picture,
-        last_message: item.last_message || item.content,
+        last_message:
+          item.last_message ||
+          item.content ||
+          (item.media_url
+            ? (isVideoUrl(item.media_url) ? 'Sent a video' : 'Sent a photo')
+            : ''),
         last_message_time: item.last_message_time || item.created_at,
         unread_count: item.unread_count || 0,
       }));
@@ -96,9 +136,14 @@ const Chat = () => {
     setLoading(true);
     try {
       const response = await chatAPI.getMessages(userId);
-      setMessages(response.data.results || response.data);
+      const rawMessages = response.data.results || response.data || [];
+      const sanitizedMessages = rawMessages.filter(
+        (message) => (message.content && String(message.content).trim()) || message.media_url,
+      );
+      setMessages(sanitizedMessages);
       setSelectedUser(userId);
       selectedUserRef.current = userId;
+      setIsSidebarOpen(false);
     } catch (error) {
       toast.error('Failed to load messages');
     } finally {
@@ -109,23 +154,38 @@ const Chat = () => {
   const connectWebSocket = () => {
     const token = localStorage.getItem('accessToken');
     if (!token) return null;
+
+    const existingSocket = wsRef.current;
+    if (existingSocket && existingSocket.readyState < WebSocket.CLOSING) {
+      existingSocket.close();
+    }
+
     const wsBase = API_ORIGIN.startsWith('https:')
       ? API_ORIGIN.replace('https:', 'wss:')
       : API_ORIGIN.replace('http:', 'ws:');
     const wsUrl = `${wsBase}/ws/chat/?token=${token}`;
     const websocket = new WebSocket(wsUrl);
+    wsRef.current = websocket;
 
     websocket.onopen = () => {
       console.log('WebSocket connected');
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
     };
 
     websocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      const activeUserId = selectedUserRef.current;
+      const activeUserId = Number(selectedUserRef.current);
       if (data.type === 'chat_message') {
         const message = data.message;
-        if (message && (message.sender_id === activeUserId || message.receiver_id === activeUserId)) {
-          setMessages((prev) => [...prev, message]);
+        const isRenderable =
+          message && ((message.content && String(message.content).trim()) || message.media_url);
+        if (isRenderable && (Number(message.sender_id) === activeUserId || Number(message.receiver_id) === activeUserId)) {
+          appendMessageIfNew(message);
+        }
+        if (Number(message.sender_id) === activeUserId) {
+          setIsPeerTyping(false);
         }
         loadConversations();
         return;
@@ -133,11 +193,31 @@ const Chat = () => {
 
       if (data.type === 'message_sent') {
         const message = data.message;
-        if (message && message.receiver_id === activeUserId) {
-          setMessages((prev) => [...prev, message]);
+        const isRenderable =
+          message && ((message.content && String(message.content).trim()) || message.media_url);
+        if (isRenderable && Number(message.receiver_id) === activeUserId) {
+          appendMessageIfNew(message);
         }
         loadConversations();
         return;
+      }
+
+      if (data.type === 'typing') {
+        if (Number(data.sender_id) !== activeUserId) {
+          return;
+        }
+
+        if (data.is_typing) {
+          setIsPeerTyping(true);
+          if (peerTypingTimeoutRef.current) {
+            clearTimeout(peerTypingTimeoutRef.current);
+          }
+          peerTypingTimeoutRef.current = setTimeout(() => {
+            setIsPeerTyping(false);
+          }, 2000);
+        } else {
+          setIsPeerTyping(false);
+        }
       }
     };
 
@@ -147,19 +227,106 @@ const Chat = () => {
 
     websocket.onclose = () => {
       console.log('WebSocket disconnected');
+      if (!shouldReconnectRef.current || wsRef.current !== websocket) {
+        return;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (shouldReconnectRef.current && localStorage.getItem('accessToken')) {
+          connectWebSocket();
+        }
+      }, 2000);
     };
 
-    setWs(websocket);
     return websocket;
+  };
+
+  const sendTypingState = (isTyping) => {
+    const activeSocket = wsRef.current;
+    if (!selectedUser || !activeSocket || activeSocket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    activeSocket.send(JSON.stringify({
+      type: 'typing',
+      receiver_id: selectedUser,
+      is_typing: isTyping,
+    }));
+  };
+
+  const stopTyping = () => {
+    if (typingStopTimeoutRef.current) {
+      clearTimeout(typingStopTimeoutRef.current);
+    }
+    if (typingHeartbeatRef.current) {
+      clearInterval(typingHeartbeatRef.current);
+      typingHeartbeatRef.current = null;
+    }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      sendTypingState(false);
+    }
+  };
+
+  const startTypingHeartbeat = () => {
+    if (typingHeartbeatRef.current) {
+      return;
+    }
+
+    typingHeartbeatRef.current = setInterval(() => {
+      if (!isTypingRef.current || !newMessage.trim()) {
+        if (typingHeartbeatRef.current) {
+          clearInterval(typingHeartbeatRef.current);
+          typingHeartbeatRef.current = null;
+        }
+        return;
+      }
+      sendTypingState(true);
+    }, 1000);
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    setIsSidebarOpen(false);
+
+    if (!selectedUser) {
+      return;
+    }
+
+    if (value.trim() && !isTypingRef.current) {
+      isTypingRef.current = true;
+      sendTypingState(true);
+      startTypingHeartbeat();
+    } else if (value.trim() && isTypingRef.current) {
+      startTypingHeartbeat();
+    } else if (!value.trim()) {
+      stopTyping();
+      return;
+    }
+
+    if (typingStopTimeoutRef.current) {
+      clearTimeout(typingStopTimeoutRef.current);
+    }
+
+    typingStopTimeoutRef.current = setTimeout(() => {
+      stopTyping();
+    }, 900);
   };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser) return;
 
+    stopTyping();
+    setIsSidebarOpen(false);
+
     try {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
+      const activeSocket = wsRef.current;
+      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+        activeSocket.send(JSON.stringify({
           type: 'chat_message',
           content: newMessage,
           receiver_id: selectedUser,
@@ -187,6 +354,12 @@ const Chat = () => {
     }
   })();
 
+  useEffect(() => {
+    setIsPeerTyping(false);
+    stopTyping();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUser]);
+
   const resolveMediaUrl = (url) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -208,6 +381,7 @@ const Chat = () => {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
+    setIsSidebarOpen(false);
     if (!selectedUser) {
       toast.error('Select a conversation first');
       return;
@@ -247,8 +421,9 @@ const Chat = () => {
         return;
       }
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
+      const activeSocket = wsRef.current;
+      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+        activeSocket.send(JSON.stringify({
           type: 'chat_message',
           receiver_id: selectedUser,
           content: '',
@@ -274,7 +449,13 @@ const Chat = () => {
       <Navbar />
       <div className="main-content">
         <div className="chat-container">
-          <div className="conversations-sidebar">
+          {isSidebarOpen && (
+            <div
+              className="chat-sidebar-backdrop"
+              onClick={() => setIsSidebarOpen(false)}
+              aria-hidden="true"
+            />
+          )}          <div className={`conversations-sidebar ${isSidebarOpen ? 'open' : ''}`}>
             <h3>Messages</h3>
             <div className="chat-list-toggle">
               <button
@@ -343,6 +524,16 @@ const Chat = () => {
           </div>
 
           <div className="chat-main">
+            <div className="chat-header-actions">
+              <button
+                className="sidebar-toggle-btn"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                type="button"
+                aria-label="Toggle conversations"
+              >
+                {isSidebarOpen ? <FaTimes /> : <FaBars />}
+              </button>
+            </div>
             {!selectedUser ? (
               <div className="no-chat-selected">
                 <p>Select a conversation to start messaging</p>
@@ -375,13 +566,28 @@ const Chat = () => {
                                 />
                               )
                             )}
-                            {message.content && <p>{message.content}</p>}
+                            {message.content ? (
+                              <p>{message.content}</p>
+                            ) : message.media_url ? (
+                              <p className="media-caption-placeholder">
+                                {isVideoUrl(message.media_url) ? 'Video' : 'Photo'}
+                              </p>
+                            ) : null}
                             <span className="message-time">
                               {moment(message.created_at).format('HH:mm')}
                             </span>
                           </div>
                         </div>
                       ))}
+                      {isPeerTyping && (
+                        <div className="message received typing-row">
+                          <div className="typing-bubble" aria-label="Typing">
+                            <span />
+                            <span />
+                            <span />
+                          </div>
+                        </div>
+                      )}
                       <div ref={messagesEndRef} />
                     </>
                   )}
@@ -401,7 +607,7 @@ const Chat = () => {
                     type="text"
                     placeholder="Type a message..."
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={handleInputChange}
                   />
                   <button type="submit" disabled={!newMessage.trim()}>
                     <FaPaperPlane />

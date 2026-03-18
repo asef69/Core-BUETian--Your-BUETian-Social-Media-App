@@ -46,6 +46,11 @@ class SendMessageView(APIView):
     def post(self, request):
         data = request.data
         receiver_id = data['receiver_id']
+        content = (data.get('content') or '').strip()
+        media_url = data.get('media_url')
+
+        if not content and not media_url:
+            return Response({'error': 'Message cannot be empty'}, status=status.HTTP_400_BAD_REQUEST)
         
         result = DatabaseManager.execute_function(
             'can_users_chat',
@@ -58,7 +63,7 @@ class SendMessageView(APIView):
         
         message_id = DatabaseManager.execute_insert(
             "INSERT INTO messages (sender_id, receiver_id, content, media_url) VALUES (%s, %s, %s, %s) RETURNING id",
-            (request.user.id, receiver_id, data['content'], data.get('media_url'))
+            (request.user.id, receiver_id, content, media_url)
         )
         
         return Response({

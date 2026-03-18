@@ -248,6 +248,237 @@
   line-height: 1.7;
 }
 
+.blog-comments-panel .comment-form {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.blog-comments-panel .comment-form input {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--light-color);
+  padding: 10px 14px;
+}
+
+.blog-comments-panel .comment-form input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.blog-comments-panel .comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-thread {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment-children {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 2px solid rgba(148, 163, 184, 0.35);
+  padding-left: 10px;
+  margin-left: 14px;
+}
+
+.comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.comment-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.14);
+}
+
+.comment-content {
+  flex: 1;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 14px;
+  padding: 10px 12px 9px;
+  border: 1px solid #e3e8ef;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+}
+
+.comment-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 5px;
+}
+
+.comment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.comment-author {
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.2;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.comment-time {
+  font-size: 0.76rem;
+  color: #64748b;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.comment-content p {
+  margin: 0;
+  color: #1f2937;
+  line-height: 1.5;
+  font-size: 0.96rem;
+}
+
+.comment-actions-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.comment-like-btn,
+.btn-reply {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #64748b;
+  font-size: 0.79rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.comment-like-btn:hover,
+.btn-reply:hover {
+  color: #0f172a;
+  text-decoration: underline;
+}
+
+.comment-like-btn.liked,
+.comment-like-btn.liked .count-pill {
+  color: #e0245e;
+}
+
+.comment-like-btn .count-pill {
+  font-size: 0.78rem;
+  color: inherit;
+}
+
+.edit-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reply-box {
+  margin-top: 9px;
+  padding: 10px;
+  border-top: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.reply-box textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border-radius: 14px;
+  border: 1px solid #ccd0d5;
+  background: #ffffff;
+  color: #1c1e21;
+  padding: 10px 12px;
+  font-family: inherit;
+}
+
+.reply-box textarea:focus {
+  outline: none;
+  border-color: #1877f2;
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.18);
+}
+
+.reply-actions {
+  justify-content: flex-start;
+  display: flex;
+  gap: 8px;
+}
+
+.reply-submit-btn,
+.reply-cancel-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reply-submit-btn {
+  background: #1877f2;
+  color: #ffffff;
+}
+
+.reply-submit-btn:hover {
+  background: #166fe5;
+}
+
+.reply-cancel-btn {
+  background: transparent;
+  color: #65676b;
+  border: 1px solid #ccd0d5;
+}
+
+.reply-cancel-btn:hover {
+  background: #e4e6eb;
+}
+
+@media (max-width: 640px) {
+  .comment-avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .comment-content {
+    padding: 9px 10px 8px;
+  }
+
+  .comment-author {
+    font-size: 0.94rem;
+  }
+
+  .comment-content p {
+    font-size: 0.92rem;
+  }
+
+  .comment-children {
+    margin-left: 10px;
+    padding-left: 8px;
+  }
+}
+
 .empty-state {
   padding: 22px;
   border-radius: 12px;

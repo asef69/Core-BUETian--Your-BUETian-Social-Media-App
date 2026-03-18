@@ -302,7 +302,6 @@ class DeleteCommentView(APIView):
         Deletes from comments table with authorization check
     """
     permission_classes = [IsAuthenticated]
-
     def delete(self, request, comment_id):
         user_id = getattr(request.user, 'id', None)
         if not user_id:
@@ -372,24 +371,19 @@ class UpdateCommentView(APIView):
     Database:
         Updates comments.content and updated_at timestamp
     """
-    
     permission_classes = [IsAuthenticated]
-    
-    
     def patch(self, request, comment_id):
-        # Get content from request
         content = request.data.get('content', '').strip()
-
+        
         if not content:
             return Response(
-                {'error': 'Content cannot be empty'},
+                {'error': 'Content is required and cannot be empty'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        # Check if comment exists
+        
         query = "SELECT id, user_id, content FROM comments WHERE id = %s"
         result = DatabaseManager.execute_query(query, (comment_id,))
-
+        
         if not result:
             return Response(
                 {'error': 'Comment not found'},
@@ -404,8 +398,8 @@ class UpdateCommentView(APIView):
                 {'error': 'Unauthorized'},
                 status=status.HTTP_403_FORBIDDEN
             )
-
-        # Update comment
+        
+         # Update comment
         update_query = """
         UPDATE comments
         SET content = %s,
@@ -423,7 +417,11 @@ class UpdateCommentView(APIView):
                 'content': content
             }
         }, status=status.HTTP_200_OK)
-                
+
+    def put(self, request, comment_id):
+        return self.patch(request, comment_id)
+    
+    
 class LikeCommentView(APIView):
     """
     Like or unlike a comment (toggle functionality).
@@ -451,40 +449,38 @@ class LikeCommentView(APIView):
 
     def post(self, request, comment_id):
         user_id = request.user.id
-        print(f"LikeCommentView called for comment_id={comment_id}, user_id={user_id}")
 
         try:
+            comment_exists = DatabaseManager.execute_query(
+                "SELECT id FROM comments WHERE id = %s",
+                (comment_id,)
+            )
+            if not comment_exists:
+                return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
             # Check if user already liked the comment
             query = "SELECT id FROM comment_likes WHERE user_id = %s AND comment_id = %s"
-            print(f"Executing query to check existing like: {query} with ({user_id}, {comment_id})")
             result = DatabaseManager.execute_query(query, (user_id, comment_id))
-            print(f"Existing like result: {result}")
 
             if result:
                 # Unlike
-                print(f"User already liked this comment. Removing like...")
                 DatabaseManager.execute_update(
                     "DELETE FROM comment_likes WHERE user_id = %s AND comment_id = %s",
                     (user_id, comment_id)
                 )
                 liked = False
-                print("Like removed")
             else:
                 # Add like
-                print(f"User has not liked this comment. Adding like...")
                 DatabaseManager.execute_insert(
                     "INSERT INTO comment_likes (user_id, comment_id) VALUES (%s, %s)",
                     (user_id, comment_id)
                 )
                 liked = True
-                print("Like added")
 
             # Get updated like count
             count_query = "SELECT COUNT(*) AS count FROM comment_likes WHERE comment_id = %s"
-            print(f"Fetching updated likes count: {count_query} with ({comment_id},)")
             count_result = DatabaseManager.execute_query(count_query, (comment_id,))
             count = count_result[0]['count'] if count_result else 0
-            print(f"Updated likes count: {count}")
 
             return Response({
                 "liked": liked,
@@ -492,5 +488,4 @@ class LikeCommentView(APIView):
             })
 
         except Exception as e:
-            print(f"Error in LikeCommentView for comment_id={comment_id}, user_id={user_id}: {e}")
-            return Response({"error": str(e)}, status=500)
+            return Response({'error': 'Failed to toggle comment like'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

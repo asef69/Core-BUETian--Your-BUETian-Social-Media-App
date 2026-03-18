@@ -1,7 +1,7 @@
 from django.urls import path
 from .blog_views import (
     CreateBlogPostView, BlogPostDetailView, PublishedBlogsView,
-    LikeBlogView, BlogCommentsView, BlogPostViewTrackView
+    LikeBlogView, BlogCommentsView, BlogPostViewTrackView, LikeBlogCommentView
 )
 
 urlpatterns = [
@@ -11,4 +11,5 @@ urlpatterns = [
     path('', PublishedBlogsView.as_view()),
     path('<int:blog_id>/like/', LikeBlogView.as_view()),
     path('<int:blog_id>/comments/', BlogCommentsView.as_view()),
+    path('comments/<int:comment_id>/like/', LikeBlogCommentView.as_view()),
 ]

@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
@@ -142,10 +143,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Returns early if receiver_id is missing.
         """
         receiver_id = data.get('receiver_id')
-        content = data.get('content', '')
+        content = (data.get('content') or '').strip()
         media_url = data.get('media_url')  
         
         if not receiver_id:
+            return
+
+        if not content and not media_url:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Message cannot be empty'
+            }))
             return
 
         if not await self.can_user_message(self.user.id, receiver_id):
@@ -379,8 +387,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             query,
             (sender_id, receiver_id, content, media_url)
         )
-        
-        return result[0] if result else None
+
+        if not result:
+            return None
+
+        message = result[0]
+        normalized = {}
+        for key, value in message.items():
+            if isinstance(value, (datetime, date)):
+                normalized[key] = value.isoformat()
+            else:
+                normalized[key] = value
+
+        return normalized
     
     @database_sync_to_async
     def mark_message_as_read(self, message_id):
