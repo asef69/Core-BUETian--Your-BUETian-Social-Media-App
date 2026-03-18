@@ -198,7 +198,8 @@ class SendMessageView(APIView):
         data = request.data
         sender_id = request.user.id
         receiver_id = data.get('receiver_id')
-        content = data.get('content', '')
+        content = (data.get('content') or '').strip()
+        media_url = data.get('media_url')
         
         if not receiver_id:
             return Response(
@@ -206,18 +207,24 @@ class SendMessageView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if not content and not media_url:
+            return Response(
+                {'error': 'Message cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if not _can_message(sender_id, receiver_id):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
         
         query = """
-        INSERT INTO messages (sender_id, receiver_id, content)
-        VALUES (%s, %s, %s)
+        INSERT INTO messages (sender_id, receiver_id, content, media_url)
+        VALUES (%s, %s, %s, %s)
         RETURNING id, sender_id, receiver_id, content, media_url, is_read, created_at
         """
         
         result = DatabaseManager.execute_query(
             query,
-            (sender_id, receiver_id, content)
+            (sender_id, receiver_id, content, media_url)
         )
         
         return Response(
@@ -408,12 +415,18 @@ class SendMessageWithImageView(APIView):
         data = request.data
         sender_id = request.user.id
         receiver_id = data.get('receiver_id')
-        content = data.get('content', '')
-        media_url = data.get('media_url')  
+        content = (data.get('content') or '').strip()
+        media_url = data.get('media_url')
         
         if not receiver_id:
             return Response(
                 {'error': 'receiver_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not content and not media_url:
+            return Response(
+                {'error': 'Message cannot be empty'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
