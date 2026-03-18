@@ -128,4 +128,45 @@ BEGIN
         (SELECT COALESCE(SUM(comments_count), 0) FROM posts WHERE group_id = p_group_id AND created_at > CURRENT_DATE - (p_days || ' days')::INTERVAL) as total_comments;
 END;
 $$ LANGUAGE plpgsql;
-
+
+
+
+CREATE OR REPLACE FUNCTION get_group_details(p_group_id INTEGER, p_user_id INTEGER DEFAULT NULL)
+RETURNS TABLE(
+    group_id INTEGER,
+    name VARCHAR(100),
+    description TEXT,
+    admin_id INTEGER,
+    admin_name VARCHAR(50),
+    is_private BOOLEAN,
+    cover_image VARCHAR(500),
+    members_count BIGINT,
+    posts_count BIGINT,
+    is_member BOOLEAN,
+    member_status VARCHAR(20),
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        g.id as group_id,
+        g.name,
+        g.description,
+        g.admin_id,
+        u.name as admin_name,
+        g.is_private,
+        g.cover_image,
+        (SELECT COUNT(*) FROM group_members WHERE group_id = g.id AND status = 'accepted') as members_count,
+        (SELECT COUNT(*) FROM posts WHERE group_id = g.id) as posts_count,
+        CASE 
+            WHEN p_user_id IS NOT NULL THEN 
+                EXISTS(SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = p_user_id AND status = 'accepted')
+            ELSE FALSE 
+        END as is_member,
+        (SELECT status FROM group_members WHERE group_id = g.id AND user_id = p_user_id) as member_status,
+        g.created_at
+    FROM groups g
+    INNER JOIN users u ON g.admin_id = u.id
+    WHERE g.id = p_group_id;
+END;
+$$ LANGUAGE plpgsql;

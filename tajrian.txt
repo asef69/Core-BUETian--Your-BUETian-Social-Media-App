@@ -20,10 +20,10 @@ Post:
 1.Create Post
 2.Get User Feed
 3.Get Post Details
--------------->4.Update Post
---------------->5.Delete Post
+4.Update Post
+5.Delete Post
 6.Like Post
------------------> 7.Get Post Likes
+7.Get Post Likes
 8.Get Comments
 9.Add Comment
 10.Update Comment
@@ -39,11 +39,12 @@ Group:
 5.Get Group Members
 6.Join Group
 7.Accept Group Member
-8.Reject Group Member
+---->8.Reject Group Member
+---->remove group member
 9.Leave Group
 10.Promote to Moderator
 11.Get Group Posts
-12.Check Group Membership
+---->12.Check Group Membership
 
 Marketplace:
 1.Create Product
