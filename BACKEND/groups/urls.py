@@ -1,12 +1,12 @@
 from django.urls import path
 from .views import (
-    CreateGroupView, GroupDetailView, GroupMembersView,
+    RejectGroupMemberView, CreateGroupView, GroupDetailView, GroupMembersView,
     JoinGroupView, AcceptGroupMemberView, InviteGroupMemberView, LeaveGroupView,
     RemoveGroupMemberView, UpdateGroupView, DeleteGroupView,
     GroupPostsView, CreateGroupPostView, PendingMembersView,
     UserGroupsView, SuggestedGroupsView, SearchGroupsView,
     GroupActivityView, TransferAdminView, PromoteToModeratorView,
-    DemoteModeratorView
+    DemoteModeratorView, CancelGroupInvite, InvitedMembersView, UserGroupInvitesView, AcceptGroupInviteView, RejectGroupInviteView
 )
 
 urlpatterns = [
@@ -22,8 +22,15 @@ urlpatterns = [
     path('<int:group_id>/join/', JoinGroupView.as_view(), name='join-group'),
     path('<int:group_id>/leave/', LeaveGroupView.as_view(), name='leave-group'),
     path('<int:group_id>/accept/<int:user_id>/', AcceptGroupMemberView.as_view(), name='accept-member'),
+    path('<int:group_id>/reject/<int:user_id>/', RejectGroupMemberView.as_view(), name='reject-member'),
     path('<int:group_id>/invite/', InviteGroupMemberView.as_view(), name='invite-member'),
     path('<int:group_id>/members/<int:user_id>/', RemoveGroupMemberView.as_view(), name='remove-member'),
+    path('<int:group_id>/invited/', InvitedMembersView.as_view(), name='invited-members'),
+    path('<int:group_id>/cancel-invite/<int:user_id>/', CancelGroupInvite.as_view(), name='cancel-invite'),
+    path('invites/', UserGroupInvitesView.as_view(), name='user-group-invites'),
+    path('<int:group_id>/accept/', AcceptGroupInviteView.as_view(), name='accept-group-invite'),
+    path('<int:group_id>/reject/', RejectGroupInviteView.as_view(), name='reject-group-invite'),
+    
     
     # Role management
     path('<int:group_id>/transfer-admin/', TransferAdminView.as_view(), name='transfer-admin'),
@@ -39,4 +46,5 @@ urlpatterns = [
     path('suggested/', SuggestedGroupsView.as_view(), name='suggested-groups'),
     path('search/', SearchGroupsView.as_view(), name='search-groups'),
     path('<int:group_id>/activity/', GroupActivityView.as_view(), name='group-activity'),
+    path('<int:group_id>/nonmember/', GroupDetailView.as_view(), name='nonmember-group')
 ]

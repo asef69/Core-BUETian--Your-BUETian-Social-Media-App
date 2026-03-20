@@ -1,18 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationAPI } from '../../services/apiService';
+import { notificationAPI, userAPI, groupAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaCheck, FaCheckDouble, FaTrash } from 'react-icons/fa';
+import { FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes, FaBell } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Notifications.css';
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [summary, setSummary] = useState([]);
   const [preferences, setPreferences] = useState({ email_notifications: true, push_notifications: true });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [groupInvites, setGroupInvites] = useState([]);
+
+  const loadGroupInvites = async () => {
+    try {
+      const res = await groupAPI.getInvites(); 
+      setGroupInvites(res.data || []);
+    } catch (error) {
+      console.error('Failed to load group invites');
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    loadGroupInvites();
+  }, [filter]);
 
   useEffect(() => {
     loadNotifications();
@@ -20,17 +36,45 @@ const Notifications = () => {
 
   const loadNotifications = async () => {
     try {
-      const [response, summaryRes, preferencesRes] = await Promise.all([
-        filter === 'unread' ? notificationAPI.getUnread() : notificationAPI.getAll(),
-        notificationAPI.getSummary().catch(() => ({ data: [] })),
-        notificationAPI.getPreferences().catch(() => ({ data: { email_notifications: true, push_notifications: true } })),
+      console.log('Loading notifications...');
+      const [response, pendingRes] = await Promise.all([
+        (filter === 'unread' ? notificationAPI.getUnread() : notificationAPI.getAll()).catch((error) => {
+          console.error('Failed to load notifications:', error);
+          return { data: [] };
+        }),
+        userAPI.getPendingRequests().catch(() => ({ data: [] }))
       ]);
 
-      setNotifications(response.data.results || response.data);
-      setSummary(Array.isArray(summaryRes.data) ? summaryRes.data : summaryRes.data?.results || []);
-      setPreferences(preferencesRes.data || { email_notifications: true, push_notifications: true });
+      console.log('Notifications response:', response);
+      console.log('Pending requests response:', pendingRes);
+
+      setNotifications(response.data?.results || response.data || []);
+      setPendingRequests(pendingRes.data || []);
+
+      // Load optional data that might not be available
+      try {
+        const summaryRes = await notificationAPI.getSummary().catch(() => ({ data: [] }));
+        setSummary(Array.isArray(summaryRes.data) ? summaryRes.data : summaryRes.data?.results || []);
+      } catch (error) {
+        console.warn('Summary not available:', error);
+        setSummary([]);
+      }
+
+      try {
+        const preferencesRes = await notificationAPI.getPreferences().catch(() => ({ data: { email_notifications: true, push_notifications: true } }));
+        setPreferences(preferencesRes.data || { email_notifications: true, push_notifications: true });
+      } catch (error) {
+        console.warn('Preferences not available:', error);
+        setPreferences({ email_notifications: true, push_notifications: true });
+      }
+
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error('Error in loadNotifications:', error);
+      // Set empty arrays as fallback
+      setNotifications([]);
+      setPendingRequests([]);
+      setSummary([]);
+      setPreferences({ email_notifications: true, push_notifications: true });
     } finally {
       setLoading(false);
     }
@@ -66,12 +110,15 @@ const Notifications = () => {
 
   const handleMarkTypeRead = async (type) => {
     try {
-      await notificationAPI.markByType(type);
+      await notificationAPI.markByType(type).catch(() => {
+        console.warn('Mark by type not available');
+      });
       toast.success(`${type} notifications marked as read`);
       emitCountsRefresh();
       loadNotifications();
     } catch (error) {
-      toast.error('Failed to mark type as read');
+      console.warn('Failed to mark type as read:', error);
+      toast.error('Failed to mark notifications as read');
     }
   };
 
@@ -86,31 +133,57 @@ const Notifications = () => {
     }
   };
 
-  const handleClearAll = async () => {
-    if (!window.confirm('Are you sure you want to clear all notifications?')) return;
+  const handleAcceptFollow = async (followId) => {
+    try {
+      await userAPI.acceptFollow(followId);
+      setPendingRequests(pendingRequests.filter(req => req.follow_id !== followId));
+      toast.success('Follow request accepted!');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to accept follow request');
+    }
+  };
 
+  const handleRejectFollow = async (followId) => {
+    try {
+      await userAPI.rejectFollow(followId);
+      setPendingRequests(pendingRequests.filter(req => req.follow_id !== followId));
+      toast.success('Follow request rejected');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to reject follow request');
+    }
+  };
+
+  const handleAcceptInvite = async (groupId) => {
+    try {
+      await groupAPI.acceptInvite(groupId);
+      setGroupInvites(groupInvites.filter(inv => inv.group_id !== groupId));
+      toast.success('Invitation accepted!');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to accept invitation');
+    }
+  };
+
+  const handleRejectInvite = async (groupId) => {
+    try {
+      await groupAPI.rejectInvite(groupId);
+      setGroupInvites(groupInvites.filter(inv => inv.group_id !== groupId));
+      toast.success('Invitation rejected');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to reject invitation');
+    }
+  };
+  const handleClearAll = async () => {
     try {
       await notificationAPI.clearAll();
       setNotifications([]);
       toast.success('All notifications cleared');
       emitCountsRefresh();
     } catch (error) {
-      toast.error('Failed to clear notifications');
-    }
-  };
-
-  const handlePreferenceToggle = async (key) => {
-    const updated = {
-      ...preferences,
-      [key]: !preferences[key],
-    };
-
-    try {
-      await notificationAPI.updatePreferences(updated);
-      setPreferences(updated);
-      toast.success('Notification preferences updated');
-    } catch (error) {
-      toast.error('Failed to update preferences');
+      toast.error('Failed to clear all notifications');
     }
   };
 
@@ -193,20 +266,20 @@ const Notifications = () => {
 
           <div className="notifications-filter" style={{ marginTop: '10px', alignItems: 'center' }}>
             <button
-              className={`filter-btn ${preferences.email_notifications ? 'active' : ''}`}
+              className={`filter-btn ${preferences?.email_notifications ? 'active' : ''}`}
               onClick={() => handlePreferenceToggle('email_notifications')}
             >
-              Email Alerts {preferences.email_notifications ? 'On' : 'Off'}
+              Email Alerts {preferences?.email_notifications ? 'On' : 'Off'}
             </button>
             <button
-              className={`filter-btn ${preferences.push_notifications ? 'active' : ''}`}
+              className={`filter-btn ${preferences?.push_notifications ? 'active' : ''}`}
               onClick={() => handlePreferenceToggle('push_notifications')}
             >
-              Push Alerts {preferences.push_notifications ? 'On' : 'Off'}
+              Push Alerts {preferences?.push_notifications ? 'On' : 'Off'}
             </button>
           </div>
 
-          {summary.length > 0 && (
+          {summary && summary.length > 0 && (
             <div className="notifications-filter" style={{ marginTop: '10px' }}>
               {summary.map((item, index) => {
                 const type = item.notification_type || item.type || `type-${index}`;
@@ -224,54 +297,156 @@ const Notifications = () => {
           {loading ? (
             <div className="loading">Loading notifications...</div>
           ) : (
-            <div className="notifications-list">
-              {notifications.length === 0 ? (
-                <div className="no-notifications">
-                  <p>No notifications</p>
-                </div>
-              ) : (
-                notifications.map((notif) => (
-                  <div
-                    key={notif.id}
-                    className={`notification-item ${!notif.is_read ? 'unread' : ''}`}
-                  >
-                    <Link to={getNotificationLink(notif)} className="notification-link">
-                      <img
-                        src={notif.actor_profile_picture || '/default-avatar.png'}
-                        alt={notif.actor_name}
-                        className="notification-avatar"
-                      />
-                      <div className="notification-content">
-                        <p>
-                          <strong>{notif.actor_name}</strong> {notif.content}
-                        </p>
-                        <span className="notification-time">
-                          {moment.utc(notif.created_at).local().fromNow()}
-                        </span>
+            <>
+              {/* Pending Follow Requests Section */}
+              {pendingRequests.length > 0 && (
+                <div className="pending-requests-section">
+                  <h2>Follow Requests</h2>
+                  <div className="pending-requests-list">
+                    {pendingRequests.map((request) => (
+                      <div key={request.follow_id} className="pending-request-item">
+                        <Link to={`/profile/${request.follower_id}`} className="request-link">
+                          <img
+                            src={request.follower_picture || '/default-avatar.png'}
+                            alt={request.follower_name}
+                            className="request-avatar"
+                          />
+                          <div className="request-content">
+                            <p>
+                              <strong>{request.follower_name}</strong> wants to follow you
+                            </p>
+                            <span className="request-details">
+                              {request.follower_department} • Batch {request.follower_batch}
+                            </span>
+                            <span className="request-time">
+                              {moment.utc(request.requested_at).local().fromNow()}
+                            </span>
+                          </div>
+                        </Link>
+                        <div className="request-actions">
+                          <button
+                            className="action-btn accept"
+                            onClick={() => handleAcceptFollow(request.follow_id)}
+                            title="Accept follow request"
+                          >
+                            <FaUserCheck />
+                          </button>
+                          <button
+                            className="action-btn reject"
+                            onClick={() => handleRejectFollow(request.follow_id)}
+                            title="Reject follow request"
+                          >
+                            <FaUserTimes />
+                          </button>
+                        </div>
                       </div>
-                    </Link>
-                    <div className="notification-actions">
-                      {!notif.is_read && (
-                        <button
-                          className="action-btn"
-                          onClick={() => handleMarkAsRead(notif.id)}
-                          title="Mark as read"
-                        >
-                          <FaCheck />
-                        </button>
-                      )}
-                      <button
-                        className="action-btn delete"
-                        onClick={() => handleDelete(notif.id)}
-                        title="Delete"
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))
+                </div>
               )}
-            </div>
+
+              {/* Group Invitations Section */}
+              {groupInvites.length > 0 && (
+                <div className="pending-requests-section">
+                  <h2>Group Invitations</h2>
+                  <div className="pending-requests-list">
+                    {groupInvites.map((invite) => (
+                      <div key={invite.group_id} className="pending-request-item">
+
+                        <Link to={`/groups/${invite.group_id}/nonmember`} className="request-link">
+                          <img
+                            src={invite.group_cover || '/default-group.png'}
+                            alt={invite.group_name}
+                            className="request-avatar"
+                          />
+
+                          <div className="request-content">
+                            <p>
+                              You were invited to <strong>{invite.group_name}</strong>
+                            </p>
+
+                            <span className="request-time">
+                              {moment.utc(invite.invited_at).local().fromNow()}
+                            </span>
+                          </div>
+                        </Link>
+
+                        <div className="request-actions">
+                          <button
+                            className="action-btn accept"
+                            onClick={() => handleAcceptInvite(invite.group_id)}
+                            title="Accept invitation"
+                          >
+                            <FaUserCheck />
+                          </button>
+
+                          <button
+                            className="action-btn reject"
+                            onClick={() => handleRejectInvite(invite.group_id)}
+                            title="Reject invitation"
+                          >
+                            <FaUserTimes />
+                          </button>
+                        </div>
+
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Regular Notifications Section */}
+              <div className="notifications-list">
+                {notifications.length === 0 ? (
+                  <div className="no-notifications">
+                    <FaBell className="no-notifications-icon" />
+                    <p>No notifications yet</p>
+                    <span>When you get notifications, they'll appear here</span>
+                  </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`notification-item ${!notif.is_read ? 'unread' : ''}`}
+                    >
+                      <Link to={getNotificationLink(notif)} className="notification-link">
+                        <img
+                          src={notif.actor_profile_picture || '/default-avatar.png'}
+                          alt={notif.actor_name}
+                          className="notification-avatar"
+                        />
+                        <div className="notification-content">
+                          <p>
+                            <strong>{notif.actor_name}</strong> {notif.content}
+                          </p>
+                          <span className="notification-time">
+                            {moment.utc(notif.created_at).local().fromNow()}
+                          </span>
+                        </div>
+                      </Link>
+                      <div className="notification-actions">
+                        {!notif.is_read && (
+                          <button
+                            className="action-btn"
+                            onClick={() => handleMarkAsRead(notif.id)}
+                            title="Mark as read"
+                          >
+                            <FaCheck />
+                          </button>
+                        )}
+                        <button
+                          className="action-btn delete"
+                          onClick={() => handleDelete(notif.id)}
+                          title="Delete"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

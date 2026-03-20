@@ -29,10 +29,20 @@ const GroupDetail = () => {
   const [searchPage, setSearchPage] = useState(1);
   const [searchPageSize] = useState(5);
   const [activity, setActivity] = useState({});
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [invitedMembers, setInvitedMembers] = useState([]);
+  const [editGroupData, setEditGroupData] = useState({
+    name: '',
+    description: '',
+    is_private: false,
+    cover_image: null, // File object
+  });
+  const [updatingGroup, setUpdatingGroup] = useState(false);
 
   useEffect(() => {
     loadGroupData();
   }, [groupId]);
+
 
   const MEDIA_BASE_URL = 'http://localhost:8000';
 
@@ -56,6 +66,7 @@ const GroupDetail = () => {
     if (Array.isArray(data?.value)) return data.value;
     if (Array.isArray(data?.posts)) return data.posts;
     if (Array.isArray(data?.members)) return data.members;
+    if (Array.isArray(data?.invited)) return data.invited;
     return [];
   };
 
@@ -126,17 +137,19 @@ const GroupDetail = () => {
 
   const loadGroupData = async () => {
     try {
-      const [groupRes, postsRes, membersRes, pendingRes, activityRes] = await Promise.all([
+      const [groupRes, postsRes, membersRes, pendingRes, invitedRes, activityRes] = await Promise.all([
         groupAPI.getGroup(groupId),
         groupAPI.getGroupPosts(groupId),
         groupAPI.getMembers(groupId),
         groupAPI.getPending(groupId).catch(() => ({ data: [] })),
-        groupAPI.getActivity(groupId).catch(() => ({ data: {} })),
+        groupAPI.getInvited(groupId).catch(() => ({ data: [] })),   
+        groupAPI.getActivity(groupId).catch(() => ({ data: {} })), 
       ]);
       const groupData = extractGroup(groupRes.data);
       const postsData = extractItems(postsRes.data).map(normalizePost);
       const membersData = extractItems(membersRes.data).map(normalizeMember);
       const pendingData = extractItems(pendingRes.data).map(normalizeMember);
+      const invitedData = extractItems(invitedRes.data).map(normalizeMember);
 
       setGroup(groupData);
       setPosts(postsData);
@@ -149,16 +162,36 @@ const GroupDetail = () => {
 
       if (currentUser?.id) {
         try {
+          setInvitedMembers(invitedData);
+          console.log('invitedRes:', invitedRes);
+          console.log('invitedData:', invitedData);
+
           const followersRes = await userAPI.getFollowers(currentUser.id);
           const followerItems = extractItems(followersRes.data).map(normalizeUser);
-          const memberIds = new Set(membersData.map((member) => member.user_id));
-          const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
+          const memberIds = new Set(membersData.map(m => m.user_id));
+          const invitedIds = new Set(invitedData.map(m => m.user_id));
+          const filteredFollowers = followerItems.filter(
+            item => !memberIds.has(item.user_id) && !invitedIds.has(item.user_id)
+          );
+
           setFollowersToInvite(filteredFollowers);
         } catch (error) {
           setFollowersToInvite([]);
         }
       }
+
+      const role = getCurrentUserRole(groupData, membersData);
+
+      if (groupData && role === 'admin') {
+        setEditGroupData({
+          name: groupData.name || '',
+          description: groupData.description || '',
+          is_private: groupData.is_private || false,
+          cover_image: null,
+        });
+      }
     } catch (error) {
+      console.error(error);
       toast.error('Failed to load group');
     } finally {
       setLoading(false);
@@ -175,6 +208,7 @@ const GroupDetail = () => {
       loadGroupData();
       toast.success('Post created!');
     } catch (error) {
+      console.error(error);
       toast.error('Failed to create post');
     }
   };
@@ -183,11 +217,14 @@ const GroupDetail = () => {
     if (!window.confirm('Are you sure you want to leave this group?')) return;
 
     try {
-      await groupAPI.leaveGroup(groupId);
-      toast.success('Left group successfully');
+      const response = await groupAPI.leaveGroup(groupId);
+      toast.success(response?.data?.message || 'Left group successfully');
       navigate('/groups');
     } catch (error) {
-      toast.error('Failed to leave group');
+      console.error(error);
+
+      const backendMessage = error?.response?.data?.error;
+      toast.error(backendMessage || 'Failed to leave group');
     }
   };
 
@@ -198,6 +235,16 @@ const GroupDetail = () => {
       loadGroupData();
     } catch (error) {
       toast.error('Failed to accept member');
+    }
+  };
+
+  const handleRejectMember = async (userId) => {
+    try {
+      await groupAPI.rejectMember(groupId, userId);
+      toast.success('Member rejected');
+      loadGroupData();
+    } catch (error) {
+      toast.error('Failed to reject member');
     }
   };
 
@@ -243,6 +290,16 @@ const GroupDetail = () => {
     }
   };
 
+  const handleCancelInvite = async (userId) => {
+    try {
+      await groupAPI.cancelInvite(groupId, userId);
+      toast.success('Invite cancelled');
+      loadGroupData();
+    } catch {
+      toast.error('Failed to cancel invite');
+    }
+  };
+
   const handleKickMember = async (userId) => {
     if (!window.confirm('Remove this member from the group?')) return;
     try {
@@ -264,13 +321,35 @@ const GroupDetail = () => {
       setSearchLoading(true);
       const response = await userAPI.searchUsers(searchTerm.trim());
       const users = extractItems(response.data).map(normalizeUser);
-      const memberIds = new Set(members.map((member) => member.user_id));
+      const memberIds = new Set(members.map(m => m.user_id));
+      const invitedIds = new Set(invitedMembers.map(m => m.user_id));
+
+      setSearchCandidates(
+        users.filter(item =>
+          !memberIds.has(item.user_id) &&
+          !invitedIds.has(item.user_id)
+        )
+      );
       setSearchCandidates(users.filter((item) => !memberIds.has(item.user_id)));
       setSearchPage(1);
     } catch (error) {
       toast.error('Failed to search users');
     } finally {
       setSearchLoading(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Are you sure you want to delete this group?')) return;
+
+    try {
+      await groupAPI.deleteGroup(groupId);
+      toast.success('Group deleted successfully');
+      navigate('/groups');
+    } catch (error) {
+      console.error(error);
+      console.log(error?.response);
+      toast.error('Failed to delete group');
     }
   };
 
@@ -286,31 +365,50 @@ const GroupDetail = () => {
   );
   const searchTotalPages = Math.max(1, Math.ceil(searchCandidates.length / searchPageSize));
 
-  const handleUpdateCover = async (e) => {
-    e.preventDefault();
-    if (!coverImageFile) return;
+  const handleEditChange = (e) => {
+    const { name, value, type, checked, files } = e.target;
 
-    setUpdatingCover(true);
+    if (type === 'checkbox') {
+      setEditGroupData((prev) => ({ ...prev, [name]: checked }));
+    } else if (type === 'file') {
+      setEditGroupData((prev) => ({ ...prev, cover_image: files[0] || null }));
+    } else {
+      setEditGroupData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    setUpdatingGroup(true);
+
     try {
       const formData = new FormData();
-      formData.append('media', coverImageFile);
-      formData.append('media_type', 'image');
+      if (editGroupData.name) formData.append('name', editGroupData.name);
+      if (editGroupData.description) formData.append('description', editGroupData.description);
+      formData.append('is_private', editGroupData.is_private);
+      if (editGroupData.cover_image) {
 
-      const uploadResponse = await postAPI.uploadMedia(formData);
-      const uploadedUrl = uploadResponse?.data?.uploaded_files?.[0]?.url;
-
-      if (!uploadedUrl) {
-        toast.error('Cover image upload failed');
-        return;
+        const uploadData = new FormData();
+        uploadData.append('media', editGroupData.cover_image);
+        uploadData.append('media_type', 'image');
+        const uploadRes = await postAPI.uploadMedia(uploadData);
+        const uploadedUrl = uploadRes?.data?.uploaded_files?.[0]?.url;
+        if (uploadedUrl) formData.append('cover_image', uploadedUrl);
       }
 
-      await groupAPI.updateGroup(groupId, { cover_image: uploadedUrl });
-      toast.success('Cover image updated');
-      loadGroupData();
+      await groupAPI.updateGroup(groupId, formData);
+
+      toast.success('Group updated successfully!');
+      setShowEditForm(false);
+
+      await loadGroupData();
+      setActiveTab('posts');
+
     } catch (error) {
-      toast.error('Failed to update cover image');
+      toast.error(error?.response?.data?.error || 'Failed to update group');
     } finally {
-      setUpdatingCover(false);
+      setUpdatingGroup(false);
+      setEditGroupData((prev) => ({ ...prev, cover_image: null }));
     }
   };
 
@@ -358,18 +456,6 @@ const GroupDetail = () => {
                 <div className="group-meta">
                   <span><FaUsers /> {members.length} members</span>
                 </div>
-                {canManageMembers && (
-                  <form className="group-cover-form" onSubmit={handleUpdateCover}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
-                    />
-                    <button className="btn btn-secondary" type="submit" disabled={updatingCover}>
-                      {updatingCover ? 'Updating...' : 'Update Cover'}
-                    </button>
-                  </form>
-                )}
                 <button className="btn btn-danger" onClick={handleLeaveGroup}>
                   <FaSignOutAlt /> Leave Group
                 </button>
@@ -388,6 +474,9 @@ const GroupDetail = () => {
                 onClick={() => setActiveTab('members')}
               >
                 Members ({members.length})
+                {canManageMembers && pendingMembers.length > 0 && (
+                  <sup style={{ marginLeft: 4, color: 'orange' }}>{pendingMembers.length} pending</sup>
+                )}
               </button>
               {canManageMembers && (
                 <button
@@ -442,6 +531,12 @@ const GroupDetail = () => {
                             onClick={() => handleAcceptMember(member.user_id)}
                           >
                             Accept
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleRejectMember(member.user_id)}
+                          >
+                            Reject
                           </button>
                         </div>
                       </div>
@@ -618,6 +713,36 @@ const GroupDetail = () => {
                     )}
                   </div>
                 ))}
+                {canManageMembers && invitedMembers.length > 0 && (
+                  <div className="pending-members">
+                    <h3>Invited Members</h3>
+
+                    {invitedMembers.map((member) => (
+                      <div key={member.user_id} className="member-item pending">
+                        <img
+                          src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                          alt={member.name || 'User'}
+                          className="avatar"
+                          onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                        />
+
+                        <div className="member-info">
+                          <h4>{member.name}</h4>
+                          <span className="member-role">invited</span>
+                        </div>
+
+                        <div className="member-actions">
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleCancelInvite(member.user_id)}
+                          >
+                            Cancel Invitation
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -625,10 +750,84 @@ const GroupDetail = () => {
               <div className="group-admin-dashboard">
                 <div className="dashboard-panel">
                   <div className="dashboard-heading">
+                    <h3>Edit Group</h3>
+                    <p>Admins can update group name, description, privacy, and cover image.</p>
+
+                    {!showEditForm && (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setShowEditForm(true)}
+                      >
+                        Edit Group
+                      </button>
+                    )}
+                  </div>
+
+                  {showEditForm && (
+                    <form className="edit-group-form" onSubmit={handleUpdateGroup}>
+                      <div className="form-group">
+                        <label>Group Name</label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={editGroupData.name}
+                          onChange={handleEditChange}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Description</label>
+                        <textarea
+                          name="description"
+                          value={editGroupData.description}
+                          onChange={handleEditChange}
+                          rows="3"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>
+                          <input
+                            type="checkbox"
+                            name="is_private"
+                            checked={editGroupData.is_private}
+                            onChange={handleEditChange}
+                          />
+                          Private Group
+                        </label>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Cover Image</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          name="cover_image"
+                          onChange={handleEditChange}
+                        />
+                        {editGroupData.cover_image && <p>{editGroupData.cover_image.name}</p>}
+                      </div>
+
+                      <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
+                        {updatingGroup ? 'Updating...' : 'Update Group'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowEditForm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                <div className="dashboard-panel">
+                  <div className="dashboard-heading">
                     <h3>30-Day Group Activity</h3>
                     <p>Track how your group is growing and engaging this month.</p>
                   </div>
-
                   <div className="dashboard-stats-grid">
                     <div className="dashboard-stat-card">
                       <span className="stat-label">Posts</span>
@@ -670,6 +869,18 @@ const GroupDetail = () => {
                     </div>
                   </div>
                 </div>
+                <div className="dashboard-panel queue-panel">
+                  <div className="dashboard-bottom">
+                    <h3>Delete Group</h3>
+                    <p>Admins can delete group and all its data.</p>
+                    <button
+                      className="btn btn-danger"
+                      onClick={handleDeleteGroup}
+                    >
+                      Delete Group
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -680,3 +891,4 @@ const GroupDetail = () => {
 };
 
 export default GroupDetail;
+

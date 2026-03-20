@@ -1,0 +1,147 @@
+1.Get User Profile:
+
+SELECT 
+    u.id, u.student_id, u.name, u.email, u.profile_picture, u.bio,
+    u.blood_group, u.batch, u.hall_name, u.hall_attachement,
+    u.department_name,
+
+    (SELECT COUNT(*) 
+     FROM follows 
+     WHERE following_id = u.id AND status = 'accepted') AS followers_count,
+
+    (SELECT COUNT(*) 
+     FROM follows 
+     WHERE follower_id = u.id AND status = 'accepted') AS following_count,
+
+    (SELECT COUNT(*) 
+     FROM posts 
+     WHERE user_id = u.id) AS posts_count,
+
+    u.created_at
+FROM users u
+WHERE u.id = %s;
+
+
+SELECT * 
+FROM get_user_profile(p_user_id);
+
+
+
+2.Update Profile
+
+UPDATE users
+SET
+    name = COALESCE(%s, name),
+    bio = COALESCE(%s, bio),
+    profile_picture = COALESCE(%s, profile_picture),
+    blood_group = COALESCE(%s, blood_group),
+    hall_name = COALESCE(%s, hall_name),
+    hall_attachement = COALESCE(%s, hall_attachement),
+    department_name = COALESCE(%s, department_name),
+    updated_at = CURRENT_TIMESTAMP
+    
+WHERE id = %s;
+
+
+3.Follow/Unfollow User
+
+SELECT * 
+FROM get_pending_follow_requests(p_user_id);   --------get pending reqs
+
+
+SELECT reject_follow_request(p_follow_id, p_user_id);
+
+
+
+4.Accept Follow Request
+
+CREATE OR REPLACE FUNCTION accept_follow_request(
+    p_follow_id INTEGER,
+    p_user_id INTEGER
+)								-------------accept function
+RETURNS TABLE(
+    follow_id INTEGER,
+    follower_id INTEGER,
+    following_id INTEGER,
+    accepted_at TIMESTAMP
+) AS $$
+BEGIN
+    UPDATE follows
+    SET status = 'accepted',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_follow_id
+      AND following_id = p_user_id
+      AND status = 'pending'
+    RETURNING id, follower_id, following_id, updated_at AS accepted_at;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * 
+FROM accept_follow_request(p_follow_id, p_user_id);
+
+
+5.Get Suggested Users
+
+ SELECT department_name, batch
+    INTO user_dept, user_batch
+    FROM users
+    WHERE id = p_user_id;
+
+    RETURN QUERY
+    SELECT
+        u.id,
+        u.name,
+        u.profile_picture,    
+        u.department_name,
+        u.batch,
+        COUNT(DISTINCT mf.follower_id) AS mutual_friends_count
+    FROM users u
+    LEFT JOIN follows f1 
+        ON f1.follower_id = p_user_id 
+       AND f1.status = 'accepted'
+    LEFT JOIN follows mf 
+        ON mf.follower_id = f1.following_id
+       AND mf.following_id = u.id
+       AND mf.status = 'accepted'
+    WHERE u.id != p_user_id
+      AND u.is_active = TRUE
+      AND u.id NOT IN (
+            SELECT following_id 
+            FROM follows 
+            WHERE follower_id = p_user_id AND status='accepted'
+      )
+      AND (u.department_name = user_dept OR u.batch = user_batch)
+    GROUP BY 
+        u.id, u.name, u.profile_picture, 
+        u.department_name, u.batch
+    ORDER BY 
+        mutual_friends_count DESC,
+        u.batch DESC
+    LIMIT p_limit;
+END;
+
+SELECT * 
+FROM get_suggested_users(p_user_id);
+
+
+6.Get Mutual Followers
+
+SELECT * 
+FROM get_mutual_followers(p_user_id);
+
+
+7.Get User Activity
+
+SELECT * 
+FROM get_user_activity_timeline(p_user_id);
+
+8.Get Followers List
+
+SELECT * 
+FROM get_user_followers(p_user_id)
+
+9.Get Following List
+
+SELECT * 
+FROM get_user_following(p_user_id)
+

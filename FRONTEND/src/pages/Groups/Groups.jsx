@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { FaPlus, FaUsers, FaLock, FaGlobe } from 'react-icons/fa';
 import '../../styles/Groups.css';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const Groups = () => {
   const { user: currentUser } = useAuth();
@@ -13,10 +14,12 @@ const Groups = () => {
   const [suggested, setSuggested] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
   const [createData, setCreateData] = useState({
     name: '',
     description: '',
     is_private: false,
+    cover_image: null,
   });
 
   useEffect(() => {
@@ -106,14 +109,28 @@ const Groups = () => {
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
+
     try {
-      await groupAPI.createGroup(createData);
+      const formData = new FormData();
+      formData.append('name', createData.name);
+      formData.append('description', createData.description);
+      formData.append('is_private', createData.is_private);
+
+      if (createData.cover_image) {
+        formData.append('cover_image', createData.cover_image);
+      }
+
+      const res = await groupAPI.createGroup(formData);
+
       toast.success('Group created successfully!');
+
       setShowCreateModal(false);
-      setCreateData({ name: '', description: '', is_private: false });
       loadGroups();
+      navigate(`/groups/${res.data.group_id}`);
+      setCreateData({ name: '', description: '', is_private: false, cover_image: null });
     } catch (error) {
-      toast.error('Failed to create group');
+      console.error(error.response || error);
+      toast.error(error?.response?.data?.error || 'Failed to create group');
     }
   };
 
@@ -125,6 +142,10 @@ const Groups = () => {
     } catch (error) {
       toast.error('Failed to join group');
     }
+  };
+
+  const handleNonmemberView = (groupId) => {
+    navigate(`/groups/${groupId}/nonmember`);
   };
 
   return (
@@ -154,22 +175,22 @@ const Groups = () => {
                       if (!groupId) return null;
 
                       return (
-                      <Link to={`/groups/${groupId}`} key={groupId} className="group-card">
-                        <img
-                          src={group.cover_image || '/default-group.png'}
-                          alt={group.name}
-                          className="group-cover"
-                        />
-                        <div className="group-info">
-                          <h3>{group.name}</h3>
-                          <p>{group.description}</p>
-                          <div className="group-meta">
-                            {group.is_private ? <FaLock /> : <FaGlobe />}
-                            <span><FaUsers /> {group.members_count} members</span>
+                        <Link to={`/groups/${groupId}`} key={groupId} className="group-card">
+                          <img
+                            src={group.cover_image || '/default-group.png'}
+                            alt={group.name}
+                            className="group-cover"
+                          />
+                          <div className="group-info">
+                            <h3>{group.name}</h3>
+                            <p>{group.description}</p>
+                            <div className="group-meta">
+                              {group.is_private ? <FaLock /> : <FaGlobe />}
+                              <span><FaUsers /> {group.members_count} members</span>
+                            </div>
                           </div>
-                        </div>
-                      </Link>
-                    );
+                        </Link>
+                      );
                     })
                   )}
                 </div>
@@ -186,28 +207,34 @@ const Groups = () => {
                       if (!groupId) return null;
 
                       return (
-                      <div key={groupId} className="group-card">
-                        <img
-                          src={group.cover_image || '/default-group.png'}
-                          alt={group.name}
-                          className="group-cover"
-                        />
-                        <div className="group-info">
-                          <h3>{group.name}</h3>
-                          <p>{group.description}</p>
-                          <div className="group-meta">
-                            {group.is_private ? <FaLock /> : <FaGlobe />}
-                            <span><FaUsers /> {group.members_count} members</span>
+                        <div key={groupId} className="group-card">
+                          <img
+                            src={group.cover_image || '/default-group.png'}
+                            alt={group.name}
+                            className="group-cover"
+                          />
+                          <div className="group-info">
+                            <h3>{group.name}</h3>
+                            <p>{group.description}</p>
+                            <div className="group-meta">
+                              {group.is_private ? <FaLock /> : <FaGlobe />}
+                              <span><FaUsers /> {group.members_count} members</span>
+                            </div>
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => handleJoinGroup(groupId)}
+                            >
+                              Join Group
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => handleNonmemberView(groupId)}
+                            >
+                              View Group
+                            </button>
                           </div>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => handleJoinGroup(groupId)}
-                          >
-                            Join Group
-                          </button>
                         </div>
-                      </div>
-                    );
+                      );
                     })
                   )}
                 </div>
@@ -217,49 +244,115 @@ const Groups = () => {
         </div>
       </div>
 
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Create New Group</h2>
-            <form onSubmit={handleCreateGroup}>
-              <div className="form-group">
-                <label>Group Name</label>
-                <input
-                  type="text"
-                  value={createData.name}
-                  onChange={(e) => setCreateData({ ...createData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  value={createData.description}
-                  onChange={(e) => setCreateData({ ...createData, description: e.target.value })}
-                  rows="3"
-                />
-              </div>
-              <div className="form-group">
-                <label>
+      {
+        showCreateModal && (
+          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>Create New Group</h2>
+
+              <form onSubmit={handleCreateGroup}>
+
+                {/* Group Name */}
+                <div className="form-group">
+                  <label>Group Name</label>
                   <input
-                    type="checkbox"
-                    checked={createData.is_private}
-                    onChange={(e) => setCreateData({ ...createData, is_private: e.target.checked })}
+                    type="text"
+                    value={createData.name}
+                    onChange={(e) =>
+                      setCreateData({ ...createData, name: e.target.value })
+                    }
+                    required
                   />
-                  Private Group
-                </label>
-              </div>
-              <div className="modal-actions">
-                <button type="submit" className="btn btn-primary">Create</button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </button>
-              </div>
-            </form>
+                </div>
+
+                {/* Description */}
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea
+                    value={createData.description}
+                    onChange={(e) =>
+                      setCreateData({ ...createData, description: e.target.value })
+                    }
+                    rows="3"
+                  />
+                </div>
+
+                {/* Private checkbox */}
+                <div className="form-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={createData.is_private}
+                      onChange={(e) =>
+                        setCreateData({
+                          ...createData,
+                          is_private: e.target.checked,
+                        })
+                      }
+                    />
+                    Private Group
+                  </label>
+                </div>
+
+                {/* Cover Image Upload */}
+                <div className="form-group">
+                  <label>Cover Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) =>
+                      setCreateData({
+                        ...createData,
+                        cover_image: e.target.files[0],
+                      })
+                    }
+                  />
+
+                  {createData.cover_image && (
+                    <p className="file-name">
+                      Selected: {createData.cover_image.name}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setCreateData({ ...createData, cover_image: null })}
+                  >
+                    Remove Image
+                  </button>
+                </div>
+
+                {/* Preview */}
+                {createData.cover_image && (
+                  <div className="image-preview">
+                    <img
+                      src={URL.createObjectURL(createData.cover_image)}
+                      alt="preview"
+                      className="preview-img"
+                    />
+                  </div>
+                )}
+
+                {/* Buttons */}
+                <div className="modal-actions">
+                  <button type="submit" className="btn btn-primary">
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowCreateModal(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 

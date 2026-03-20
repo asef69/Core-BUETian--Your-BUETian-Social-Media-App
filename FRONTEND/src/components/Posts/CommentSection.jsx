@@ -452,7 +452,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
                 aria-label={comment.liked ? "Remove love from comment" : "Love comment"}
               >
                 {comment.liked ? <FaHeart /> : <FaRegHeart />}
-                <span className="comment-action-label">Love</span>
+                <span className="comment-action-label"></span>
                 {comment.likes_count > 0 ? (
                   <span className="count-pill">{comment.likes_count}</span>
                 ) : null}

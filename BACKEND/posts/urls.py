@@ -5,7 +5,7 @@ from .views import (
     UploadPostMediaView, CreatePostWithMediaView, PublicFeedView,
 )
 from .extended_views import (
-    PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
+    LikeCommentView, PostsByHashtagView, UserLikedPostsView, PostEngagementStatsView,
     TrendingHashtagsView, PostsByMediaTypeView, SearchPostsView,
     DeleteCommentView, UpdateCommentView,LikeCommentView
 )

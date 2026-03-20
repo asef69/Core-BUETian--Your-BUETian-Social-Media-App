@@ -1,0 +1,172 @@
+1.Create Post
+
+CREATE OR REPLACE FUNCTION create_post_with_media(
+    p_user_id INTEGER,
+    p_content TEXT DEFAULT NULL,
+    p_media_urls TEXT[] DEFAULT NULL,
+    p_media_type VARCHAR DEFAULT NULL,
+    p_visibility VARCHAR DEFAULT 'public',
+    p_group_id INTEGER DEFAULT NULL
+)
+RETURNS INTEGER AS $$
+DECLARE
+    new_post_id INTEGER;
+BEGIN
+    INSERT INTO posts (
+        user_id, content, media_type, visibility, group_id
+    )
+    VALUES (
+        p_user_id,
+        p_content,
+        COALESCE(p_media_type, 'text'),
+        p_visibility,
+        p_group_id
+    )
+    RETURNING id INTO new_post_id;
+
+    IF p_media_urls IS NOT NULL THEN
+        INSERT INTO media_urls (post_id, media_url, media_type)
+        SELECT new_post_id, unnest(p_media_urls), p_media_type;
+    END IF;
+
+    RETURN new_post_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+SELECT * 
+FROM create_post_with_media(p_user_id, p_content, p_media_urls, p_media_type, p_visibility, p_group_id)
+
+
+2.Get User Feed
+
+SELECT *
+FROM get_user_feed(p_user_id)
+
+3.Get Post Details
+
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id AS post_id,
+        p.content,
+        p.media_type,
+        p.visibility,
+        p.created_at,
+        u.id AS author_id,
+        u.name AS author_name,
+        u.profile_picture AS author_picture,
+        p.likes_count,
+        p.comments_count,
+        COALESCE(liked_by_user.is_liked, FALSE) AS is_liked,
+        COALESCE(media.media_urls_list, '{}') AS media_urls_list
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN (
+        SELECT post_id, ARRAY_AGG(media_url) AS media_urls_list
+        FROM media_urls
+        GROUP BY post_id
+    ) media ON media.post_id = p.id
+    LEFT JOIN (
+        SELECT post_id, TRUE AS is_liked
+        FROM likes
+        WHERE user_id = p_user_id
+    ) liked_by_user ON liked_by_user.post_id = p.id
+    ORDER BY p.created_at DESC
+    LIMIT p_limit
+    OFFSET p_offset;
+END;
+
+SELECT *
+FROM get_post_details(p_post_id, p_user_id)
+
+
+4.Update Post
+
+
+5.Delete Post
+
+
+
+6.Like/unlike Post
+
+CREATE OR REPLACE FUNCTION toggle_like(
+    p_user_id INTEGER,
+    p_post_id INTEGER
+)
+RETURNS TEXT AS $$
+DECLARE
+    v_exists BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 
+        FROM likes 
+        WHERE user_id = p_user_id 
+          AND post_id = p_post_id
+    ) INTO v_exists;
+
+    IF v_exists THEN
+        DELETE FROM likes 
+        WHERE user_id = p_user_id 
+          AND post_id = p_post_id;
+
+        UPDATE posts 
+        SET likes_count = likes_count - 1 
+        WHERE id = p_post_id;
+
+        RETURN 'Post unliked';
+    ELSE
+        INSERT INTO likes (user_id, post_id) 
+        VALUES (p_user_id, p_post_id);
+
+        UPDATE posts 
+        SET likes_count = likes_count + 1 
+        WHERE id = p_post_id;
+
+        RETURN 'Post liked';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT *
+FROM toggle_like(p_user_id, p_post_id)
+
+
+7.Get Post Likes
+
+
+
+8.Get Comments
+
+SELECT *
+FROM get_post_comments(p_post_id)
+
+9.Add Comment
+
+INSERT INTO comments (post_id, user_id, content)
+VALUES (%s, %s, %s)
+RETURNING id;
+
+
+10.Update Comment
+
+UPDATE comments SET 
+	content = COALESCE(%s, content)
+WHERE id = %s;
+
+11.Delete Comment
+
+DELETE FROM comments WHERE id = %s;
+
+12.Get Trending Posts
+
+SELECT *
+FROM get_trending_posts();
+
+13.Get User's Posts
+
+SELECT *
+FROM get_user_posts(p_user_id, p_viewer_id)
+
+
+

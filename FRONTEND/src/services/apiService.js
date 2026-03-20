@@ -92,15 +92,19 @@ export const chatAPI = {
 
 
 export const groupAPI = {
-  createGroup: (data) => api.post('/groups/create/', data),
+  createGroup: (data) =>api.post('/groups/create/', data, {headers: { 'Content-Type': 'multipart/form-data' },}),
   getGroup: (groupId) => api.get(`/groups/${groupId}/`),
   updateGroup: (groupId, data) => api.patch(`/groups/${groupId}/update/`, data),
   deleteGroup: (groupId) => api.delete(`/groups/${groupId}/delete/`),
   getMembers: (groupId) => api.get(`/groups/${groupId}/members/`),
   getPending: (groupId) => api.get(`/groups/${groupId}/pending/`),
+  getInvited: (groupId) => api.get(`/groups/${groupId}/invited/`),
+  cancelInvite: (groupId, userId) => api.post(`/groups/${groupId}/cancel-invite/${userId}/`),
+  getInvites: () => api.get('/groups/invites/'),
   joinGroup: (groupId) => api.post(`/groups/${groupId}/join/`),
   leaveGroup: (groupId) => api.post(`/groups/${groupId}/leave/`),
   acceptMember: (groupId, userId) => api.post(`/groups/${groupId}/accept/${userId}/`),
+  rejectMember: (groupId, userId) => api.post(`/groups/${groupId}/reject/${userId}/`),
   inviteMember: (groupId, userId) => api.post(`/groups/${groupId}/invite/`, { user_id: userId }),
   promoteMember: (groupId, userId) => api.post(`/groups/${groupId}/promote/${userId}/`),
   demoteMember: (groupId, userId) => api.post(`/groups/${groupId}/demote/${userId}/`),
@@ -112,6 +116,8 @@ export const groupAPI = {
   getSuggested: () => api.get('/groups/suggested/'),
   searchGroups: (query) => api.get(`/groups/search/?q=${query}`),
   getActivity: (groupId, days = 30) => api.get(`/groups/${groupId}/activity/?days=${days}`),
+  acceptInvite: (groupId) => api.post(`/groups/${groupId}/accept/`),
+  rejectInvite: (groupId) => api.post(`/groups/${groupId}/reject/`),
 };
 
 

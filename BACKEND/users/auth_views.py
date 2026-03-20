@@ -98,6 +98,18 @@ class RegisterView(APIView):
             )
         
         hashed_password = make_password(data['password'])
+
+        profile_picture_url = None
+        if 'profile_picture' in request.FILES:
+            try:
+                profile_file = request.FILES['profile_picture']
+                FileUploadHandler.validate_file(profile_file, file_type='image')
+                profile_picture_url = FileUploadHandler.upload_file(profile_file, folder='profile_pictures')
+            except ValueError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
         profile_picture_url = None
         if 'profile_picture' in request.FILES:
