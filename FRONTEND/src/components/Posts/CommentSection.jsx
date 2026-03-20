@@ -40,20 +40,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
     };
   }, []);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Close any open menu if click is outside a menu
-      if (!event.target.closest('.comment-menu')) {
-        setOpenMenuId(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const normalizeComment = (comment) => {
     const userFromObject = comment.user || comment.author || {};
 
@@ -466,7 +452,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
                 aria-label={comment.liked ? "Remove love from comment" : "Love comment"}
               >
                 {comment.liked ? <FaHeart /> : <FaRegHeart />}
-                <span className="comment-action-label">Love</span>
+                <span className="comment-action-label"></span>
                 {comment.likes_count > 0 ? (
                   <span className="count-pill">{comment.likes_count}</span>
                 ) : null}
@@ -532,164 +518,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
 
   console.log("COMMENTS:", comments);
 
-  const handleDeleteComment = async (comment_id) => {
-    if (!comment_id) {
-      toast.error('Cannot delete: Comment ID is missing');
-      return;
-    }
-
-    if (!window.confirm('Delete this comment?')) return;
-
-    try {
-      console.log("Deleting comment ID:", comment_id);
-
-      // Call API
-      await postAPI.deleteComment(comment_id);
-
-      // Remove from state
-      setComments(comments.filter(c => c.comment_id !== comment_id));
-      if (onCommentRemoved) {
-        onCommentRemoved();
-      }
-
-      toast.success('Comment deleted');
-    } catch (error) {
-      console.error('❌ Failed to delete comment:', error);
-      toast.error(error?.response?.data?.error || 'Failed to delete comment');
-    }
-  };
-
-  const handleEditComment = (comment) => {
-    setEditingCommentId(comment.comment_id);
-    setEditContent(comment.content);
-  };
-
-  const handleUpdateComment = async (comment) => {
-    try {
-      if (!comment.comment_id) {
-        toast.error('Cannot update: Comment ID is missing');
-        return;
-      }
-      await postAPI.updateComment(comment.comment_id, { content: editContent });
-      setComments(comments.map(c =>
-        c.comment_id === comment.comment_id ? { ...c, content: editContent } : c
-      ));
-      setEditingCommentId(null);
-      setEditContent('');
-      toast.success('Comment updated');
-    } catch (error) {
-      console.error('❌ Failed to update comment:', {
-        commentId: comment.comment_id,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.response?.data?.message || error.message,
-        url: error.config?.url,
-        data: error.response?.data
-      });
-      toast.error(error?.response?.data?.error || 'Failed to update comment');
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingCommentId(null);
-    setEditContent('');
-  };
-
-  const handleReplySubmit = async (e, parentCommentId) => {
-    e.preventDefault();
-    const content = replyContent[parentCommentId];
-    if (!content?.trim()) return;
-
-    setLoading(true);
-    try {
-      const response = await postAPI.addComment(postId, {
-        content,
-        parent_comment_id: parentCommentId,
-      });
-
-      const normalizedReply = normalizeComment(response.data);
-
-      // Insert reply just below the parent comment
-      setComments(prevComments => {
-        const index = prevComments.findIndex(c => c.comment_id === parentCommentId);
-        const updated = [...prevComments];
-        updated.splice(index + 1, 0, normalizedReply);
-        return updated;
-      });
-
-      // clear only this comment's reply input
-      setReplyContent(prev => ({ ...prev, [parentCommentId]: '' }));
-
-      // close reply form if desired
-      setReplyingComments(prev => ({ ...prev, [parentCommentId]: false }));
-
-      toast.success('Reply added!');
-    } catch (error) {
-      console.error('❌ Failed to reply:', error);
-      toast.error(error?.response?.data?.error || 'Failed to add reply');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCommentLike = async (commentId) => {
-    try {
-      console.log('🔄 Attempting to like comment:', {
-        commentId: commentId,
-        commentIdType: typeof commentId
-      });
-
-      if (!commentId) {
-        console.error('❌ Comment ID is missing');
-        toast.error('Cannot like comment: Comment ID is missing');
-        return;
-      }
-
-      await postAPI.likecomment(commentId);
-
-      console.log('✅ Comment liked successfully:', commentId);
-
-      setComments(prevComments =>
-        prevComments.map(comment =>
-          comment.comment_id === commentId
-            ? {
-              ...comment,
-              liked: !comment.liked,
-              likes_count: comment.liked
-                ? comment.likes_count - 1
-                : comment.likes_count + 1
-            }
-            : comment
-        )
-      );
-
-    } catch (error) {
-      console.error("❌ Failed to like comment:", {
-        commentId,
-        status: error.response?.status || "No response",
-        statusText: error.response?.statusText || "",
-        message: error.response?.data?.message || error.response?.data?.error || error.message,
-        url: error.config?.url,
-        method: error.config?.method,
-        fullError: error, // Logs entire Axios error for deep debugging
-      });
-
-      if (error.response?.status === 404) {
-        toast.error('Comment not found. It may have been deleted.');
-      } else if (error.response?.status === 401) {
-        toast.error('Please login to like comments');
-      } else {
-        toast.error(
-          error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          'Failed to like comment'
-        );
-      }
-    }
-  };
-
-  console.log("COMMENTS:", comments);
   return (
     <div className="comments-section">
       <form onSubmit={handleSubmit} className="comment-form">

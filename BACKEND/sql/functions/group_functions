@@ -234,3 +234,224 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+
+CREATE OR REPLACE FUNCTION get_suggested_groups(
+    p_user_id INTEGER,
+    p_limit INTEGER DEFAULT 10
+)
+RETURNS TABLE (
+    group_id INTEGER,
+    name VARCHAR(100),
+    description TEXT,
+    cover_image VARCHAR(500),
+    members_count BIGINT,
+    is_private BOOLEAN,
+    common_members_count BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        g.id AS group_id,
+        g.name,
+        g.description,
+        g.cover_image,
+        -- Total accepted members in the group
+        (SELECT COUNT(*) 
+         FROM group_members gm
+         WHERE gm.group_id = g.id AND gm.status = 'accepted') AS members_count,
+        g.is_private,
+        -- Count of members who are also followed by the current user
+        (SELECT COUNT(*) 
+         FROM group_members gm
+         WHERE gm.group_id = g.id
+           AND gm.user_id IN (
+               SELECT f.following_id 
+               FROM follows f
+               WHERE f.follower_id = p_user_id
+           )
+           AND gm.status = 'accepted'
+        ) AS common_members_count
+    FROM groups g
+    WHERE g.is_private = FALSE
+      -- Exclude groups user already joined
+      AND g.id NOT IN (
+          SELECT gm.group_id
+          FROM group_members gm
+          WHERE gm.user_id = p_user_id
+      )
+    ORDER BY common_members_count DESC, g.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_group_activity(
+    p_group_id INTEGER,
+    p_days INTEGER DEFAULT 30
+)
+RETURNS TABLE (
+    posts_count BIGINT,
+    active_members_count BIGINT,
+    new_members_count BIGINT,
+    total_likes BIGINT,
+    total_comments BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+  
+        (SELECT COUNT(*)
+         FROM posts p
+         WHERE p.group_id = p_group_id
+           AND p.created_at >= NOW() - (p_days || ' days')::INTERVAL
+        ) AS posts_count,
+
+        
+        (SELECT COUNT(DISTINCT p.user_id)
+         FROM posts p
+         WHERE p.group_id = p_group_id
+           AND p.created_at >= NOW() - (p_days || ' days')::INTERVAL
+        ) AS active_members_count,
+
+        
+        (SELECT COUNT(*)
+         FROM group_members gm
+         WHERE gm.group_id = p_group_id
+           AND gm.status = 'accepted'
+           AND gm.joined_at >= NOW() - (p_days || ' days')::INTERVAL
+        ) AS new_members_count,
+
+       
+        (SELECT COUNT(*)
+         FROM likes l
+         JOIN posts p ON l.post_id = p.id
+         WHERE p.group_id = p_group_id
+           AND l.created_at >= NOW() - (p_days || ' days')::INTERVAL
+        ) AS total_likes,
+
+        
+        (SELECT COUNT(*)
+         FROM comments c
+         JOIN posts p ON c.post_id = p.id
+         WHERE p.group_id = p_group_id
+           AND c.created_at >= NOW() - (p_days || ' days')::INTERVAL
+        ) AS total_comments;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION promote_to_moderator(
+    p_group_id INTEGER,
+    p_admin_id INTEGER,
+    p_target_user_id INTEGER
+)
+RETURNS TABLE (promote_to_moderator BOOLEAN) AS $$
+BEGIN
+    -- Check if requester is admin
+    IF NOT EXISTS (
+        SELECT 1 FROM groups g
+        WHERE g.id = p_group_id
+          AND g.admin_id = p_admin_id
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    -- Check target is accepted member
+    IF NOT EXISTS (
+        SELECT 1 FROM group_members gm
+        WHERE gm.group_id = p_group_id
+          AND gm.user_id = p_target_user_id
+          AND gm.status = 'accepted'
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    -- Promote to moderator
+    UPDATE group_members
+    SET role = 'moderator'
+    WHERE group_id = p_group_id
+      AND user_id = p_target_user_id;
+
+    RETURN QUERY SELECT TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION demote_moderator(
+    p_group_id INTEGER,
+    p_admin_id INTEGER,
+    p_target_user_id INTEGER
+)
+RETURNS TABLE (demote_moderator BOOLEAN) AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM groups g
+        WHERE g.id = p_group_id
+          AND g.admin_id = p_admin_id
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM group_members gm
+        WHERE gm.group_id = p_group_id
+          AND gm.user_id = p_target_user_id
+          AND gm.role = 'moderator'
+          AND gm.status = 'accepted'
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    UPDATE group_members
+    SET role = 'member'
+    WHERE group_id = p_group_id
+      AND user_id = p_target_user_id;
+
+    RETURN QUERY SELECT TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION transfer_group_admin(
+    p_group_id INTEGER,
+    p_current_admin_id INTEGER,
+    p_new_admin_id INTEGER
+)
+RETURNS TABLE (transfer_group_admin BOOLEAN) AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM groups g
+        WHERE g.id = p_group_id
+          AND g.admin_id = p_current_admin_id
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM group_members gm
+        WHERE gm.group_id = p_group_id
+          AND gm.user_id = p_new_admin_id
+          AND gm.status = 'accepted'
+    ) THEN
+        RETURN QUERY SELECT FALSE;
+        RETURN;
+    END IF;
+
+    UPDATE groups
+    SET admin_id = p_new_admin_id
+    WHERE id = p_group_id;
+
+    UPDATE group_members
+    SET role = 'member'
+    WHERE group_id = p_group_id
+      AND user_id = p_current_admin_id;
+
+    UPDATE group_members
+    SET role = 'admin'
+    WHERE group_id = p_group_id
+      AND user_id = p_new_admin_id;
+
+    RETURN QUERY SELECT TRUE;
+END;
+$$ LANGUAGE plpgsql;

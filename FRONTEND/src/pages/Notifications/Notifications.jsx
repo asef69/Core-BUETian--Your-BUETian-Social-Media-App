@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationAPI, userAPI } from '../../services/apiService';
+import { notificationAPI, userAPI, groupAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
 import { FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes, FaBell } from 'react-icons/fa';
@@ -14,6 +14,21 @@ const Notifications = () => {
   const [preferences, setPreferences] = useState({ email_notifications: true, push_notifications: true });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [groupInvites, setGroupInvites] = useState([]);
+
+  const loadGroupInvites = async () => {
+    try {
+      const res = await groupAPI.getInvites(); 
+      setGroupInvites(res.data || []);
+    } catch (error) {
+      console.error('Failed to load group invites');
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    loadGroupInvites();
+  }, [filter]);
 
   useEffect(() => {
     loadNotifications();
@@ -140,6 +155,27 @@ const Notifications = () => {
     }
   };
 
+  const handleAcceptInvite = async (groupId) => {
+    try {
+      await groupAPI.acceptInvite(groupId);
+      setGroupInvites(groupInvites.filter(inv => inv.group_id !== groupId));
+      toast.success('Invitation accepted!');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to accept invitation');
+    }
+  };
+
+  const handleRejectInvite = async (groupId) => {
+    try {
+      await groupAPI.rejectInvite(groupId);
+      setGroupInvites(groupInvites.filter(inv => inv.group_id !== groupId));
+      toast.success('Invitation rejected');
+      emitCountsRefresh();
+    } catch (error) {
+      toast.error('Failed to reject invitation');
+    }
+  };
   const handleClearAll = async () => {
     try {
       await notificationAPI.clearAll();
@@ -309,57 +345,107 @@ const Notifications = () => {
                 </div>
               )}
 
+              {/* Group Invitations Section */}
+              {groupInvites.length > 0 && (
+                <div className="pending-requests-section">
+                  <h2>Group Invitations</h2>
+                  <div className="pending-requests-list">
+                    {groupInvites.map((invite) => (
+                      <div key={invite.group_id} className="pending-request-item">
+
+                        <Link to={`/groups/${invite.group_id}/nonmember`} className="request-link">
+                          <img
+                            src={invite.group_cover || '/default-group.png'}
+                            alt={invite.group_name}
+                            className="request-avatar"
+                          />
+
+                          <div className="request-content">
+                            <p>
+                              You were invited to <strong>{invite.group_name}</strong>
+                            </p>
+
+                            <span className="request-time">
+                              {moment.utc(invite.invited_at).local().fromNow()}
+                            </span>
+                          </div>
+                        </Link>
+
+                        <div className="request-actions">
+                          <button
+                            className="action-btn accept"
+                            onClick={() => handleAcceptInvite(invite.group_id)}
+                            title="Accept invitation"
+                          >
+                            <FaUserCheck />
+                          </button>
+
+                          <button
+                            className="action-btn reject"
+                            onClick={() => handleRejectInvite(invite.group_id)}
+                            title="Reject invitation"
+                          >
+                            <FaUserTimes />
+                          </button>
+                        </div>
+
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Regular Notifications Section */}
               <div className="notifications-list">
-              {notifications.length === 0 ? (
-                <div className="no-notifications">
-                  <FaBell className="no-notifications-icon" />
-                  <p>No notifications yet</p>
-                  <span>When you get notifications, they'll appear here</span>
-                </div>
-              ) : (
-                notifications.map((notif) => (
-                  <div
-                    key={notif.id}
-                    className={`notification-item ${!notif.is_read ? 'unread' : ''}`}
-                  >
-                    <Link to={getNotificationLink(notif)} className="notification-link">
-                      <img
-                        src={notif.actor_profile_picture || '/default-avatar.png'}
-                        alt={notif.actor_name}
-                        className="notification-avatar"
-                      />
-                      <div className="notification-content">
-                        <p>
-                          <strong>{notif.actor_name}</strong> {notif.content}
-                        </p>
-                        <span className="notification-time">
-                          {moment.utc(notif.created_at).local().fromNow()}
-                        </span>
-                      </div>
-                    </Link>
-                    <div className="notification-actions">
-                      {!notif.is_read && (
-                        <button
-                          className="action-btn"
-                          onClick={() => handleMarkAsRead(notif.id)}
-                          title="Mark as read"
-                        >
-                          <FaCheck />
-                        </button>
-                      )}
-                      <button
-                        className="action-btn delete"
-                        onClick={() => handleDelete(notif.id)}
-                        title="Delete"
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
+                {notifications.length === 0 ? (
+                  <div className="no-notifications">
+                    <FaBell className="no-notifications-icon" />
+                    <p>No notifications yet</p>
+                    <span>When you get notifications, they'll appear here</span>
                   </div>
-                ))
-              )}
-            </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`notification-item ${!notif.is_read ? 'unread' : ''}`}
+                    >
+                      <Link to={getNotificationLink(notif)} className="notification-link">
+                        <img
+                          src={notif.actor_profile_picture || '/default-avatar.png'}
+                          alt={notif.actor_name}
+                          className="notification-avatar"
+                        />
+                        <div className="notification-content">
+                          <p>
+                            <strong>{notif.actor_name}</strong> {notif.content}
+                          </p>
+                          <span className="notification-time">
+                            {moment.utc(notif.created_at).local().fromNow()}
+                          </span>
+                        </div>
+                      </Link>
+                      <div className="notification-actions">
+                        {!notif.is_read && (
+                          <button
+                            className="action-btn"
+                            onClick={() => handleMarkAsRead(notif.id)}
+                            title="Mark as read"
+                          >
+                            <FaCheck />
+                          </button>
+                        )}
+                        <button
+                          className="action-btn delete"
+                          onClick={() => handleDelete(notif.id)}
+                          title="Delete"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </>
           )}
         </div>

@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
+from utils.file_upload import FileUploadHandler
 
 
 def _get_group_role(group_id, user_id):
@@ -20,6 +21,13 @@ def _get_group_role(group_id, user_id):
     if admin_result:
         return 'admin'
     return None
+
+
+def _delete_group_invitation_notification(group_id):
+    DatabaseManager.execute_update(
+        "DELETE FROM notifications WHERE notification_type = 'invitation' AND reference_id = %s",
+        (group_id,)
+    )
 
 
 def _is_admin_or_moderator(group_id, user_id):
@@ -58,30 +66,64 @@ class CreateGroupView(APIView):
         - Public groups allow anyone to join
     """
     permission_classes = [IsAuthenticated]
-    
-    def post(self,request):
-        data=request.data
-        query="""
-        INSERT INTO groups(name,description,admin_id,is_private,cover_image)
-        VALUES (%s,%s,%s,%s,%s)
+
+    def post(self, request):
+        data = request.data
+
+        if 'name' not in data:
+            return Response(
+                {'error': 'name is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        cover_image_url = None
+        if 'cover_image' in request.FILES:
+            try:
+                cover_file = request.FILES['cover_image']
+                FileUploadHandler.validate_file(cover_file, file_type='image')
+                cover_image_url = FileUploadHandler.upload_file(
+                    cover_file,
+                    folder='group_covers'
+                )
+            except ValueError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        query = """
+        INSERT INTO groups(name, description, admin_id, is_private, cover_image)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING id
         """
 
-        group_id=DatabaseManager.execute_insert(
+        result = DatabaseManager.execute_query(
             query,
             (
                 data['name'],
                 data.get('description'),
                 request.user.id,
                 data.get('is_private', False),
-                data.get('cover_image')
+                cover_image_url
             )
         )
+
+        if not result:
+            return Response(
+                {'error': 'Group creation failed'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        group_id = result[0]['id']
+
         DatabaseManager.execute_insert(
-            "INSERT INTO group_members (group_id, user_id, role, status) VALUES (%s, %s, 'admin', 'accepted')",
+            """
+            INSERT INTO group_members (group_id, user_id, role, status)
+            VALUES (%s, %s, 'admin', 'accepted')
+            """,
             (group_id, request.user.id)
         )
-        
+
         return Response({
             'message': 'Group created successfully',
             'group_id': group_id
@@ -130,6 +172,9 @@ class GroupDetailView(APIView):
                 'get_group_details',
                 (group_id, request.user.id)
             )
+
+        
+        
         except ProgrammingError:
             result = DatabaseManager.execute_query(
                 """
@@ -275,6 +320,43 @@ class AcceptGroupMemberView(APIView):
         """
         DatabaseManager.execute_update(update_query, (group_id, user_id))
         return Response({'message': 'Member accepted'})
+    
+
+class RejectGroupMemberView(APIView):
+    """
+    Reject a pending member request (Admin/Moderator only).
+
+    API Endpoint: POST /api/groups/<group_id>/reject/<user_id>/
+    Authentication: Required (JWT Token)
+    Authorization: Admin or Moderator only
+    
+    Response (200 OK):
+        {"message": "Member rejected"}
+    
+    Response (403 Forbidden):
+        {"error": "Unauthorized"}
+    
+    Database Operations:
+        - Verifies current user is admin or moderator
+        - Updates member status from 'pending' to 'rejected'
+    
+    Notes:
+        - Only admins and moderators can reject members
+        - Changes status of pending requests
+        - Rejected if requester is not admin/moderator
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, group_id, user_id):
+        if not _is_admin_or_moderator(group_id, request.user.id):
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+        
+        update_query = """
+        DELETE FROM group_members
+        WHERE group_id = %s AND user_id = %s
+        """
+        DatabaseManager.execute_update(update_query, (group_id, user_id))
+        return Response({'message': 'Member rejected'})
 
 
 class InviteGroupMemberView(APIView):
@@ -329,14 +411,19 @@ class InviteGroupMemberView(APIView):
                 return Response({'message': 'User is already part of group'})
 
             DatabaseManager.execute_update(
-                "UPDATE group_members SET status = 'accepted', role = 'member' WHERE group_id = %s AND user_id = %s",
+                "UPDATE group_members SET status = 'invited', role = 'member' WHERE group_id = %s AND user_id = %s",
                 (group_id, target_user_id)
             )
             return Response({'message': 'User invited successfully'})
 
         DatabaseManager.execute_insert(
-            "INSERT INTO group_members (group_id, user_id, role, status) VALUES (%s, %s, 'member', 'accepted')",
+            "INSERT INTO group_members (group_id, user_id, role, status) VALUES (%s, %s, 'member', 'invited')",
             (group_id, target_user_id)
+        )
+        DatabaseManager.execute_insert(
+            "INSERT INTO notifications (user_id, actor_id, notification_type, reference_id, content, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, NOW())",
+            (target_user_id, request.user.id, 'group_invite', group_id, 'invited you to a group')
         )
         return Response({'message': 'User invited successfully'})
 
@@ -479,21 +566,19 @@ class UpdateGroupView(APIView):
         - Cover image can be changed
     """
     permission_classes = [IsAuthenticated]
-    
+
     def put(self, request, group_id):
-        # Check if user is admin
-        check_query = """
-        SELECT admin_id FROM groups WHERE id = %s
-        """
+        check_query = "SELECT admin_id FROM groups WHERE id = %s"
         result = DatabaseManager.execute_query(check_query, (group_id,))
-        
+
         if not result or result[0]['admin_id'] != request.user.id:
             return Response({'error': 'Only admin can update group'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         data = request.data
         update_fields = []
         params = []
-        
+
+        # Handle regular fields
         if 'name' in data:
             update_fields.append("name = %s")
             params.append(data['name'])
@@ -503,16 +588,26 @@ class UpdateGroupView(APIView):
         if 'is_private' in data:
             update_fields.append("is_private = %s")
             params.append(data['is_private'])
-        if 'cover_image' in data:
-            update_fields.append("cover_image = %s")
-            params.append(data['cover_image'])
-        
-        if update_fields:
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(group_id)
-            update_query = f"UPDATE groups SET {', '.join(update_fields)} WHERE id = %s"
-            DatabaseManager.execute_update(update_query, tuple(params))
-        
+
+        if 'cover_image' in request.FILES:
+            try:
+                cover_file = request.FILES['cover_image']
+                FileUploadHandler.validate_file(cover_file, file_type='image')
+                cover_image_url = FileUploadHandler.upload_file(cover_file, folder='group_covers')
+                update_fields.append("cover_image = %s")
+                params.append(cover_image_url)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not update_fields:
+            return Response({'error': 'No fields to update'}, status=status.HTTP_400_BAD_REQUEST)
+
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(group_id)
+
+        update_query = f"UPDATE groups SET {', '.join(update_fields)} WHERE id = %s"
+        DatabaseManager.execute_update(update_query, tuple(params))
+
         return Response({'message': 'Group updated successfully'})
 
     def patch(self, request, group_id):
@@ -613,7 +708,7 @@ class GroupPostsView(APIView):
         if group_result[0]['is_private']:
             member_query = """
             SELECT 1 FROM group_members 
-            WHERE group_id = %s AND user_id = %s AND status = 'accepted'
+            WHERE group_id = %s AND user_id = %s AND (status = 'accepted' OR status = 'invited')
             """
             member_result = DatabaseManager.execute_query(member_query, (group_id, request.user.id))
             if not member_result:
@@ -1136,3 +1231,194 @@ class DemoteModeratorView(APIView):
             return Response({'message': 'Moderator demoted to member'})
         return Response({'error': 'Demotion failed. You must be admin and target must be moderator.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
+
+
+class AcceptGroupInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, group_id):
+        updated = DatabaseManager.execute_update(
+            """
+            UPDATE group_members
+            SET status = 'accepted'
+            WHERE group_id = %s AND user_id = %s AND status = 'invited'
+            """,
+            (group_id, request.user.id)
+        )
+
+        if not updated:
+            return Response({'error': 'No invitation found'}, status=404)
+
+        return Response({'message': 'Joined group successfully'})
+    
+    
+    class RejectGroupInviteView(APIView):
+        permission_classes = [IsAuthenticated]
+
+        def post(self, request, group_id):
+            deleted = DatabaseManager.execute_update(
+                """
+                DELETE FROM group_members
+                WHERE group_id = %s AND user_id = %s AND status = 'invited'
+                """,
+                (group_id, request.user.id)
+            )
+
+            if not deleted:
+                return Response({'error': 'No invitation found'}, status=404)
+
+            return Response({'message': 'Invitation rejected'})
+        
+class InvitedMembersView(APIView):
+    """
+    Get list of invited member requests (Admin/Moderator only).
+    
+    API Endpoint: GET /api/groups/<group_id>/invited/
+    Authentication: Required (JWT Token)
+    Authorization: Admin or Moderator only
+    
+    Response (200 OK):
+        [
+            {
+                "user_id": 15,
+                "name": "Alice Johnson",
+                "profile_picture": "path/to/profile.jpg",
+                "department_name": "CSE",
+                "batch": 18,
+                "requested_at": "2025-12-28T10:30:00"
+            }
+        ]
+    
+    Response (403 Forbidden):
+        {"error": "Unauthorized"}
+    
+    Database Operations:
+        - Verifies current user is admin or moderator
+        - Fetches all pending join requests
+        - Includes user profile information
+        """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, group_id):
+        if not _is_admin_or_moderator(group_id, request.user.id):
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get invited members
+        invited_query = """
+        SELECT 
+            u.id as user_id,
+            u.name,
+            u.profile_picture,
+            u.department_name,
+            u.batch,
+            gm.joined_at as requested_at
+        FROM group_members gm
+        LEFT JOIN users u ON gm.user_id = u.id
+        WHERE gm.group_id = %s AND gm.status = 'invited'
+        ORDER BY gm.joined_at DESC
+        """
+        invited_members = DatabaseManager.execute_query(invited_query, (group_id,))
+        
+        return Response(invited_members)
+    
+    
+
+
+class CancelGroupInvite(APIView):
+    """
+    Cancel a group invitation (Admin/Moderator only)
+
+    API Endpoint: POST /api/groups/<group_id>/cancel-invite/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, group_id, user_id):
+        actor_role = _get_group_role(group_id, request.user.id)
+        if actor_role not in ['admin', 'moderator']:
+            return Response({'error': 'Unauthorized'}, status=403)
+
+        target_user_id = user_id
+        if not target_user_id:
+            return Response({'error': 'user_id is required'}, status=400)
+
+        try:
+            target_user_id = int(target_user_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'user_id must be an integer'}, status=400)
+
+        existing = DatabaseManager.execute_query(
+            "SELECT status FROM group_members WHERE group_id = %s AND user_id = %s",
+            (group_id, target_user_id)
+        )
+
+        if not existing:
+            return Response({'error': 'No invitation found'}, status=404)
+
+        status_val = existing[0]['status']
+
+        if status_val != 'invited':
+            return Response({'error': 'User is not in invited state'}, status=400)
+
+        DatabaseManager.execute_update(
+            "DELETE FROM group_members WHERE group_id = %s AND user_id = %s",
+            (group_id, target_user_id)
+        )
+
+        return Response({'message': 'Invitation cancelled successfully'})
+    
+class UserGroupInvitesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_id = request.user.id
+
+        query = """
+        SELECT 
+            g.id as group_id,
+            g.name as group_name,
+            g.cover_image as group_cover,
+            gm.joined_at as invited_at
+        FROM group_members gm
+        INNER JOIN groups g ON gm.group_id = g.id
+        WHERE gm.user_id = %s AND gm.status = 'invited'
+        ORDER BY gm.joined_at DESC
+        """
+
+        invites = DatabaseManager.execute_query(query, (user_id,))
+
+        return Response(invites)
+
+class AcceptGroupInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, group_id):
+        updated = DatabaseManager.execute_update(
+            """
+            UPDATE group_members
+            SET status = 'accepted'
+            WHERE group_id = %s AND user_id = %s AND status = 'invited'
+            """,
+            (group_id, request.user.id)
+        )
+
+        if not updated:
+            return Response({'error': 'No invitation found'}, status=404)
+
+        return Response({'message': 'Joined group successfully'})
+    
+class RejectGroupInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, group_id):
+        updated = DatabaseManager.execute_update(
+            """
+            DELETE FROM group_members
+            WHERE group_id = %s AND user_id = %s AND status = 'invited'
+            """,
+            (group_id, request.user.id)
+        )
+
+        if not updated:
+            return Response({'error': 'No invitation found'}, status=404)
+
+        return Response({'message': 'Invitation rejected successfully'})
