@@ -22,6 +22,7 @@ urlpatterns = [
     path('<int:group_id>/join/', JoinGroupView.as_view(), name='join-group'),
     path('<int:group_id>/leave/', LeaveGroupView.as_view(), name='leave-group'),
     path('<int:group_id>/accept/<int:user_id>/', AcceptGroupMemberView.as_view(), name='accept-member'),
+    path('<int:group_id>/reject/<int:user_id>/', RejectGroupMemberView.as_view(), name='reject-member'),
     path('<int:group_id>/invite/', InviteGroupMemberView.as_view(), name='invite-member'),
     path('<int:group_id>/members/<int:user_id>/', RemoveGroupMemberView.as_view(), name='remove-member'),
     path('<int:group_id>/invited/', InvitedMembersView.as_view(), name='invited-members'),

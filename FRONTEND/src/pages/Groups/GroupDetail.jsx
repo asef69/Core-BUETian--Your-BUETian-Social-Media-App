@@ -15,6 +15,7 @@ const GroupDetail = () => {
   const [posts, setPosts] = useState([]);
   const [members, setMembers] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
+  const [invitedMembers, setInvitedMembers] = useState([]);
   const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
@@ -100,7 +101,16 @@ const GroupDetail = () => {
   const getCurrentUserRole = (groupData, memberList) => {
     const roleFromGroup =
       groupData?.current_user_role || groupData?.role || groupData?.user_role;
-    if (roleFromGroup) return roleFromGroup;
+    if (roleFromGroup) {
+      return String(roleFromGroup).toLowerCase();
+    }
+
+    if (groupData?.is_admin === true || groupData?.current_user_is_admin === true) {
+      return 'admin';
+    }
+    if (groupData?.is_moderator === true || groupData?.current_user_is_moderator === true) {
+      return 'moderator';
+    }
 
     const currentUserId = currentUser?.id;
     if (!currentUserId) return 'member';
@@ -123,27 +133,30 @@ const GroupDetail = () => {
     }
 
     const memberMatch = memberList.find((member) => member.user_id === currentUserId);
-    return memberMatch?.role || 'member';
+    return String(memberMatch?.role || 'member').toLowerCase();
   };
 
   const loadGroupData = async () => {
     try {
-      const [groupRes, postsRes, membersRes, pendingRes, activityRes] = await Promise.all([
+      const [groupRes, postsRes, membersRes, pendingRes, invitedRes, activityRes] = await Promise.all([
         groupAPI.getGroup(groupId),
         groupAPI.getGroupPosts(groupId),
         groupAPI.getMembers(groupId),
         groupAPI.getPending(groupId).catch(() => ({ data: [] })),
+        groupAPI.getInvited(groupId).catch(() => ({ data: [] })),
         groupAPI.getActivity(groupId).catch(() => ({ data: {} })),
       ]);
       const groupData = extractGroup(groupRes.data);
       const postsData = extractItems(postsRes.data).map(normalizePost);
       const membersData = extractItems(membersRes.data).map(normalizeMember);
       const pendingData = extractItems(pendingRes.data).map(normalizeMember);
+      const invitedData = extractItems(invitedRes.data).map(normalizeMember);
 
       setGroup(groupData);
       setPosts(postsData);
       setMembers(membersData);
       setPendingMembers(pendingData);
+      setInvitedMembers(invitedData);
       setActivity(activityRes?.data || {});
       setCoverImageFile(null);
       setFollowersPage(1);
@@ -154,7 +167,14 @@ const GroupDetail = () => {
           const followersRes = await userAPI.getFollowers(currentUser.id);
           const followerItems = extractItems(followersRes.data).map(normalizeUser);
           const memberIds = new Set(membersData.map((member) => member.user_id));
-          const filteredFollowers = followerItems.filter((item) => !memberIds.has(item.user_id));
+          const pendingIds = new Set(pendingData.map((member) => member.user_id));
+          const invitedIds = new Set(invitedData.map((member) => member.user_id));
+          const filteredFollowers = followerItems.filter(
+            (item) =>
+              !memberIds.has(item.user_id) &&
+              !pendingIds.has(item.user_id) &&
+              !invitedIds.has(item.user_id)
+          );
           setFollowersToInvite(filteredFollowers);
         } catch (error) {
           setFollowersToInvite([]);
@@ -242,6 +262,16 @@ const GroupDetail = () => {
     }
   };
 
+  const handleRejectMember = async (userId) => {
+    try {
+      await groupAPI.rejectMember(groupId, userId);
+      toast.success('Member request rejected');
+      loadGroupData();
+    } catch (error) {
+      toast.error('Failed to reject member');
+    }
+  };
+
   const handlePromote = async (userId) => {
     try {
       await groupAPI.promoteMember(groupId, userId);
@@ -284,6 +314,16 @@ const GroupDetail = () => {
     }
   };
 
+  const handleCancelInvite = async (userId) => {
+    try {
+      const response = await groupAPI.cancelInvite(groupId, userId);
+      toast.success(response?.data?.message || 'Invite canceled');
+      loadGroupData();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to cancel invite');
+    }
+  };
+
   const handleKickMember = async (userId) => {
     if (!window.confirm('Remove this member from the group?')) return;
     try {
@@ -306,7 +346,16 @@ const GroupDetail = () => {
       const response = await userAPI.searchUsers(searchTerm.trim());
       const users = extractItems(response.data).map(normalizeUser);
       const memberIds = new Set(members.map((member) => member.user_id));
-      setSearchCandidates(users.filter((item) => !memberIds.has(item.user_id)));
+      const pendingIds = new Set(pendingMembers.map((member) => member.user_id));
+      const invitedIds = new Set(invitedMembers.map((member) => member.user_id));
+      setSearchCandidates(
+        users.filter(
+          (item) =>
+            !memberIds.has(item.user_id) &&
+            !pendingIds.has(item.user_id) &&
+            !invitedIds.has(item.user_id)
+        )
+      );
       setSearchPage(1);
     } catch (error) {
       toast.error('Failed to search users');
@@ -364,8 +413,11 @@ const GroupDetail = () => {
   }
 
   const currentUserRole = getCurrentUserRole(group, members);
-  const canManageMembers = currentUserRole === 'admin' || currentUserRole === 'moderator';
-  const canChangeRoles = currentUserRole === 'admin';
+  const canManageMembers =
+    currentUserRole === 'admin' ||
+    currentUserRole === 'owner' ||
+    currentUserRole === 'moderator';
+  const canChangeRoles = currentUserRole === 'admin' || currentUserRole === 'owner';
 
   return (
     <div className="app-layout">
@@ -565,9 +617,47 @@ const GroupDetail = () => {
                           >
                             Accept
                           </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleRejectMember(member.user_id)}
+                          >
+                            Reject
+                          </button>
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {canManageMembers && (
+                  <div className="pending-members">
+                    <h3>Invited Users</h3>
+                    {invitedMembers.length === 0 ? (
+                      <p>No active invites right now.</p>
+                    ) : (
+                      invitedMembers.map((member) => (
+                        <div key={member.user_id} className="member-item pending">
+                          <img
+                            src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                            alt={member.name || 'User'}
+                            className="avatar"
+                            onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                          />
+                          <div className="member-info">
+                            <h4>{member.name}</h4>
+                            <span className="member-role">invited</span>
+                          </div>
+                          <div className="member-actions">
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleCancelInvite(member.user_id)}
+                            >
+                              Cancel Invite
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -728,7 +818,11 @@ const GroupDetail = () => {
                           </>
                         )}
 
-                        {canManageMembers && (
+                        {canManageMembers &&
+                          !(
+                            currentUserRole === 'moderator' &&
+                            (member.role === 'admin' || member.role === 'owner')
+                          ) && (
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleKickMember(member.user_id)}
