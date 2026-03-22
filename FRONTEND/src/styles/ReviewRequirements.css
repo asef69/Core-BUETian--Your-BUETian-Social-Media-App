@@ -1,0 +1,138 @@
+.review-requirements {
+  background: white;
+  border: 2px solid #e8eef5;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  transition: all 0.3s ease;
+}
+
+.review-requirements.can-review {
+  border-color: #10b981;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.02) 100%);
+}
+
+.review-requirements.cannot-review {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(245, 158, 11, 0.02) 100%);
+}
+
+.requirements-header {
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e8eef5;
+  padding-bottom: 12px;
+}
+
+.requirements-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.requirements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.requirement-item {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f8f9fa;
+  border-left: 4px solid #cbd5e0;
+  transition: all 0.2s ease;
+}
+
+.requirement-item.met {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border-left-color: #10b981;
+}
+
+.requirement-item.unmet {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+  border-left-color: #f59e0b;
+}
+
+.requirement-item .icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.requirement-item.met .icon {
+  color: #10b981;
+}
+
+.requirement-item.unmet .icon {
+  color: #f59e0b;
+}
+
+.requirement-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.requirement-text .label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.requirement-text .detail {
+  font-size: 13px;
+  color: #718096;
+  line-height: 1.5;
+}
+
+.requirements-status {
+  padding: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.requirements-status.ready {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  justify-content: center;
+}
+
+.requirements-status.waiting {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  justify-content: center;
+}
+
+.requirements-status svg {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .review-requirements {
+    padding: 16px;
+  }
+
+  .requirement-item {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .requirement-text .label {
+    font-size: 13px;
+  }
+
+  .requirement-text .detail {
+    font-size: 12px;
+  }
+}

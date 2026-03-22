@@ -86,6 +86,8 @@ def start_process(name: str, command: list[str], cwd: Path) -> subprocess.Popen:
         "stderr": subprocess.STDOUT,
         "text": True,
         "bufsize": 1,
+        "encoding": "utf-8",     
+        "errors": "replace",
     }
 
     if os.name == "nt":

@@ -78,7 +78,9 @@ export const postAPI = {
 export const chatAPI = {
   getConversations: () => api.get('/chat/messages/conversations/'),
   getMessages: (userId) => api.get(`/chat/messages/conversation/${userId}/`),
+  getProductMessages: (userId, productId) => api.get(`/chat/messages/${userId}/product/${productId}/`),
   sendMessage: (data) => api.post('/chat/messages/send/', data),
+  contactSeller: (data) => api.post('/chat/contact-seller/', data),
   uploadImage: (formData) => api.post('/chat/upload-image/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
@@ -92,15 +94,24 @@ export const chatAPI = {
 
 
 export const groupAPI = {
-  createGroup: (data) => api.post('/groups/create/', data),
+  createGroup: (data) =>api.post('/groups/create/', data, {headers: { 'Content-Type': 'multipart/form-data' },}),
   getGroup: (groupId) => api.get(`/groups/${groupId}/`),
-  updateGroup: (groupId, data) => api.patch(`/groups/${groupId}/update/`, data),
+  updateGroup: (groupId, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.patch(`/groups/${groupId}/update/`, data, isFormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    } : undefined);
+  },
   deleteGroup: (groupId) => api.delete(`/groups/${groupId}/delete/`),
   getMembers: (groupId) => api.get(`/groups/${groupId}/members/`),
   getPending: (groupId) => api.get(`/groups/${groupId}/pending/`),
+  getInvited: (groupId) => api.get(`/groups/${groupId}/invited/`),
+  cancelInvite: (groupId, userId) => api.post(`/groups/${groupId}/cancel-invite/${userId}/`),
+  getInvites: () => api.get('/groups/invites/'),
   joinGroup: (groupId) => api.post(`/groups/${groupId}/join/`),
   leaveGroup: (groupId) => api.post(`/groups/${groupId}/leave/`),
   acceptMember: (groupId, userId) => api.post(`/groups/${groupId}/accept/${userId}/`),
+  rejectMember: (groupId, userId) => api.post(`/groups/${groupId}/reject/${userId}/`),
   inviteMember: (groupId, userId) => api.post(`/groups/${groupId}/invite/`, { user_id: userId }),
   promoteMember: (groupId, userId) => api.post(`/groups/${groupId}/promote/${userId}/`),
   demoteMember: (groupId, userId) => api.post(`/groups/${groupId}/demote/${userId}/`),
@@ -112,6 +123,8 @@ export const groupAPI = {
   getSuggested: () => api.get('/groups/suggested/'),
   searchGroups: (query) => api.get(`/groups/search/?q=${query}`),
   getActivity: (groupId, days = 30) => api.get(`/groups/${groupId}/activity/?days=${days}`),
+  acceptInvite: (groupId) => api.post(`/groups/${groupId}/accept/`),
+  rejectInvite: (groupId) => api.post(`/groups/${groupId}/reject/`),
 };
 
 
@@ -135,6 +148,17 @@ export const marketplaceAPI = {
   getSimilarProducts: (productId, limit = 5) => api.get(`/marketplace/products/${productId}/similar/?limit=${limit}`),
   searchProducts: (query) => api.get(`/marketplace/search/?q=${query}`),
   getCategories: () => api.get('/marketplace/categories/'),
+  
+  // Reviews and Ratings
+  createReview: (productId, data) => api.post(`/marketplace/products/${productId}/reviews/`, data),
+  getSellerReviews: (sellerId, page = 1, productId = null) => {
+    const productQuery = productId ? `&product_id=${productId}` : '';
+    return api.get(`/marketplace/sellers/${sellerId}/reviews/?page=${page}${productQuery}`);
+  },
+  getSellerReputation: (sellerId) => api.get(`/marketplace/sellers/${sellerId}/reputation/`),
+  
+  // Transaction Confirmation
+  confirmTransaction: (productId, data) => api.post(`/marketplace/transactions/${productId}/confirm/`, data),
 };
 
 

@@ -217,15 +217,51 @@ CREATE TABLE blog_comment_likes(
     UNIQUE(user_id, comment_id)
 );
 
---table for messaging chat app
+--table for messaging chat app (extended for product-specific conversations)
 CREATE TABLE messages(
     id SERIAL PRIMARY KEY,
     sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    product_id INTEGER REFERENCES marketplace_products(id) ON DELETE SET NULL,
     content TEXT NOT NULL,
     media_url VARCHAR(500),
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+--table for buyer-seller transaction confirmations
+CREATE TABLE buyer_seller_transactions(
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
+    buyer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    buyer_confirmed BOOLEAN DEFAULT FALSE,
+    seller_confirmed BOOLEAN DEFAULT FALSE,
+    confirmed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(product_id, buyer_id, seller_id)
+);
+
+--table for product reviews and ratings
+CREATE TABLE product_reviews(
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
+    buyer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+    review_text TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(product_id, buyer_id)
+);
+
+--table for seller reputation scores (cached for performance)
+CREATE TABLE seller_reputation(
+    id SERIAL PRIMARY KEY,
+    seller_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    average_rating DECIMAL(2,1) DEFAULT 0,
+    total_reviews INTEGER DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 --table for notifications
@@ -261,4 +297,6 @@ CREATE TABLE comment_likes (
     CONSTRAINT unique_comment_user UNIQUE(comment_id, user_id)
 );
 
+ALTER TABLE messages 
+ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES marketplace_products(id) ON DELETE SET NULL;
 

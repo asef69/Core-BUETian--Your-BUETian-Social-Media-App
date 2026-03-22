@@ -12,6 +12,7 @@ import Profile from './pages/Profile/Profile';
 import Chat from './pages/Chat/Chat';
 import Groups from './pages/Groups/Groups';
 import GroupDetail from './pages/Groups/GroupDetail';
+import NonMemberGroupView from './pages/Groups/NonMemberGroupView';
 import Marketplace from './pages/Marketplace/Marketplace';
 import ProductDetail from './pages/Marketplace/ProductDetail';
 import Forums from './pages/Forums/Forums';
@@ -52,6 +53,7 @@ function App() {
             <Route path="/chat/:userId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/groups/:groupId" element={<ProtectedRoute><GroupDetail /></ProtectedRoute>} />
+            <Route path="/groups/:groupId/nonmember" element={<ProtectedRoute><NonMemberGroupView /></ProtectedRoute>} />
             <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
             <Route path="/marketplace/:productId" element={<ProtectedRoute><ProductDetail /></ProtectedRoute>} />
             <Route path="/forums" element={<ProtectedRoute><Forums /></ProtectedRoute>} />

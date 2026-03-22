@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { marketplaceAPI } from '../../services/apiService';
+import { marketplaceAPI, chatAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
+import ReviewForm from '../../components/ReviewForm';
+import ReviewsList from '../../components/ReviewsList';
+import ReviewRequirements from '../../components/ReviewRequirements';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import { FaMapMarkerAlt, FaUser } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaUser, FaStar } from 'react-icons/fa';
 
 const HARD_CODED_CATEGORIES = [
   'Electronics',
@@ -30,6 +33,7 @@ const ProductDetail = () => {
   const [editCategoryMode, setEditCategoryMode] = useState('existing');
   const [customEditCategory, setCustomEditCategory] = useState('');
   const [similarProducts, setSimilarProducts] = useState([]);
+  const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
 
   const isOwnProduct =
     !!user &&
@@ -70,6 +74,20 @@ const ProductDetail = () => {
       toast.error('Failed to load product');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleContactSeller = async () => {
+    try {
+      const response = await chatAPI.contactSeller({
+        product_id: productId,
+        message: `Hi! I'm interested in your product: ${product.title}`,
+      });
+      toast.success('Message sent to seller!');
+      // Optionally redirect to chat
+      window.location.href = `/chat/${response.data.seller_id}`;
+    } catch (error) {
+      toast.error('Failed to contact seller');
     }
   };
 
@@ -125,6 +143,11 @@ const ProductDetail = () => {
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to update product');
     }
+  };
+
+  const handleReviewSubmitted = async () => {
+    await loadProduct();
+    setReviewRefreshToken((prev) => prev + 1);
   };
 
   if (loading) {
@@ -301,12 +324,9 @@ const ProductDetail = () => {
                       Reserve Product
                     </button>
                   )}
-                  <Link
-                    to={`/chat/${product.seller_id}?message=${encodeURIComponent(`Hi, I am interested in \"${product.title}\" (Product #${productId}). Is it still available?`)}`}
-                    className="btn btn-secondary"
-                  >
+                  <button className="btn btn-secondary" onClick={handleContactSeller}>
                     Contact Seller
-                  </Link>
+                  </button>
                 </div>
               )}
 
@@ -354,6 +374,36 @@ const ProductDetail = () => {
                     })}
                   </div>
                 </div>
+              )}
+
+              {/* Reviews and Ratings Section */}
+              {product.seller_id && (
+                <>
+                  <ReviewsList 
+                    sellerId={product.seller_id} 
+                    sellerName={product.seller_name}
+                    productId={productId}
+                    refreshToken={reviewRefreshToken}
+                  />
+                  
+                  {!isOwnProduct && (
+                    <>
+                      <ReviewRequirements 
+                        product={product} 
+                        user={user} 
+                        isOwnProduct={isOwnProduct}
+                      />
+                      
+                      {product.status === 'sold' && !isOwnProduct && (
+                        <ReviewForm 
+                          productId={productId} 
+                          sellerId={product.seller_id}
+                          onReviewSubmitted={handleReviewSubmitted}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>

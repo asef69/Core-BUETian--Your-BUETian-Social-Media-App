@@ -4,7 +4,7 @@ import { groupAPI, postAPI, userAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
-import { FaUsers, FaSignOutAlt } from 'react-icons/fa';
+import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 
 const GroupDetail = () => {
@@ -18,6 +18,8 @@ const GroupDetail = () => {
   const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
+  const [newPostFiles, setNewPostFiles] = useState([]);
+  const [creatingPost, setCreatingPost] = useState(false);
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [updatingCover, setUpdatingCover] = useState(false);
   const [followersToInvite, setFollowersToInvite] = useState([]);
@@ -167,15 +169,42 @@ const GroupDetail = () => {
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!newPostContent.trim()) return;
+
+    const trimmedContent = newPostContent.trim();
+    if (!trimmedContent && newPostFiles.length === 0) {
+      toast.error('Write something or attach media to post');
+      return;
+    }
 
     try {
-      await groupAPI.createGroupPost(groupId, { content: newPostContent });
+      setCreatingPost(true);
+
+      const uploadedUrls = [];
+
+      for (const file of newPostFiles) {
+        const isVideo = file.type.startsWith('video/');
+        const formData = new FormData();
+        formData.append('media', file);
+        formData.append('media_type', isVideo ? 'video' : 'image');
+
+        const uploadRes = await postAPI.uploadMedia(formData);
+        const urls = (uploadRes?.data?.uploaded_files || []).map((item) => item.url).filter(Boolean);
+        uploadedUrls.push(...urls);
+      }
+
+      await groupAPI.createGroupPost(groupId, {
+        content: trimmedContent,
+        media_urls: uploadedUrls,
+      });
+
       setNewPostContent('');
+      setNewPostFiles([]);
       loadGroupData();
       toast.success('Post created!');
     } catch (error) {
-      toast.error('Failed to create post');
+      toast.error(error?.response?.data?.error || 'Failed to create post');
+    } finally {
+      setCreatingPost(false);
     }
   };
 
@@ -188,6 +217,18 @@ const GroupDetail = () => {
       navigate('/groups');
     } catch (error) {
       toast.error('Failed to leave group');
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Delete this group permanently? This cannot be undone.')) return;
+
+    try {
+      await groupAPI.deleteGroup(groupId);
+      toast.success('Group deleted successfully');
+      navigate('/groups');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to delete group');
     }
   };
 
@@ -293,18 +334,8 @@ const GroupDetail = () => {
     setUpdatingCover(true);
     try {
       const formData = new FormData();
-      formData.append('media', coverImageFile);
-      formData.append('media_type', 'image');
-
-      const uploadResponse = await postAPI.uploadMedia(formData);
-      const uploadedUrl = uploadResponse?.data?.uploaded_files?.[0]?.url;
-
-      if (!uploadedUrl) {
-        toast.error('Cover image upload failed');
-        return;
-      }
-
-      await groupAPI.updateGroup(groupId, { cover_image: uploadedUrl });
+      formData.append('cover_image', coverImageFile);
+      await groupAPI.updateGroup(groupId, formData);
       toast.success('Cover image updated');
       loadGroupData();
     } catch (error) {
@@ -358,21 +389,43 @@ const GroupDetail = () => {
                 <div className="group-meta">
                   <span><FaUsers /> {members.length} members</span>
                 </div>
-                {canManageMembers && (
+                {canChangeRoles && (
                   <form className="group-cover-form" onSubmit={handleUpdateCover}>
                     <input
+                      id="group-cover-input"
+                      className="group-cover-input-hidden"
                       type="file"
                       accept="image/*"
+                      hidden
                       onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
                     />
-                    <button className="btn btn-secondary" type="submit" disabled={updatingCover}>
+                    <button
+                      className="btn btn-secondary cover-picker-btn"
+                      type="button"
+                      onClick={() => document.getElementById('group-cover-input')?.click()}
+                    >
+                      {coverImageFile ? 'Change Cover' : 'Choose Cover'}
+                    </button>
+                    <span className="cover-file-name">{coverImageFile?.name || 'No file selected'}</span>
+                    <button
+                      className="btn btn-secondary"
+                      type="submit"
+                      disabled={updatingCover || !coverImageFile}
+                    >
                       {updatingCover ? 'Updating...' : 'Update Cover'}
                     </button>
                   </form>
                 )}
-                <button className="btn btn-danger" onClick={handleLeaveGroup}>
-                  <FaSignOutAlt /> Leave Group
-                </button>
+                <div className="group-primary-actions">
+                  <button className="btn btn-danger" onClick={handleLeaveGroup}>
+                    <FaSignOutAlt /> Leave Group
+                  </button>
+                  {canChangeRoles && (
+                    <button className="btn btn-danger delete-group-btn" onClick={handleDeleteGroup}>
+                      <FaTrash /> Delete Group
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -401,14 +454,83 @@ const GroupDetail = () => {
 
             {activeTab === 'posts' && (
               <div className="group-posts">
-                <form onSubmit={handleCreatePost} className="create-post-form">
+                <form onSubmit={handleCreatePost} className="create-post-form fancy-post-form">
                   <textarea
-                    placeholder="Share something with the group..."
+                    placeholder="What's on your mind?"
                     value={newPostContent}
                     onChange={(e) => setNewPostContent(e.target.value)}
-                    rows="3"
+                    rows="4"
                   />
-                  <button type="submit" className="btn btn-primary">Post</button>
+
+                  <input
+                    id="group-post-photo-input"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || []);
+                      if (selected.length > 0) {
+                        setNewPostFiles((prev) => [...prev, ...selected]);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                  <input
+                    id="group-post-video-input"
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || []);
+                      if (selected.length > 0) {
+                        setNewPostFiles((prev) => [...prev, ...selected]);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+
+                  <div className="fancy-post-actions">
+                    <button
+                      type="button"
+                      className="fancy-media-btn"
+                      onClick={() => document.getElementById('group-post-photo-input')?.click()}
+                    >
+                      <FaImage /> Photo
+                    </button>
+                    <button
+                      type="button"
+                      className="fancy-media-btn"
+                      onClick={() => document.getElementById('group-post-video-input')?.click()}
+                    >
+                      <FaVideo /> Video
+                    </button>
+
+                    <button type="submit" className="btn btn-primary fancy-post-submit" disabled={creatingPost}>
+                      {creatingPost ? 'Posting...' : 'Post'}
+                    </button>
+                  </div>
+
+                  {newPostFiles.length > 0 && (
+                    <div className="selected-media-list">
+                      {newPostFiles.map((file, index) => (
+                        <span key={`${file.name}-${file.lastModified}`} className="selected-media-chip">
+                          {file.name}
+                          <button
+                            type="button"
+                            className="remove-media-chip"
+                            onClick={() => {
+                              setNewPostFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
+                            }}
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <FaTimes />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </form>
 
                 {posts.length === 0 ? (
