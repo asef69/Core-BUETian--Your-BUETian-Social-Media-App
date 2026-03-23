@@ -32,6 +32,14 @@ const GroupDetail = () => {
   const [searchPage, setSearchPage] = useState(1);
   const [searchPageSize] = useState(5);
   const [activity, setActivity] = useState({});
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editGroupData, setEditGroupData] = useState({
+    name: '',
+    description: '',
+    is_private: false,
+    cover_image: null,
+  });
+  const [updatingGroup, setUpdatingGroup] = useState(false);
 
   useEffect(() => {
     loadGroupData();
@@ -59,6 +67,7 @@ const GroupDetail = () => {
     if (Array.isArray(data?.value)) return data.value;
     if (Array.isArray(data?.posts)) return data.posts;
     if (Array.isArray(data?.members)) return data.members;
+    if (Array.isArray(data?.invited)) return data.invited;
     return [];
   };
 
@@ -179,6 +188,16 @@ const GroupDetail = () => {
         } catch (error) {
           setFollowersToInvite([]);
         }
+      }
+
+      const role = getCurrentUserRole(groupData, membersData);
+      if (groupData && role === 'admin') {
+        setEditGroupData({
+          name: groupData.name || '',
+          description: groupData.description || '',
+          is_private: groupData.is_private || false,
+          cover_image: null,
+        });
       }
     } catch (error) {
       toast.error('Failed to load group');
@@ -376,6 +395,51 @@ const GroupDetail = () => {
   );
   const searchTotalPages = Math.max(1, Math.ceil(searchCandidates.length / searchPageSize));
 
+  const handleEditChange = (e) => {
+    const { name, value, type, checked, files } = e.target;
+
+    if (type === 'checkbox') {
+      setEditGroupData((prev) => ({ ...prev, [name]: checked }));
+    } else if (type === 'file') {
+      setEditGroupData((prev) => ({ ...prev, cover_image: files[0] || null }));
+    } else {
+      setEditGroupData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    setUpdatingGroup(true);
+
+    try {
+      const formData = new FormData();
+      if (editGroupData.name) formData.append('name', editGroupData.name);
+      if (editGroupData.description) formData.append('description', editGroupData.description);
+      formData.append('is_private', editGroupData.is_private);
+
+      if (editGroupData.cover_image) {
+        const uploadData = new FormData();
+        uploadData.append('media', editGroupData.cover_image);
+        uploadData.append('media_type', 'image');
+        const uploadRes = await postAPI.uploadMedia(uploadData);
+        const uploadedUrl = uploadRes?.data?.uploaded_files?.[0]?.url;
+        if (uploadedUrl) formData.append('cover_image', uploadedUrl);
+      }
+
+      await groupAPI.updateGroup(groupId, formData);
+
+      toast.success('Group updated successfully!');
+      setShowEditForm(false);
+      await loadGroupData();
+      setActiveTab('posts');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to update group');
+    } finally {
+      setUpdatingGroup(false);
+      setEditGroupData((prev) => ({ ...prev, cover_image: null }));
+    }
+  };
+
   const handleUpdateCover = async (e) => {
     e.preventDefault();
     if (!coverImageFile) return;
@@ -493,6 +557,9 @@ const GroupDetail = () => {
                 onClick={() => setActiveTab('members')}
               >
                 Members ({members.length})
+                {canManageMembers && pendingMembers.length > 0 && (
+                  <sup style={{ marginLeft: 4, color: 'orange' }}>{pendingMembers.length} pending</sup>
+                )}
               </button>
               {canManageMembers && (
                 <button
@@ -768,77 +835,155 @@ const GroupDetail = () => {
                   </div>
                 )}
 
-                {members.map((member) => (
-                  <div key={member.user_id} className="member-item">
-                    <img
-                      src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
-                      alt={member.name || 'User'}
-                      className="avatar"
-                      onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
-                    />
-                    <div className="member-info">
-                      <h4>{member.name}</h4>
-                      <span className="member-role">{member.role}</span>
-                    </div>
-                    {member.user_id !== currentUser?.id && (
-                      <div className="member-actions">
-                        {canChangeRoles && (
-                          <>
-                            {member.role === 'moderator' ? (
-                              <>
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleDemote(member.user_id)}
-                                >
-                                  Demote
-                                </button>
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handleTransferAdmin(member.user_id)}
-                                >
-                                  Make Admin
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handlePromote(member.user_id)}
-                                >
-                                  Promote
-                                </button>
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleTransferAdmin(member.user_id)}
-                                >
-                                  Make Admin
-                                </button>
-                              </>
-                            )}
-                          </>
-                        )}
-
-                        {canManageMembers &&
-                          !(
-                            currentUserRole === 'moderator' &&
-                            (member.role === 'admin' || member.role === 'owner')
-                          ) && (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleKickMember(member.user_id)}
-                          >
-                            Kick
-                          </button>
-                        )}
+                <div className='members'>
+                  <h3>Current Members</h3>
+                  {members.map((member) => (
+                    <div key={member.user_id} className="member-item">
+                      <img
+                        src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                        alt={member.name || 'User'}
+                        className="avatar"
+                        onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                      />
+                      <div className="member-info">
+                        <h4>{member.name}</h4>
+                        <span className="member-role">{member.role}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {member.user_id !== currentUser?.id && (
+                        <div className="member-actions">
+                          {canChangeRoles && (
+                            <>
+                              {member.role === 'moderator' ? (
+                                <>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => handleDemote(member.user_id)}
+                                  >
+                                    Demote
+                                  </button>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={() => handleTransferAdmin(member.user_id)}
+                                  >
+                                    Make Admin
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={() => handlePromote(member.user_id)}
+                                  >
+                                    Promote
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => handleTransferAdmin(member.user_id)}
+                                  >
+                                    Make Admin
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+
+                          {canManageMembers &&
+                            !(
+                              currentUserRole === 'moderator' &&
+                              (member.role === 'admin' || member.role === 'owner')
+                            ) && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => handleKickMember(member.user_id)}
+                              >
+                                Kick
+                              </button>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             {activeTab === 'dashboard' && canManageMembers && (
               <div className="group-admin-dashboard">
+                <div className="dashboard-panel">
+                  <div className="dashboard-heading">
+                    <h3>Edit Group</h3>
+                    <p>Admins can update group name, description, privacy, and cover image.</p>
+
+                    {!showEditForm && (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setShowEditForm(true)}
+                      >
+                        Edit Group
+                      </button>
+                    )}
+                  </div>
+
+                  {showEditForm && (
+                    <form className="edit-group-form" onSubmit={handleUpdateGroup}>
+                      <div className="form-group">
+                        <label>Group Name</label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={editGroupData.name}
+                          onChange={handleEditChange}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Description</label>
+                        <textarea
+                          name="description"
+                          value={editGroupData.description}
+                          onChange={handleEditChange}
+                          rows="3"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>
+                          <input
+                            type="checkbox"
+                            name="is_private"
+                            checked={editGroupData.is_private}
+                            onChange={handleEditChange}
+                          />
+                          Private Group
+                        </label>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Cover Image</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          name="cover_image"
+                          onChange={handleEditChange}
+                        />
+                        {editGroupData.cover_image && <p>{editGroupData.cover_image.name}</p>}
+                      </div>
+
+                      <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
+                        {updatingGroup ? 'Updating...' : 'Update Group'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowEditForm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+                </div>
+
                 <div className="dashboard-panel">
                   <div className="dashboard-heading">
                     <h3>30-Day Group Activity</h3>
@@ -884,6 +1029,19 @@ const GroupDetail = () => {
                       <span className="queue-label">Total Members</span>
                       <strong>{members.length}</strong>
                     </div>
+                  </div>
+                </div>
+
+                <div className="dashboard-panel queue-panel">
+                  <div className="dashboard-bottom">
+                    <h3>Delete Group</h3>
+                    <p>Admins can delete group and all its data.</p>
+                    <button
+                      className="btn btn-danger"
+                      onClick={handleDeleteGroup}
+                    >
+                      Delete Group
+                    </button>
                   </div>
                 </div>
               </div>
