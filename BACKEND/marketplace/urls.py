@@ -5,7 +5,8 @@ from .views import (
     UploadProductImageView, SearchProductsView, SimilarProductsView,
     TrendingProductsView, UserMarketplaceStatsView, MyMarketplaceStatsView,
     PriceRangeStatsView, DepartmentProductsView, MarkProductSoldView,
-    ReserveProductView
+    ReserveProductView, ConfirmTransactionView, CreateReviewView,
+    SellerReviewsView, SellerReputationView
 )
 
 urlpatterns = [
@@ -18,6 +19,14 @@ urlpatterns = [
     path('products/<int:product_id>/mark-sold/', MarkProductSoldView.as_view(), name='mark-sold'),
     path('products/<int:product_id>/reserve/', ReserveProductView.as_view(), name='reserve-product'),
     path('products/<int:product_id>/similar/', SimilarProductsView.as_view(), name='similar-products'),
+    
+    # Reviews and ratings
+    path('products/<int:product_id>/reviews/', CreateReviewView.as_view(), name='create-review'),
+    path('sellers/<int:seller_id>/reviews/', SellerReviewsView.as_view(), name='seller-reviews'),
+    path('sellers/<int:seller_id>/reputation/', SellerReputationView.as_view(), name='seller-reputation'),
+    
+    # Transaction management
+    path('transactions/<int:product_id>/confirm/', ConfirmTransactionView.as_view(), name='confirm-transaction'),
     
     # User products
     path('users/<int:user_id>/products/', UserProductsView.as_view(), name='user-products'),

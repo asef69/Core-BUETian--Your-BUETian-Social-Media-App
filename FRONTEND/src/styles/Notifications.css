@@ -48,6 +48,92 @@
   gap: 8px;
 }
 
+.pending-requests-section {
+  margin-bottom: 14px;
+}
+
+.pending-requests-section h2 {
+  font-size: 1rem;
+  color: var(--light-color);
+  margin-bottom: 8px;
+}
+
+.pending-requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pending-request-item {
+  background: var(--surface);
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.request-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  text-decoration: none;
+  color: inherit;
+}
+
+.request-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.request-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.request-content p {
+  font-size: 0.9rem;
+  color: var(--light-color);
+  margin-bottom: 4px;
+}
+
+.request-time {
+  font-size: 0.78rem;
+  color: var(--muted-color);
+}
+
+.request-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.request-actions .action-btn {
+  background: none;
+  border: none;
+  padding: 7px;
+  cursor: pointer;
+  color: var(--gray-color);
+  border-radius: 8px;
+}
+
+.request-actions .action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.request-actions .action-btn.accept:hover {
+  color: var(--success-color, #28a745);
+}
+
+.request-actions .action-btn.reject:hover {
+  color: var(--danger-color);
+}
+
 .no-notifications {
   text-align: center;
   padding: 42px 20px;
@@ -55,26 +141,21 @@
   border: 1px solid var(--border-color);
   border-radius: 14px;
   box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.no-notifications-icon {
-  font-size: 2rem;
-  color: var(--muted-color);
-  opacity: 0.6;
 }
 
 .no-notifications p {
   font-size: 1rem;
-  color: var(--muted-color);
-  margin: 0;
+  color: var(--light-color);
+  margin: 6px 0;
 }
 
 .no-notifications span {
   font-size: 0.85rem;
+  color: var(--muted-color);
+}
+
+.no-notifications-icon {
+  font-size: 1.35rem;
   color: var(--gray-color);
 }
 
@@ -167,115 +248,9 @@
     width: 38px;
     height: 38px;
   }
-}
 
-/* Pending Follow Requests Styles */
-.pending-requests-section {
-  margin-bottom: 30px;
-}
-
-.pending-requests-section h2 {
-  font-size: 1.4rem;
-  color: var(--light-color);
-  margin-bottom: 15px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 8px;
-}
-
-.pending-requests-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pending-request-item {
-  display: flex;
-  align-items: center;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  gap: 14px;
-}
-
-.request-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  text-decoration: none;
-  color: inherit;
-}
-
-.request-link:hover {
-  opacity: 0.8;
-}
-
-.request-avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid var(--border-color);
-}
-
-.request-content {
-  flex: 1;
-}
-
-.request-content p {
-  margin: 0 0 4px 0;
-  font-size: 0.95rem;
-  color: var(--light-color);
-}
-
-.request-details {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--gray-color);
-  margin-bottom: 2px;
-}
-
-.request-time {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--dark-gray-color);
-}
-
-.request-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.request-actions .action-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  transition: all 0.2s ease;
-}
-
-.request-actions .action-btn.accept {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-}
-
-.request-actions .action-btn.accept:hover {
-  background: rgba(34, 197, 94, 0.3);
-  transform: scale(1.05);
-}
-
-.request-actions .action-btn.reject {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.request-actions .action-btn.reject:hover {
-  background: rgba(239, 68, 68, 0.3);
-  transform: scale(1.05);
+  .request-avatar {
+    width: 38px;
+    height: 38px;
+  }
 }

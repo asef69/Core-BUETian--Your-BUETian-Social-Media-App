@@ -35,10 +35,15 @@ export const userAPI = {
   rejectFollow: (followId) => api.post(`/users/follow/reject/${followId}/`),
   getPendingRequests: () => api.get('/users/follow-requests/pending/'),
   getSuggestions: () => api.get('/users/suggestions/'),
+  getMutualFollowers: () => api.get('/users/mutual-followers/'),
+  getUserActivity: () => api.get('/users/activity/'),
   getFollowers: (userId) => api.get(`/users/${userId}/followers/`),
   getFollowing: (userId) => api.get(`/users/${userId}/following/`),
+  getEngagement: (userId) => api.get(`/users/${userId}/engagement/`),
   getUserPosts: (userId) => api.get(`/users/${userId}/posts/`),
   searchUsers: (query) => api.get(`/users/search/?q=${query}`),
+  getUsersByDepartment: (departmentName) => api.get(`/users/department/${encodeURIComponent(departmentName)}/`),
+  getUsersByBloodGroup: (bloodGroup) => api.get(`/users/blood-group/${encodeURIComponent(bloodGroup)}/`),
 };
 
 
@@ -71,14 +76,20 @@ export const postAPI = {
   getTrendingHashtags: (limit = 10) => api.get(`/posts/hashtags/trending/?limit=${limit}`),
   getPostsByMediaType: (mediaType, limit = 20) => api.get(`/posts/media/${mediaType}/?limit=${limit}`),
   getEngagement: (postId) => api.get(`/posts/${postId}/engagement/`),
+  getUserLikedPosts: (userId) => api.get(`/posts/liked/${userId}/`),
   likecomment: (commentId) => api.post(`/posts/comments/${commentId}/like/`),
 };
 
 
 export const chatAPI = {
+  getConversationList: () => api.get('/chat/conversations/'),
   getConversations: () => api.get('/chat/messages/conversations/'),
+  getConversationWithUser: (userId) => api.get(`/chat/messages/conversation/${userId}/`),
+  getMessageList: (otherUserId) => api.get(`/chat/messages/${otherUserId}/`),
   getMessages: (userId) => api.get(`/chat/messages/conversation/${userId}/`),
+  getProductMessages: (userId, productId) => api.get(`/chat/messages/${userId}/product/${productId}/`),
   sendMessage: (data) => api.post('/chat/messages/send/', data),
+  contactSeller: (data) => api.post('/chat/contact-seller/', data),
   uploadImage: (formData) => api.post('/chat/upload-image/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
@@ -86,7 +97,13 @@ export const chatAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   markAsRead: (messageId) => api.post(`/chat/messages/${messageId}/read/`),
+  markConversationRead: (userId) => api.post(`/chat/conversation/${userId}/read/`),
+  deleteConversation: (userId) => api.delete(`/chat/conversation/${userId}/delete/`),
+  getConversationParticipants: (userId) => api.get(`/chat/conversation/${userId}/participants/`),
+  canMessageUser: (userId) => api.get(`/chat/can-message/${userId}/`),
+  getUnreadCountByConversation: () => api.get('/chat/unread/count/'),
   getUnreadCount: () => api.get('/chat/unread/total/'),
+  getMessageStats: () => api.get('/chat/stats/'),
   searchMessages: (query) => api.get(`/chat/search/?q=${query}`),
 };
 
@@ -94,7 +111,12 @@ export const chatAPI = {
 export const groupAPI = {
   createGroup: (data) =>api.post('/groups/create/', data, {headers: { 'Content-Type': 'multipart/form-data' },}),
   getGroup: (groupId) => api.get(`/groups/${groupId}/`),
-  updateGroup: (groupId, data) => api.patch(`/groups/${groupId}/update/`, data),
+  updateGroup: (groupId, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.patch(`/groups/${groupId}/update/`, data, isFormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    } : undefined);
+  },
   deleteGroup: (groupId) => api.delete(`/groups/${groupId}/delete/`),
   getMembers: (groupId) => api.get(`/groups/${groupId}/members/`),
   getPending: (groupId) => api.get(`/groups/${groupId}/pending/`),
@@ -137,10 +159,27 @@ export const marketplaceAPI = {
   getUserStats: (userId) => api.get(`/marketplace/users/${userId}/stats/`),
   getMyStats: () => api.get('/marketplace/my-stats/'),
   getTrending: () => api.get('/marketplace/trending/'),
+  getDepartmentProducts: (department) => api.get('/marketplace/department-products/', {
+    params: department ? { department } : undefined,
+  }),
   getPriceRanges: () => api.get('/marketplace/price-ranges/'),
   getSimilarProducts: (productId, limit = 5) => api.get(`/marketplace/products/${productId}/similar/?limit=${limit}`),
   searchProducts: (query) => api.get(`/marketplace/search/?q=${query}`),
   getCategories: () => api.get('/marketplace/categories/'),
+  
+  // Reviews and Ratings
+  createReview: (productId, data) => api.post(`/marketplace/products/${productId}/reviews/`, data),
+  getSellerReviews: (sellerId, page = 1, productId = null) => {
+    const productQuery = productId ? `&product_id=${productId}` : '';
+    return api.get(`/marketplace/sellers/${sellerId}/reviews/?page=${page}${productQuery}`);
+  },
+  getSellerReputation: (sellerId) => api.get(`/marketplace/sellers/${sellerId}/reputation/`),
+  
+  // Transaction Confirmation
+  confirmTransaction: (productId, data) => api.post(`/marketplace/transactions/${productId}/confirm/`, data),
+  uploadImage: (formData) => api.post('/marketplace/upload-image/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
 
 
@@ -154,6 +193,7 @@ export const forumAPI = {
   searchBloodRequests: (location, blood_group, limit) => api.get('/forums/blood/search/location/', {
     params: { location, blood_group, limit }
   }),
+  getMyBloodRequests: () => api.get('/forums/blood/my-requests/'),
 
 
   createTuitionPost: (data) => api.post('/forums/tuition/create/', data),
@@ -163,6 +203,8 @@ export const forumAPI = {
   deleteTuitionPost: (postId) => api.delete(`/forums/tuition/${postId}/`),
   updateTuitionStatus: (postId, data) => api.patch(`/forums/tuition/${postId}/status/`, data),
   searchTuitionPosts: (params = {}) => api.get('/forums/tuition/search/', { params }),
+  getMyTuitionPosts: () => api.get('/forums/tuition/my-posts/'),
+  getTuitionStatsBySubject: () => api.get('/forums/tuition/stats/subjects/'),
 };
 
 

@@ -3,7 +3,8 @@ from django.urls import path
 from chat.message_view import MarkAsReadView
 from .views import (
     ConversationListView, MessageListView, SendMessageView,
-    UploadChatImageView, UploadChatVideoView, SendMessageWithImageView
+    UploadChatImageView, UploadChatVideoView, SendMessageWithImageView,
+    ProductMessageListView, ContactSellerView
 )
 from .message_view import (
     ConversationView, RecentConversationsView)
@@ -18,7 +19,9 @@ from .extended_views import (
 urlpatterns = [
     path('conversations/', ConversationListView.as_view(), name='conversations'),
     path('messages/<int:other_user_id>/', MessageListView.as_view(), name='messages'),
+    path('messages/<int:other_user_id>/product/<int:product_id>/', ProductMessageListView.as_view(), name='product-messages'),
     path('send/', SendMessageView.as_view(), name='send_message'),
+    path('contact-seller/', ContactSellerView.as_view(), name='contact-seller'),
     path('upload-image/', UploadChatImageView.as_view(), name='upload_chat_image'),
     path('upload-video/', UploadChatVideoView.as_view(), name='upload_chat_video'),
     path('send-with-image/', SendMessageWithImageView.as_view(), name='send_with_image'),
@@ -37,4 +40,3 @@ urlpatterns = [
     path('can-message/<int:user_id>/', CanSendMessageView.as_view()),
 
 ]
-

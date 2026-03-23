@@ -24,7 +24,6 @@ import PostDetail from './pages/Posts/PostDetail';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 
-
 function App() {
   return (
     <ThemeProvider>

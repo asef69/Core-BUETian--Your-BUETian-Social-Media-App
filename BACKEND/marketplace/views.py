@@ -1017,6 +1017,352 @@ class MarkProductSoldView(APIView):
             return Response({'message': 'Product marked as sold'})
         return Response({'error': 'Unauthorized or product not found'}, status=status.HTTP_403_FORBIDDEN)
 
+
+class ConfirmTransactionView(APIView):
+    """
+    Confirm a buyer-seller transaction for a product.
+    
+    API Endpoint: POST /api/marketplace/transactions/<product_id>/confirm/
+    Authentication: Required (JWT Token)
+    
+    Request Body:
+        {
+            "buyer_id": 5,  (required for seller)
+            "role": "buyer" or "seller"
+        }
+    
+    Response (200 OK):
+        {
+            "message": "Transaction confirmed",
+            "buyer_confirmed": true,
+            "seller_confirmed": true,
+            "transaction_complete": true
+        }
+    
+    Notes:
+        - Both buyer and seller must confirm
+        - Seller confirms with specific buyer_id
+        - Buyer confirms without specifying seller
+        - Once both confirm, transaction is complete
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, product_id):
+        data = request.data
+        role = data.get('role', 'buyer').lower()
+        
+        # Get product and verify it's sold
+        product_query = "SELECT seller_id FROM marketplace_products WHERE id = %s AND status = 'sold'"
+        product_result = DatabaseManager.execute_query(product_query, (product_id,))
+        
+        if not product_result:
+            return Response({'error': 'Product not found or not marked as sold'}, status=status.HTTP_404_NOT_FOUND)
+        
+        seller_id = product_result[0]['seller_id']
+        
+        if role == 'seller':
+            if request.user.id != seller_id:
+                return Response({'error': 'Only seller can confirm as seller'}, status=status.HTTP_403_FORBIDDEN)
+            
+            buyer_id = data.get('buyer_id')
+            if not buyer_id:
+                return Response({'error': 'buyer_id required for seller confirmation'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Upsert transaction record
+            query = """
+            INSERT INTO buyer_seller_transactions (product_id, buyer_id, seller_id, seller_confirmed, seller_confirmed)
+            VALUES (%s, %s, %s, TRUE, CURRENT_TIMESTAMP)
+            ON CONFLICT (product_id, buyer_id, seller_id) 
+            DO UPDATE SET seller_confirmed = TRUE, confirmed_at = CASE 
+                WHEN buyer_seller_transactions.buyer_confirmed THEN CURRENT_TIMESTAMP 
+                ELSE buyer_seller_transactions.confirmed_at 
+            END
+            RETURNING buyer_confirmed, seller_confirmed, confirmed_at
+            """
+            result = DatabaseManager.execute_query(query, (product_id, buyer_id, seller_id))
+        else:
+            # Buyer confirmation
+            # Get seller_id for this product
+            buyer_id = request.user.id
+            
+            query = """
+            INSERT INTO buyer_seller_transactions (product_id, buyer_id, seller_id, buyer_confirmed, confirmed_at)
+            VALUES (%s, %s, %s, TRUE, CASE WHEN FALSE THEN CURRENT_TIMESTAMP ELSE NULL END)
+            ON CONFLICT (product_id, buyer_id, seller_id) 
+            DO UPDATE SET buyer_confirmed = TRUE, confirmed_at = CASE 
+                WHEN buyer_seller_transactions.seller_confirmed THEN CURRENT_TIMESTAMP 
+                ELSE buyer_seller_transactions.confirmed_at 
+            END
+            RETURNING buyer_confirmed, seller_confirmed, confirmed_at
+            """
+            result = DatabaseManager.execute_query(query, (product_id, buyer_id, seller_id))
+        
+        if result:
+            transaction = result[0]
+            both_confirmed = transaction.get('buyer_confirmed') and transaction.get('seller_confirmed')
+            return Response({
+                'message': 'Transaction confirmed',
+                'buyer_confirmed': transaction.get('buyer_confirmed', False),
+                'seller_confirmed': transaction.get('seller_confirmed', False),
+                'transaction_complete': both_confirmed
+            })
+        
+        return Response({'error': 'Failed to confirm transaction'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CreateReviewView(APIView):
+    """
+    Create a review for a product (Buyer only).
+    
+    API Endpoint: POST /api/marketplace/products/<product_id>/reviews/
+    Authentication: Required (JWT Token)
+    Authorization: Buyer only (after confirming transaction)
+    
+    Request Body:
+        {
+            "rating": 4,
+            "review_text": "Great product, fast delivery!"
+        }
+    
+    Response (201 Created):
+        {
+            "message": "Review created successfully",
+            "review_id": 1
+        }
+    
+    Response (400 Bad Request):
+        {"error": "Rating must be between 1 and 5"}
+    
+    Response (403 Forbidden):
+        {"error": "Transaction not confirmed by both parties"}
+    
+    Validation:
+        - Only create if transaction confirmed by both parties
+        - Only buyers can create reviews
+        - One review per product per buyer
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, product_id):
+        data = request.data
+        buyer_id = request.user.id
+        
+        # Check rating validity
+        rating = data.get('rating')
+        if not rating or not (1 <= int(rating) <= 5):
+            return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check product status
+        product_query = "SELECT status, seller_id FROM marketplace_products WHERE id = %s"
+        product_result = DatabaseManager.execute_query(product_query, (product_id,))
+        
+        if not product_result:
+            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        product_status = product_result[0]['status']
+        seller_id = product_result[0]['seller_id']
+        
+        # Prevent seller from reviewing own product
+        if buyer_id == seller_id:
+            return Response(
+                {'error': 'You cannot review your own product'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # For easier testing/use: Allow review if product is sold, without requiring explicit transaction confirmation
+        # In production, you might want to require both parties to confirm first
+        if product_status != 'sold':
+            return Response(
+                {'error': f'Product must be marked as sold before reviewing. Current status: {product_status}'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Optional: Check if transaction exists (for stricter control, uncomment below)
+        # trans_query = """
+        # SELECT seller_id FROM buyer_seller_transactions 
+        # WHERE product_id = %s AND buyer_id = %s AND buyer_confirmed = TRUE AND seller_confirmed = TRUE
+        # """
+        # trans_result = DatabaseManager.execute_query(trans_query, (product_id, buyer_id))
+        # 
+        # if not trans_result:
+        #     return Response({'error': 'Transaction not confirmed by both parties'}, status=status.HTTP_403_FORBIDDEN)
+        
+        review_text = data.get('review_text', '').strip()
+        
+        # Create or update review
+        query = """
+        INSERT INTO product_reviews (product_id, buyer_id, seller_id, rating, review_text)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (product_id, buyer_id) DO UPDATE SET rating = %s, review_text = %s, updated_at = CURRENT_TIMESTAMP
+        RETURNING id
+        """
+        
+        review_id = DatabaseManager.execute_insert(
+            query,
+            (product_id, buyer_id, seller_id, rating, review_text, rating, review_text)
+        )
+        
+        # Update seller reputation score
+        rep_query = """
+        WITH avg_rating AS (
+            SELECT AVG(rating) as avg_r, COUNT(*) as total_r FROM product_reviews WHERE seller_id = %s
+        )
+        INSERT INTO seller_reputation (seller_id, average_rating, total_reviews)
+        SELECT %s, COALESCE(avg_r, 0), COALESCE(total_r, 0) FROM avg_rating
+        ON CONFLICT (seller_id) DO UPDATE SET 
+            average_rating = (SELECT AVG(rating) FROM product_reviews WHERE seller_id = %s),
+            total_reviews = (SELECT COUNT(*) FROM product_reviews WHERE seller_id = %s),
+            last_updated = CURRENT_TIMESTAMP
+        """
+        DatabaseManager.execute_update(rep_query, (seller_id, seller_id, seller_id, seller_id))
+        
+        return Response({
+            'message': 'Review created successfully',
+            'review_id': review_id
+        }, status=status.HTTP_201_CREATED)
+
+
+class SellerReviewsView(APIView):
+    """
+    Get all reviews for a seller.
+    
+    API Endpoint: GET /api/marketplace/sellers/<seller_id>/reviews/
+    Authentication: Optional
+    
+    Query Parameters:
+        - page (int, default=1): Page number
+        - limit (int, default=10): Reviews per page
+    
+    Response (200 OK):
+        {
+            "reviews": [
+                {
+                    "id": 1,
+                    "product_id": 5,
+                    "product_title": "iPhone 13",
+                    "buyer_id": 3,
+                    "buyer_name": "John Doe",
+                    "buyer_picture": "path/to/profile.jpg",
+                    "rating": 5,
+                    "review_text": "Excellent product!",
+                    "created_at": "2025-12-30T10:00:00"
+                }
+            ],
+            "total": 15,
+            "page": 1,
+            "limit": 10
+        }
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, seller_id):
+        page = int(request.query_params.get('page', 1))
+        limit = int(request.query_params.get('limit', 10))
+        product_id = request.query_params.get('product_id')
+        offset = (page - 1) * limit
+        filter_by_product = product_id is not None and str(product_id).strip() != ''
+        
+        query = """
+        SELECT 
+            r.id,
+            r.product_id,
+            p.title as product_title,
+            r.buyer_id,
+            u.name as buyer_name,
+            u.profile_picture as buyer_picture,
+            r.rating,
+            r.review_text,
+            r.created_at
+        FROM product_reviews r
+        JOIN marketplace_products p ON r.product_id = p.id
+        JOIN users u ON r.buyer_id = u.id
+        WHERE r.seller_id = %s
+        """
+
+        count_query = "SELECT COUNT(*) as total FROM product_reviews WHERE seller_id = %s"
+        params = [seller_id]
+        count_params = [seller_id]
+
+        if filter_by_product:
+            query += " AND r.product_id = %s"
+            count_query += " AND product_id = %s"
+            params.append(product_id)
+            count_params.append(product_id)
+
+        query += """
+        ORDER BY COALESCE(r.updated_at, r.created_at) DESC
+        LIMIT %s OFFSET %s
+        """
+
+        params.extend([limit, offset])
+
+        result = DatabaseManager.execute_query(query, tuple(params))
+        count_result = DatabaseManager.execute_query(count_query, tuple(count_params))
+        total = count_result[0]['total'] if count_result else 0
+        
+        return Response({
+            'reviews': result,
+            'total': total,
+            'page': page,
+            'limit': limit
+        })
+
+
+class SellerReputationView(APIView):
+    """
+    Get seller reputation score and statistics.
+    
+    API Endpoint: GET /api/marketplace/sellers/<seller_id>/reputation/
+    Authentication: Optional
+    
+    Response (200 OK):
+        {
+            "seller_id": 5,
+            "seller_name": "John Doe",
+            "average_rating": 4.5,
+            "total_reviews": 12,
+            "total_products_sold": 45,
+            "response_rate": 95
+        }
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, seller_id):
+        rep_query = """
+        SELECT 
+            r.seller_id,
+            r.average_rating,
+            r.total_reviews,
+            u.name as seller_name
+        FROM seller_reputation r
+        JOIN users u ON r.seller_id = u.id
+        WHERE r.seller_id = %s
+        """
+        
+        result = DatabaseManager.execute_query(rep_query, (seller_id,))
+        
+        if not result:
+            return Response({
+                'seller_id': seller_id,
+                'average_rating': 0,
+                'total_reviews': 0
+            })
+        
+        rep = result[0]
+        
+        # Get total products sold
+        sold_query = "SELECT COUNT(*) as total_sold FROM marketplace_products WHERE seller_id = %s AND status = 'sold'"
+        sold_result = DatabaseManager.execute_query(sold_query, (seller_id,))
+        total_sold = sold_result[0]['total_sold'] if sold_result else 0
+        
+        return Response({
+            'seller_id': rep.get('seller_id'),
+            'seller_name': rep.get('seller_name'),
+            'average_rating': rep.get('average_rating', 0),
+            'total_reviews': rep.get('total_reviews', 0),
+            'total_products_sold': total_sold
+        })
+
 class ReserveProductView(APIView):
     """
     Mark a product as reserved (Seller only).

@@ -182,6 +182,16 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_type ON notifications(user_id,
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, created_at DESC) 
     WHERE is_read = FALSE;
 
+--Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_messages_product_id ON messages(product_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_product_id ON buyer_seller_transactions(product_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON buyer_seller_transactions(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON buyer_seller_transactions(seller_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON product_reviews(product_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_seller_id ON product_reviews(seller_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_buyer_id ON product_reviews(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_reputation_seller_id ON seller_reputation(seller_id);    
+
 
 
 ANALYZE users;
@@ -203,4 +213,3 @@ ANALYZE blog_comments;
 ANALYZE blog_likes;
 ANALYZE messages;
 ANALYZE notifications;
-

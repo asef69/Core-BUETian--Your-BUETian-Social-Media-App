@@ -31,7 +31,6 @@ urlpatterns = [
     path('<int:group_id>/accept/', AcceptGroupInviteView.as_view(), name='accept-group-invite'),
     path('<int:group_id>/reject/', RejectGroupInviteView.as_view(), name='reject-group-invite'),
     
-    
     # Role management
     path('<int:group_id>/transfer-admin/', TransferAdminView.as_view(), name='transfer-admin'),
     path('<int:group_id>/promote/<int:user_id>/', PromoteToModeratorView.as_view(), name='promote-moderator'),

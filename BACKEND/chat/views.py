@@ -200,6 +200,7 @@ class SendMessageView(APIView):
         receiver_id = data.get('receiver_id')
         content = (data.get('content') or '').strip()
         media_url = data.get('media_url')
+        product_id = data.get('product_id')
         
         if not receiver_id:
             return Response(
@@ -217,14 +218,14 @@ class SendMessageView(APIView):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
         
         query = """
-        INSERT INTO messages (sender_id, receiver_id, content, media_url)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id, sender_id, receiver_id, content, media_url, is_read, created_at
+        INSERT INTO messages (sender_id, receiver_id, content, media_url, product_id)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id, sender_id, receiver_id, content, media_url, product_id, is_read, created_at
         """
         
         result = DatabaseManager.execute_query(
             query,
-            (sender_id, receiver_id, content, media_url)
+            (sender_id, receiver_id, content, media_url, product_id)
         )
         
         return Response(
@@ -417,6 +418,7 @@ class SendMessageWithImageView(APIView):
         receiver_id = data.get('receiver_id')
         content = (data.get('content') or '').strip()
         media_url = data.get('media_url')
+        product_id = data.get('product_id')
         
         if not receiver_id:
             return Response(
@@ -434,17 +436,151 @@ class SendMessageWithImageView(APIView):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
         
         query = """
-        INSERT INTO messages (sender_id, receiver_id, content, media_url)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id, sender_id, receiver_id, content, media_url, is_read, created_at
+        INSERT INTO messages (sender_id, receiver_id, content, media_url, product_id)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id, sender_id, receiver_id, content, media_url, product_id, is_read, created_at
         """
         
         result = DatabaseManager.execute_query(
             query,
-            (sender_id, receiver_id, content, media_url)
+            (sender_id, receiver_id, content, media_url, product_id)
         )
         
         return Response(
             {'message': 'Message sent with image', 'data': result[0] if result else None},
             status=status.HTTP_201_CREATED
         )
+
+
+class ProductMessageListView(APIView):
+    """
+    Get messages between authenticated user and another user for a specific product.
+    
+    API Endpoint: GET /api/chat/messages/<other_user_id>/product/<product_id>/
+    Authentication: Required (JWT)
+    
+    Returns all messages related to a specific product transaction.
+    """
+    def get(self, request, other_user_id, product_id):
+        user_id = request.user.id
+        limit = int(request.query_params.get('limit', 50))
+        offset = int(request.query_params.get('offset', 0))
+        
+        query = """
+        SELECT 
+            m.*,
+            sender.name as sender_name,
+            sender.profile_picture as sender_picture,
+            receiver.name as receiver_name,
+            receiver.profile_picture as receiver_picture,
+            p.title as product_title,
+            p.id as product_id
+        FROM messages m
+        JOIN users sender ON sender.id = m.sender_id
+        JOIN users receiver ON receiver.id = m.receiver_id
+        JOIN marketplace_products p ON p.id = m.product_id
+        WHERE (m.sender_id = %s AND m.receiver_id = %s)
+           OR (m.sender_id = %s AND m.receiver_id = %s)
+        AND m.product_id = %s
+        ORDER BY m.created_at DESC
+        LIMIT %s OFFSET %s
+        """
+        
+        result = DatabaseManager.execute_query(
+            query,
+            (user_id, other_user_id, other_user_id, user_id, product_id, limit, offset)
+        )
+        
+        # Mark messages as read
+        DatabaseManager.execute_update(
+            "UPDATE messages SET is_read = TRUE WHERE sender_id = %s AND receiver_id = %s AND is_read = FALSE AND product_id = %s",
+            (other_user_id, user_id, product_id)
+        )
+        
+        return Response(result or [])
+
+
+class ContactSellerView(APIView):
+    """
+    Initiate contact with seller about a specific product.
+    
+    API Endpoint: POST /api/chat/contact-seller/
+    Authentication: Required (JWT)
+    
+    Request Body:
+        {
+            "product_id": int (required),
+            "message": str (optional) - Initial message to send
+        }
+    
+    Response (201 Created):
+        {
+            "message": "Message sent to seller",
+            "seller_id": 5,
+            "seller_name": "John Doe",
+            "conversation_started": true
+        }
+    
+    Notes:
+        - Creates initial message about the product
+        - Returns seller information for UI flow
+        - Automatically links message to product_id
+    """
+    def post(self, request):
+        data = request.data
+        buyer_id = request.user.id
+        product_id = data.get('product_id')
+        message_text = (data.get('message') or '').strip()
+        
+        if not product_id:
+            return Response(
+                {'error': 'product_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get product and seller info
+        product_query = "SELECT seller_id, title FROM marketplace_products WHERE id = %s"
+        product_result = DatabaseManager.execute_query(product_query, (product_id,))
+        
+        if not product_result:
+            return Response(
+                {'error': 'Product not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        seller_id = product_result[0]['seller_id']
+        product_title = product_result[0]['title']
+        
+        # Prevent buyer from messaging themselves
+        if buyer_id == seller_id:
+            return Response(
+                {'error': 'Cannot message yourself'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create contact message
+        if not message_text:
+            message_text = f"Hi! I'm interested in your product: {product_title}"
+        
+        query = """
+        INSERT INTO messages (sender_id, receiver_id, product_id, content)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id, sender_id, receiver_id, content, created_at
+        """
+        
+        result = DatabaseManager.execute_query(
+            query,
+            (buyer_id, seller_id, product_id, message_text)
+        )
+        
+        # Get seller info
+        seller_query = "SELECT id, name FROM users WHERE id = %s"
+        seller_info = DatabaseManager.execute_query(seller_query, (seller_id,))
+        
+        return Response({
+            'message': 'Message sent to seller',
+            'seller_id': seller_id,
+            'seller_name': seller_info[0]['name'] if seller_info else 'Unknown',
+            'product_id': product_id,
+            'conversation_started': True
+        }, status=status.HTTP_201_CREATED)
