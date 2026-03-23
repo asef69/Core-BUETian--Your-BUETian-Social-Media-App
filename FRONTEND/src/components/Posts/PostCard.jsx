@@ -356,7 +356,9 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
           disabled={readOnly}
         >
           {liked ? <FaHeart color="#e74c3c" /> : <FaRegHeart />}
-          {likesCount > 0 ? (
+          {readOnly ? (
+            <span className="count-pill">{likesCount}</span>
+          ) : likesCount > 0 ? (
             <span className="count-pill">{likesCount}</span>
           ) : (
             <span>Like</span>
@@ -365,10 +367,11 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
         <button
           className="action-btn"
           onClick={() => setShowComments(!showComments)}
-          disabled={readOnly}
         >
           <FaComment />
-          {commentsCount > 0 ? (
+          {readOnly ? (
+            <span className="count-pill">{commentsCount}</span>
+          ) : commentsCount > 0 ? (
             <span className="count-pill">{commentsCount}</span>
           ) : (
             <span>Comment</span>

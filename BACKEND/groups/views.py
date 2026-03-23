@@ -341,22 +341,6 @@ class JoinGroupView(APIView):
         """
         DatabaseManager.execute_insert(query, (group_id, request.user.id))
 
-        # Cleanup: legacy DB trigger can create a mistaken 'group_invite' notification
-        # for self-initiated join requests by referencing group_members.id.
-        DatabaseManager.execute_update(
-            """
-            DELETE FROM notifications n
-            USING group_members gm
-            WHERE n.user_id = %s
-              AND n.notification_type = 'group_invite'
-              AND gm.group_id = %s
-              AND gm.user_id = %s
-              AND gm.status = 'pending'
-              AND n.reference_id = gm.id
-            """,
-            (request.user.id, group_id, request.user.id)
-        )
-
         return Response({'message': 'Join request sent'})
 
 class AcceptGroupMemberView(APIView):
@@ -1392,70 +1376,6 @@ class DemoteModeratorView(APIView):
         return Response({'error': 'Demotion failed. You must be admin and target must be moderator.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
         
-        
-class AcceptGroupInviteView(APIView): # type: ignore
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, group_id):
-        updated = DatabaseManager.execute_update(
-            """
-            UPDATE group_members gm
-            SET status = 'accepted'
-            WHERE gm.group_id = %s
-              AND gm.user_id = %s
-              AND gm.status = 'pending'
-              AND EXISTS (
-                SELECT 1
-                FROM notifications n
-                WHERE n.user_id = gm.user_id
-                  AND n.reference_id = gm.group_id
-                  AND n.notification_type = 'group_invite'
-              )
-            """,
-            (group_id, request.user.id)
-        )
-
-        if not updated:
-            return Response({'error': 'No invitation found'}, status=404)
-
-        DatabaseManager.execute_update(
-            "DELETE FROM notifications WHERE user_id = %s AND reference_id = %s AND notification_type = 'group_invite'",
-            (request.user.id, group_id)
-        )
-
-        return Response({'message': 'Joined group successfully'})
-    
-    
-    class RejectGroupInviteView(APIView):
-        permission_classes = [IsAuthenticated]
-
-        def post(self, request, group_id):
-            deleted = DatabaseManager.execute_update(
-                """
-                DELETE FROM group_members gm
-                WHERE gm.group_id = %s
-                  AND gm.user_id = %s
-                  AND gm.status = 'pending'
-                  AND EXISTS (
-                    SELECT 1
-                    FROM notifications n
-                    WHERE n.user_id = gm.user_id
-                      AND n.reference_id = gm.group_id
-                      AND n.notification_type = 'group_invite'
-                  )
-                """,
-                (group_id, request.user.id)
-            )
-
-            if not deleted:
-                return Response({'error': 'No invitation found'}, status=404)
-
-            DatabaseManager.execute_update(
-                "DELETE FROM notifications WHERE user_id = %s AND reference_id = %s AND notification_type = 'group_invite'",
-                (request.user.id, group_id)
-            )
-
-            return Response({'message': 'Invitation rejected'})
         
 class InvitedMembersView(APIView):
     """

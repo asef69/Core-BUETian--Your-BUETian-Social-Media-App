@@ -188,6 +188,7 @@ const Notifications = () => {
       case 'follow_accepted':
         return `/profile/${notif.actor_id}`;
       case 'group_invite':
+      case 'group_join_request':
         if (!Number.isFinite(normalizedReferenceId) || normalizedReferenceId <= 0) return '#';
         return `/groups/${referenceId}`;
       case 'message':
