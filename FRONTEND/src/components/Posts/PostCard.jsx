@@ -7,7 +7,7 @@ import moment from 'moment';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
 
-const PostCard = ({ post, onLike }) => {
+const PostCard = ({ post, onLike, readOnly = false }) => {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const [liked, setLiked] = useState(
@@ -74,6 +74,10 @@ const PostCard = ({ post, onLike }) => {
   }, [post.has_liked, post.is_liked, post.liked, post.likes_count, post.comments_count]);
 
   const handleLike = async () => {
+    if (readOnly) {
+      return;
+    }
+
     try {
       console.log('🔄 Attempting to like post:', { postId: post.id, postIdType: typeof post.id });
       
@@ -231,7 +235,7 @@ const PostCard = ({ post, onLike }) => {
   const canOpenProfile = Boolean(post.user_id);
 
   return (
-    <div className="post-card">
+    <div className={`post-card ${readOnly ? 'read-only' : ''}`}>
       <div className="post-header">
         {canOpenProfile ? (
           <Link to={`/profile/${post.user_id}`} className="post-author">
@@ -349,6 +353,7 @@ const PostCard = ({ post, onLike }) => {
         <button
           className={`action-btn ${liked ? 'liked' : ''}`}
           onClick={handleLike}
+          disabled={readOnly}
         >
           {liked ? <FaHeart color="#e74c3c" /> : <FaRegHeart />}
           {likesCount > 0 ? (
@@ -360,6 +365,7 @@ const PostCard = ({ post, onLike }) => {
         <button
           className="action-btn"
           onClick={() => setShowComments(!showComments)}
+          disabled={readOnly}
         >
           <FaComment />
           {commentsCount > 0 ? (
@@ -375,6 +381,7 @@ const PostCard = ({ post, onLike }) => {
           postId={postId}
           onCommentAdded={handleCommentAdded}
           onCommentRemoved={handleCommentRemoved}
+          readOnly={readOnly}
         />
       )}
     </div>

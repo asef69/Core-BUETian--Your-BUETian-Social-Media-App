@@ -189,7 +189,7 @@ const NonMemberGroupView = () => {
                         {posts.length === 0 ? (
                             <p>No posts yet</p>
                         ) : (
-                            posts.map((post) => <PostCard key={post.id || post.post_id} post={post} />)
+                            posts.map((post) => <PostCard key={post.id || post.post_id} post={post} readOnly />)
                         )}
                     </div>
 

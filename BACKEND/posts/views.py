@@ -6,13 +6,39 @@ from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 
 
-def _can_user_access_post(viewer_user_id, post_owner_id, visibility):
+def _is_group_member(group_id, user_id):
+    if not group_id or not user_id:
+        return False
+
+    membership_query = """
+    SELECT 1
+    FROM group_members
+    WHERE group_id = %s
+      AND user_id = %s
+      AND status = 'accepted'
+    LIMIT 1
+    """
+    membership_result = DatabaseManager.execute_query(membership_query, (group_id, user_id))
+    if membership_result:
+        return True
+
+    # Fallback for legacy data where admin may not exist in group_members.
+    admin_query = "SELECT 1 FROM groups WHERE id = %s AND admin_id = %s LIMIT 1"
+    admin_result = DatabaseManager.execute_query(admin_query, (group_id, user_id))
+    return bool(admin_result)
+
+
+def _can_user_access_post(viewer_user_id, post_owner_id, visibility, group_id=None):
     """Server-side visibility guard for post access."""
     if not viewer_user_id or not post_owner_id:
         return False
 
     if viewer_user_id == post_owner_id:
         return True
+
+    # Group posts require accepted membership regardless of public/followers visibility.
+    if group_id is not None:
+        return _is_group_member(group_id, viewer_user_id)
 
     if visibility == 'public':
         return True
@@ -36,7 +62,7 @@ def _can_user_access_post(viewer_user_id, post_owner_id, visibility):
 
 
 def _get_post_owner_and_visibility(post_id):
-    query = "SELECT user_id, visibility FROM posts WHERE id = %s LIMIT 1"
+    query = "SELECT user_id, visibility, group_id FROM posts WHERE id = %s LIMIT 1"
     result = DatabaseManager.execute_query(query, (post_id,))
     if not result:
         return None
@@ -236,7 +262,12 @@ class UserFeedView(APIView):
                 post_owner_id = post.get('user_id') or post.get('author_id')
                 post_visibility = post.get('visibility', 'public')
 
-                if not _can_user_access_post(request.user.id, post_owner_id, post_visibility):
+                if not _can_user_access_post(
+                    request.user.id,
+                    post_owner_id,
+                    post_visibility,
+                    post.get('group_id')
+                ):
                     continue
 
                 # Use post_id if available, otherwise try id
@@ -365,7 +396,8 @@ class PostDetailView(APIView):
         if not _can_user_access_post(
             request.user.id,
             post_owner_id,
-            post_data.get('visibility', 'public')
+            post_data.get('visibility', 'public'),
+            post_data.get('group_id')
         ):
             return Response(
                 {
@@ -505,7 +537,8 @@ class LikePostView(APIView):
         if not post_context or not _can_user_access_post(
             user_id,
             post_context.get('user_id'),
-            post_context.get('visibility', 'public')
+            post_context.get('visibility', 'public'),
+            post_context.get('group_id')
         ):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -578,7 +611,8 @@ class CommentView(APIView):
         if not post_context or not _can_user_access_post(
             request.user.id,
             post_context.get('user_id'),
-            post_context.get('visibility', 'public')
+            post_context.get('visibility', 'public'),
+            post_context.get('group_id')
         ):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -618,7 +652,8 @@ class CommentView(APIView):
         if not post_context or not _can_user_access_post(
             request.user.id,
             post_context.get('user_id'),
-            post_context.get('visibility', 'public')
+            post_context.get('visibility', 'public'),
+            post_context.get('group_id')
         ):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         

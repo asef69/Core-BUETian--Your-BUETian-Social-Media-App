@@ -6,7 +6,7 @@ import { FaEllipsisH } from "react-icons/fa";
 import { useAuth } from "../../context/AuthContext";
 import { FaHeart, FaRegHeart } from "react-icons/fa";
 
-const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
+const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = false }) => {
   const { user } = useAuth();
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
@@ -94,6 +94,10 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
   };
 
   const handleSubmit = async (e) => {
+    if (readOnly) {
+      return;
+    }
+
     e.preventDefault();
     if (!newComment.trim()) return;
 
@@ -214,6 +218,10 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
     setEditContent("");
   };
   const handleReplySubmit = async (e, parentCommentId) => {
+    if (readOnly) {
+      return;
+    }
+
     e.preventDefault();
     const content = replyContent[parentCommentId]?.trim();
     if (!content?.trim()) return;
@@ -246,6 +254,10 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
   };
 
   const handleCommentLike = async (commentId) => {
+    if (readOnly) {
+      return;
+    }
+
     try {
       console.log("🔄 Attempting to like comment:", {
         commentId: commentId,
@@ -450,6 +462,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
                 type="button"
                 onClick={() => handleCommentLike(comment.comment_id)}
                 aria-label={comment.liked ? "Remove love from comment" : "Love comment"}
+                disabled={readOnly}
               >
                 {comment.liked ? <FaHeart /> : <FaRegHeart />}
                 <span className="comment-action-label">Love</span>
@@ -462,12 +475,13 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
                 className="btn-reply"
                 type="button"
                 onClick={() => toggleReply(comment.comment_id)}
+                disabled={readOnly}
               >
                 {replyingComments[comment.comment_id] ? "Hide" : "Reply"}
               </button>
             </div>
 
-            {replyingComments[comment.comment_id] && (
+            {!readOnly && replyingComments[comment.comment_id] && (
               <form
                 className="edit-comment-form reply-box"
                 onSubmit={(e) => handleReplySubmit(e, comment.comment_id)}
@@ -520,17 +534,19 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved }) => {
 
   return (
     <div className="comments-section">
-      <form onSubmit={handleSubmit} className="comment-form">
-        <input
-          type="text"
-          placeholder="Write a comment..."
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-        />
-        <button type="submit" disabled={loading || !newComment.trim()}>
-          {loading ? "Posting..." : "Post"}
-        </button>
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleSubmit} className="comment-form">
+          <input
+            type="text"
+            placeholder="Write a comment..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+          />
+          <button type="submit" disabled={loading || !newComment.trim()}>
+            {loading ? "Posting..." : "Post"}
+          </button>
+        </form>
+      )}
 
       <div className="comments-list">
         {(repliesByParent.get(null) || []).map((comment) =>
