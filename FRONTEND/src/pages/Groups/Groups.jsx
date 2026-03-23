@@ -14,6 +14,7 @@ const Groups = () => {
   const [suggested, setSuggested] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pendingGroupIds, setPendingGroupIds] = useState(new Set());
   const navigate = useNavigate();
   const [createData, setCreateData] = useState({
     name: "",
@@ -25,6 +26,32 @@ const Groups = () => {
   useEffect(() => {
     loadGroups();
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    try {
+      const raw = sessionStorage.getItem(
+        `pending_group_requests_${currentUser.id}`,
+      );
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setPendingGroupIds(new Set(parsed.map((id) => Number(id))));
+      }
+    } catch {
+      // Ignore invalid cached values.
+    }
+  }, [currentUser?.id]);
+
+  const persistPendingGroups = (idsSet) => {
+    if (!currentUser?.id) return;
+    sessionStorage.setItem(
+      `pending_group_requests_${currentUser.id}`,
+      JSON.stringify(Array.from(idsSet)),
+    );
+  };
 
   const extractItems = (data) => {
     if (Array.isArray(data)) return data;
@@ -101,6 +128,22 @@ const Groups = () => {
       setSuggested(
         filteredSuggested.length > 0 ? filteredSuggested : suggestedData,
       );
+
+      const pendingFromApi = (filteredSuggested.length > 0
+        ? filteredSuggested
+        : suggestedData
+      )
+        .filter((group) => String(group?.member_status || "") === "pending")
+        .map((group) => Number(getGroupId(group)))
+        .filter(Boolean);
+
+      if (pendingFromApi.length > 0) {
+        setPendingGroupIds((prev) => {
+          const next = new Set([...prev, ...pendingFromApi]);
+          persistPendingGroups(next);
+          return next;
+        });
+      }
     } catch (error) {
       console.error("Error loading groups:", error);
     } finally {
@@ -141,10 +184,29 @@ const Groups = () => {
   const handleJoinGroup = async (groupId) => {
     try {
       await groupAPI.joinGroup(groupId);
+      setPendingGroupIds((prev) => {
+        const next = new Set(prev);
+        next.add(Number(groupId));
+        persistPendingGroups(next);
+        return next;
+      });
       toast.success("Join request sent!");
-      loadGroups();
     } catch (error) {
-      toast.error("Failed to join group");
+      const message =
+        error?.response?.data?.message || error?.response?.data?.error || "";
+
+      if (/already sent/i.test(message)) {
+        setPendingGroupIds((prev) => {
+          const next = new Set(prev);
+          next.add(Number(groupId));
+          persistPendingGroups(next);
+          return next;
+        });
+        toast.info("Join request already pending");
+        return;
+      }
+
+      toast.error(message || "Failed to join group");
     }
   };
   const handleNonmemberView = (groupId) => {
@@ -217,6 +279,7 @@ const Groups = () => {
                     suggested.map((group) => {
                       const groupId = getGroupId(group);
                       if (!groupId) return null;
+                      const isPending = pendingGroupIds.has(Number(groupId));
 
                       return (
                         <div key={groupId} className="group-card">
@@ -235,12 +298,26 @@ const Groups = () => {
                               </span>
                             </div>
 
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => handleNonmemberView(groupId)}
-                            >
-                              View Group
-                            </button>
+                            <div className="group-card-actions">
+                              <button
+                                className="btn btn-secondary"
+                                onClick={() => handleNonmemberView(groupId)}
+                              >
+                                View Group
+                              </button>
+                              {isPending ? (
+                                <button className="btn btn-secondary" disabled>
+                                  Request Pending
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-primary"
+                                  onClick={() => handleJoinGroup(groupId)}
+                                >
+                                  Join Group
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

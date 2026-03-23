@@ -315,12 +315,48 @@ class JoinGroupView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, group_id):
+        group_exists = DatabaseManager.execute_query(
+            "SELECT id FROM groups WHERE id = %s",
+            (group_id,)
+        )
+        if not group_exists:
+            return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        existing_membership = DatabaseManager.execute_query(
+            "SELECT status FROM group_members WHERE group_id = %s AND user_id = %s",
+            (group_id, request.user.id)
+        )
+
+        if existing_membership:
+            current_status = existing_membership[0]['status']
+            if current_status == 'accepted':
+                return Response({'message': 'You are already a member of this group'})
+            if current_status == 'pending':
+                return Response({'message': 'Join request already sent'})
+
         query = """
         INSERT INTO group_members (group_id, user_id, role, status)
         VALUES (%s, %s, 'member', 'pending')
         ON CONFLICT (group_id, user_id) DO NOTHING
         """
         DatabaseManager.execute_insert(query, (group_id, request.user.id))
+
+        # Cleanup: legacy DB trigger can create a mistaken 'group_invite' notification
+        # for self-initiated join requests by referencing group_members.id.
+        DatabaseManager.execute_update(
+            """
+            DELETE FROM notifications n
+            USING group_members gm
+            WHERE n.user_id = %s
+              AND n.notification_type = 'group_invite'
+              AND gm.group_id = %s
+              AND gm.user_id = %s
+              AND gm.status = 'pending'
+              AND n.reference_id = gm.id
+            """,
+            (request.user.id, group_id, request.user.id)
+        )
+
         return Response({'message': 'Join request sent'})
 
 class AcceptGroupMemberView(APIView):
@@ -1078,8 +1114,46 @@ class SuggestedGroupsView(APIView):
     
     def get(self, request):
         limit = int(request.GET.get('limit', 10))
-        result = DatabaseManager.execute_function('get_suggested_groups', (request.user.id, limit))
-        return Response(result)
+
+        query = """
+        SELECT
+            g.id AS group_id,
+            g.name,
+            g.description,
+            g.cover_image,
+            (
+                SELECT COUNT(*)
+                FROM group_members gm
+                WHERE gm.group_id = g.id
+                  AND gm.status = 'accepted'
+            ) AS members_count,
+            g.is_private,
+            (
+                SELECT COUNT(*)
+                FROM group_members gm
+                WHERE gm.group_id = g.id
+                  AND gm.status = 'accepted'
+                  AND gm.user_id IN (
+                      SELECT f.following_id
+                      FROM follows f
+                      WHERE f.follower_id = %s
+                  )
+            ) AS common_members_count
+        FROM groups g
+        WHERE g.is_private = FALSE
+          AND NOT EXISTS (
+              SELECT 1
+              FROM group_members gm
+              WHERE gm.group_id = g.id
+                AND gm.user_id = %s
+                AND gm.status = 'accepted'
+          )
+        ORDER BY common_members_count DESC, g.created_at DESC
+        LIMIT %s
+        """
+
+        result = DatabaseManager.execute_query(query, (request.user.id, request.user.id, limit))
+        return Response(result or [])
 
 class SearchGroupsView(APIView):
     """
