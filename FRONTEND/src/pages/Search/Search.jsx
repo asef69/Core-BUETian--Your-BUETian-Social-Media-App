@@ -45,6 +45,9 @@ const Search = () => {
   const getProductId = (product) =>
     product?.product_id || product?.id || product?.pk;
 
+  const getGroupId = (group) =>
+    group?.group_id || group?.id || group?.pk;
+
   const renderUsers = () => (
     <div className="search-results-section">
       <h3>Users ({users.length})</h3>
@@ -103,13 +106,40 @@ const Search = () => {
         <p className="no-results">No groups found</p>
       ) : (
         <div className="search-results-grid">
-          {groups.map(group => (
-            <Link key={group.group_id} to={`/groups/${group.group_id}`} className="search-result-card group-card">
-              <div className="group-icon">📊</div>
-              <h4>{group.name}</h4>
-              <p className="text-muted">{group.members_count} members</p>
-            </Link>
-          ))}
+          {groups.map((group) => {
+            const groupId = getGroupId(group);
+            if (!groupId) return null;
+
+            const isAcceptedMember =
+              group?.is_member === true ||
+              group?.membership_status === 'accepted' ||
+              group?.member_status === 'accepted';
+            const groupPath = isAcceptedMember
+              ? `/groups/${groupId}`
+              : `/groups/${groupId}/nonmember`;
+
+            return (
+              <Link key={groupId} to={groupPath} className="search-result-card group-card group-result-card">
+                <img
+                  src={group.cover_image || '/default-group.png'}
+                  alt={group.name}
+                  className="group-result-cover"
+                />
+                <div className="group-result-body">
+                  <div className="group-result-topline">
+                    <span className={`group-privacy-chip ${group.is_private ? 'private' : 'public'}`}>
+                      {group.is_private ? 'Private' : 'Public'}
+                    </span>
+                  </div>
+                  <h4>{group.name}</h4>
+                  <p className="group-result-description">
+                    {group.description || 'No description available'}
+                  </p>
+                  <p className="text-muted">{group.members_count || 0} members</p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

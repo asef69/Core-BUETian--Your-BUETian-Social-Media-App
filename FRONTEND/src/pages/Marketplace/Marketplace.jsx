@@ -312,6 +312,7 @@ const Marketplace = () => {
                   )}
                 </div>
               )}
+
             </>
           )}
         </div>

@@ -121,7 +121,6 @@ SELECT (
     ) AS total_comments;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION promote_to_moderator(
         p_group_id INTEGER,
         p_admin_id INTEGER,
@@ -156,7 +155,6 @@ RETURN QUERY
 SELECT TRUE;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION demote_moderator(
         p_group_id INTEGER,
         p_admin_id INTEGER,
@@ -189,7 +187,6 @@ RETURN QUERY
 SELECT TRUE;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION transfer_group_admin(
         p_group_id INTEGER,
         p_current_admin_id INTEGER,
@@ -228,7 +225,6 @@ RETURN QUERY
 SELECT TRUE;
 END;
 $$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION search_groups(
         p_search_term VARCHAR(200),
         p_limit INTEGER DEFAULT 20
@@ -273,8 +269,6 @@ ORDER BY CASE
 LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
-
-
 -- Full details of a group with membership status for the viewer
 CREATE OR REPLACE FUNCTION get_group_details(
         p_group_id INTEGER,
@@ -330,6 +324,3 @@ FROM groups g
 WHERE g.id = p_group_id;
 END;
 $$ LANGUAGE plpgsql;
-
-
-

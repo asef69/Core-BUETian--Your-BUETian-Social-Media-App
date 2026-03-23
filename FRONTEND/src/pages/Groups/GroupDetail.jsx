@@ -4,7 +4,7 @@ import { groupAPI, postAPI, userAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
-import { FaUsers, FaSignOutAlt } from 'react-icons/fa';
+import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 
 const GroupDetail = () => {
@@ -15,9 +15,12 @@ const GroupDetail = () => {
   const [posts, setPosts] = useState([]);
   const [members, setMembers] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
+  const [invitedMembers, setInvitedMembers] = useState([]);
   const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
+  const [newPostFiles, setNewPostFiles] = useState([]);
+  const [creatingPost, setCreatingPost] = useState(false);
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [updatingCover, setUpdatingCover] = useState(false);
   const [followersToInvite, setFollowersToInvite] = useState([]);
@@ -30,7 +33,6 @@ const GroupDetail = () => {
   const [searchPageSize] = useState(5);
   const [activity, setActivity] = useState({});
   const [showEditForm, setShowEditForm] = useState(false);
-  const [invitedMembers, setInvitedMembers] = useState([]);
   const [editGroupData, setEditGroupData] = useState({
     name: '',
     description: '',
@@ -109,7 +111,16 @@ const GroupDetail = () => {
   const getCurrentUserRole = (groupData, memberList) => {
     const roleFromGroup =
       groupData?.current_user_role || groupData?.role || groupData?.user_role;
-    if (roleFromGroup) return roleFromGroup;
+    if (roleFromGroup) {
+      return String(roleFromGroup).toLowerCase();
+    }
+
+    if (groupData?.is_admin === true || groupData?.current_user_is_admin === true) {
+      return 'admin';
+    }
+    if (groupData?.is_moderator === true || groupData?.current_user_is_moderator === true) {
+      return 'moderator';
+    }
 
     const currentUserId = currentUser?.id;
     if (!currentUserId) return 'member';
@@ -132,7 +143,7 @@ const GroupDetail = () => {
     }
 
     const memberMatch = memberList.find((member) => member.user_id === currentUserId);
-    return memberMatch?.role || 'member';
+    return String(memberMatch?.role || 'member').toLowerCase();
   };
 
   const loadGroupData = async () => {
@@ -142,8 +153,8 @@ const GroupDetail = () => {
         groupAPI.getGroupPosts(groupId),
         groupAPI.getMembers(groupId),
         groupAPI.getPending(groupId).catch(() => ({ data: [] })),
-        groupAPI.getInvited(groupId).catch(() => ({ data: [] })),   
-        groupAPI.getActivity(groupId).catch(() => ({ data: {} })), 
+        groupAPI.getInvited(groupId).catch(() => ({ data: [] })),
+        groupAPI.getActivity(groupId).catch(() => ({ data: {} })),
       ]);
       const groupData = extractGroup(groupRes.data);
       const postsData = extractItems(postsRes.data).map(normalizePost);
@@ -155,6 +166,7 @@ const GroupDetail = () => {
       setPosts(postsData);
       setMembers(membersData);
       setPendingMembers(pendingData);
+      setInvitedMembers(invitedData);
       setActivity(activityRes?.data || {});
       setCoverImageFile(null);
       setFollowersPage(1);
@@ -168,12 +180,15 @@ const GroupDetail = () => {
 
           const followersRes = await userAPI.getFollowers(currentUser.id);
           const followerItems = extractItems(followersRes.data).map(normalizeUser);
-          const memberIds = new Set(membersData.map(m => m.user_id));
-          const invitedIds = new Set(invitedData.map(m => m.user_id));
+          const memberIds = new Set(membersData.map((member) => member.user_id));
+          const pendingIds = new Set(pendingData.map((member) => member.user_id));
+          const invitedIds = new Set(invitedData.map((member) => member.user_id));
           const filteredFollowers = followerItems.filter(
-            item => !memberIds.has(item.user_id) && !invitedIds.has(item.user_id)
+            (item) =>
+              !memberIds.has(item.user_id) &&
+              !pendingIds.has(item.user_id) &&
+              !invitedIds.has(item.user_id)
           );
-
           setFollowersToInvite(filteredFollowers);
         } catch (error) {
           setFollowersToInvite([]);
@@ -200,16 +215,42 @@ const GroupDetail = () => {
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!newPostContent.trim()) return;
+
+    const trimmedContent = newPostContent.trim();
+    if (!trimmedContent && newPostFiles.length === 0) {
+      toast.error('Write something or attach media to post');
+      return;
+    }
 
     try {
-      await groupAPI.createGroupPost(groupId, { content: newPostContent });
+      setCreatingPost(true);
+
+      const uploadedUrls = [];
+
+      for (const file of newPostFiles) {
+        const isVideo = file.type.startsWith('video/');
+        const formData = new FormData();
+        formData.append('media', file);
+        formData.append('media_type', isVideo ? 'video' : 'image');
+
+        const uploadRes = await postAPI.uploadMedia(formData);
+        const urls = (uploadRes?.data?.uploaded_files || []).map((item) => item.url).filter(Boolean);
+        uploadedUrls.push(...urls);
+      }
+
+      await groupAPI.createGroupPost(groupId, {
+        content: trimmedContent,
+        media_urls: uploadedUrls,
+      });
+
       setNewPostContent('');
+      setNewPostFiles([]);
       loadGroupData();
       toast.success('Post created!');
     } catch (error) {
-      console.error(error);
-      toast.error('Failed to create post');
+      toast.error(error?.response?.data?.error || 'Failed to create post');
+    } finally {
+      setCreatingPost(false);
     }
   };
 
@@ -228,6 +269,18 @@ const GroupDetail = () => {
     }
   };
 
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Delete this group permanently? This cannot be undone.')) return;
+
+    try {
+      await groupAPI.deleteGroup(groupId);
+      toast.success('Group deleted successfully');
+      navigate('/groups');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to delete group');
+    }
+  };
+
   const handleAcceptMember = async (userId) => {
     try {
       await groupAPI.acceptMember(groupId, userId);
@@ -241,7 +294,7 @@ const GroupDetail = () => {
   const handleRejectMember = async (userId) => {
     try {
       await groupAPI.rejectMember(groupId, userId);
-      toast.success('Member rejected');
+      toast.success('Member request rejected');
       loadGroupData();
     } catch (error) {
       toast.error('Failed to reject member');
@@ -292,11 +345,11 @@ const GroupDetail = () => {
 
   const handleCancelInvite = async (userId) => {
     try {
-      await groupAPI.cancelInvite(groupId, userId);
-      toast.success('Invite cancelled');
+      const response = await groupAPI.cancelInvite(groupId, userId);
+      toast.success(response?.data?.message || 'Invite canceled');
       loadGroupData();
-    } catch {
-      toast.error('Failed to cancel invite');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to cancel invite');
     }
   };
 
@@ -321,16 +374,17 @@ const GroupDetail = () => {
       setSearchLoading(true);
       const response = await userAPI.searchUsers(searchTerm.trim());
       const users = extractItems(response.data).map(normalizeUser);
-      const memberIds = new Set(members.map(m => m.user_id));
-      const invitedIds = new Set(invitedMembers.map(m => m.user_id));
-
+      const memberIds = new Set(members.map((member) => member.user_id));
+      const pendingIds = new Set(pendingMembers.map((member) => member.user_id));
+      const invitedIds = new Set(invitedMembers.map((member) => member.user_id));
       setSearchCandidates(
-        users.filter(item =>
-          !memberIds.has(item.user_id) &&
-          !invitedIds.has(item.user_id)
+        users.filter(
+          (item) =>
+            !memberIds.has(item.user_id) &&
+            !pendingIds.has(item.user_id) &&
+            !invitedIds.has(item.user_id)
         )
       );
-      setSearchCandidates(users.filter((item) => !memberIds.has(item.user_id)));
       setSearchPage(1);
     } catch (error) {
       toast.error('Failed to search users');
@@ -339,19 +393,6 @@ const GroupDetail = () => {
     }
   };
 
-  const handleDeleteGroup = async () => {
-    if (!window.confirm('Are you sure you want to delete this group?')) return;
-
-    try {
-      await groupAPI.deleteGroup(groupId);
-      toast.success('Group deleted successfully');
-      navigate('/groups');
-    } catch (error) {
-      console.error(error);
-      console.log(error?.response);
-      toast.error('Failed to delete group');
-    }
-  };
 
   const pagedFollowers = followersToInvite.slice(
     (followersPage - 1) * followersPageSize,
@@ -383,27 +424,10 @@ const GroupDetail = () => {
 
     try {
       const formData = new FormData();
-      if (editGroupData.name) formData.append('name', editGroupData.name);
-      if (editGroupData.description) formData.append('description', editGroupData.description);
-      formData.append('is_private', editGroupData.is_private);
-      if (editGroupData.cover_image) {
-
-        const uploadData = new FormData();
-        uploadData.append('media', editGroupData.cover_image);
-        uploadData.append('media_type', 'image');
-        const uploadRes = await postAPI.uploadMedia(uploadData);
-        const uploadedUrl = uploadRes?.data?.uploaded_files?.[0]?.url;
-        if (uploadedUrl) formData.append('cover_image', uploadedUrl);
-      }
-
+      formData.append('cover_image', coverImageFile);
       await groupAPI.updateGroup(groupId, formData);
-
-      toast.success('Group updated successfully!');
-      setShowEditForm(false);
-
-      await loadGroupData();
-      setActiveTab('posts');
-
+      toast.success('Cover image updated');
+      loadGroupData();
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to update group');
     } finally {
@@ -431,8 +455,11 @@ const GroupDetail = () => {
   }
 
   const currentUserRole = getCurrentUserRole(group, members);
-  const canManageMembers = currentUserRole === 'admin' || currentUserRole === 'moderator';
-  const canChangeRoles = currentUserRole === 'admin';
+  const canManageMembers =
+    currentUserRole === 'admin' ||
+    currentUserRole === 'owner' ||
+    currentUserRole === 'moderator';
+  const canChangeRoles = currentUserRole === 'admin' || currentUserRole === 'owner';
 
   return (
     <div className="app-layout">
@@ -456,9 +483,43 @@ const GroupDetail = () => {
                 <div className="group-meta">
                   <span><FaUsers /> {members.length} members</span>
                 </div>
-                <button className="btn btn-danger" onClick={handleLeaveGroup}>
-                  <FaSignOutAlt /> Leave Group
-                </button>
+                {canChangeRoles && (
+                  <form className="group-cover-form" onSubmit={handleUpdateCover}>
+                    <input
+                      id="group-cover-input"
+                      className="group-cover-input-hidden"
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
+                    />
+                    <button
+                      className="btn btn-secondary cover-picker-btn"
+                      type="button"
+                      onClick={() => document.getElementById('group-cover-input')?.click()}
+                    >
+                      {coverImageFile ? 'Change Cover' : 'Choose Cover'}
+                    </button>
+                    <span className="cover-file-name">{coverImageFile?.name || 'No file selected'}</span>
+                    <button
+                      className="btn btn-secondary"
+                      type="submit"
+                      disabled={updatingCover || !coverImageFile}
+                    >
+                      {updatingCover ? 'Updating...' : 'Update Cover'}
+                    </button>
+                  </form>
+                )}
+                <div className="group-primary-actions">
+                  <button className="btn btn-danger" onClick={handleLeaveGroup}>
+                    <FaSignOutAlt /> Leave Group
+                  </button>
+                  {canChangeRoles && (
+                    <button className="btn btn-danger delete-group-btn" onClick={handleDeleteGroup}>
+                      <FaTrash /> Delete Group
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -490,14 +551,83 @@ const GroupDetail = () => {
 
             {activeTab === 'posts' && (
               <div className="group-posts">
-                <form onSubmit={handleCreatePost} className="create-post-form">
+                <form onSubmit={handleCreatePost} className="create-post-form fancy-post-form">
                   <textarea
-                    placeholder="Share something with the group..."
+                    placeholder="What's on your mind?"
                     value={newPostContent}
                     onChange={(e) => setNewPostContent(e.target.value)}
-                    rows="3"
+                    rows="4"
                   />
-                  <button type="submit" className="btn btn-primary">Post</button>
+
+                  <input
+                    id="group-post-photo-input"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || []);
+                      if (selected.length > 0) {
+                        setNewPostFiles((prev) => [...prev, ...selected]);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                  <input
+                    id="group-post-video-input"
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || []);
+                      if (selected.length > 0) {
+                        setNewPostFiles((prev) => [...prev, ...selected]);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+
+                  <div className="fancy-post-actions">
+                    <button
+                      type="button"
+                      className="fancy-media-btn"
+                      onClick={() => document.getElementById('group-post-photo-input')?.click()}
+                    >
+                      <FaImage /> Photo
+                    </button>
+                    <button
+                      type="button"
+                      className="fancy-media-btn"
+                      onClick={() => document.getElementById('group-post-video-input')?.click()}
+                    >
+                      <FaVideo /> Video
+                    </button>
+
+                    <button type="submit" className="btn btn-primary fancy-post-submit" disabled={creatingPost}>
+                      {creatingPost ? 'Posting...' : 'Post'}
+                    </button>
+                  </div>
+
+                  {newPostFiles.length > 0 && (
+                    <div className="selected-media-list">
+                      {newPostFiles.map((file, index) => (
+                        <span key={`${file.name}-${file.lastModified}`} className="selected-media-chip">
+                          {file.name}
+                          <button
+                            type="button"
+                            className="remove-media-chip"
+                            onClick={() => {
+                              setNewPostFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
+                            }}
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <FaTimes />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </form>
 
                 {posts.length === 0 ? (
@@ -533,7 +663,7 @@ const GroupDetail = () => {
                             Accept
                           </button>
                           <button
-                            className="btn btn-primary btn-sm"
+                            className="btn btn-secondary btn-sm"
                             onClick={() => handleRejectMember(member.user_id)}
                           >
                             Reject
@@ -541,6 +671,38 @@ const GroupDetail = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {canManageMembers && (
+                  <div className="pending-members">
+                    <h3>Invited Users</h3>
+                    {invitedMembers.length === 0 ? (
+                      <p>No active invites right now.</p>
+                    ) : (
+                      invitedMembers.map((member) => (
+                        <div key={member.user_id} className="member-item pending">
+                          <img
+                            src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                            alt={member.name || 'User'}
+                            className="avatar"
+                            onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                          />
+                          <div className="member-info">
+                            <h4>{member.name}</h4>
+                            <span className="member-role">invited</span>
+                          </div>
+                          <div className="member-actions">
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleCancelInvite(member.user_id)}
+                            >
+                              Cancel Invite
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -701,7 +863,11 @@ const GroupDetail = () => {
                           </>
                         )}
 
-                        {canManageMembers && (
+                        {canManageMembers &&
+                          !(
+                            currentUserRole === 'moderator' &&
+                            (member.role === 'admin' || member.role === 'owner')
+                          ) && (
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleKickMember(member.user_id)}

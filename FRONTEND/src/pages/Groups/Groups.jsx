@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { groupAPI, userAPI } from '../../services/apiService';
-import Navbar from '../../components/Navbar';
-import { toast } from 'react-toastify';
-import { FaPlus, FaUsers, FaLock, FaGlobe } from 'react-icons/fa';
-import '../../styles/Groups.css';
-import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { groupAPI, userAPI } from "../../services/apiService";
+import Navbar from "../../components/Navbar";
+import { toast } from "react-toastify";
+import { FaPlus, FaUsers, FaLock, FaGlobe } from "react-icons/fa";
+import "../../styles/Groups.css";
+import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const Groups = () => {
   const { user: currentUser } = useAuth();
@@ -16,8 +16,8 @@ const Groups = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [createData, setCreateData] = useState({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     is_private: false,
     cover_image: null,
   });
@@ -36,8 +36,7 @@ const Groups = () => {
     return [];
   };
 
-  const getGroupId = (group) =>
-    group?.group_id || group?.id || group?.pk;
+  const getGroupId = (group) => group?.group_id || group?.id || group?.pk;
 
   const toUserId = (item) =>
     item?.user_id ||
@@ -58,7 +57,7 @@ const Groups = () => {
       group?.memberIds;
     if (!Array.isArray(rawMembers)) return [];
     return rawMembers
-      .map((member) => (typeof member === 'object' ? toUserId(member) : member))
+      .map((member) => (typeof member === "object" ? toUserId(member) : member))
       .filter(Boolean);
   };
 
@@ -99,9 +98,11 @@ const Groups = () => {
       }
 
       setMyGroups(myGroupsData);
-      setSuggested(filteredSuggested.length > 0 ? filteredSuggested : suggestedData);
+      setSuggested(
+        filteredSuggested.length > 0 ? filteredSuggested : suggestedData,
+      );
     } catch (error) {
-      console.error('Error loading groups:', error);
+      console.error("Error loading groups:", error);
     } finally {
       setLoading(false);
     }
@@ -112,35 +113,39 @@ const Groups = () => {
 
     try {
       const formData = new FormData();
-      formData.append('name', createData.name);
-      formData.append('description', createData.description);
-      formData.append('is_private', createData.is_private);
+      formData.append("name", createData.name);
+      formData.append("description", createData.description);
+      formData.append("is_private", createData.is_private);
 
       if (createData.cover_image) {
-        formData.append('cover_image', createData.cover_image);
+        formData.append("cover_image", createData.cover_image);
       }
 
       const res = await groupAPI.createGroup(formData);
-
-      toast.success('Group created successfully!');
-
+      toast.success("Group created successfully!");
       setShowCreateModal(false);
+      setCreateData({ name: "", description: "", is_private: false });
       loadGroups();
       navigate(`/groups/${res.data.group_id}`);
-      setCreateData({ name: '', description: '', is_private: false, cover_image: null });
+      setCreateData({
+        name: "",
+        description: "",
+        is_private: false,
+        cover_image: null,
+      });
     } catch (error) {
       console.error(error.response || error);
-      toast.error(error?.response?.data?.error || 'Failed to create group');
+      toast.error(error?.response?.data?.error || "Failed to create group");
     }
   };
 
   const handleJoinGroup = async (groupId) => {
     try {
       await groupAPI.joinGroup(groupId);
-      toast.success('Join request sent!');
+      toast.success("Join request sent!");
       loadGroups();
     } catch (error) {
-      toast.error('Failed to join group');
+      toast.error("Failed to join group");
     }
   };
 
@@ -155,7 +160,10 @@ const Groups = () => {
         <div className="container">
           <div className="groups-header">
             <h1>Groups</h1>
-            <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreateModal(true)}
+            >
               <FaPlus /> Create Group
             </button>
           </div>
@@ -175,9 +183,13 @@ const Groups = () => {
                       if (!groupId) return null;
 
                       return (
-                        <Link to={`/groups/${groupId}`} key={groupId} className="group-card">
+                        <Link
+                          to={`/groups/${groupId}`}
+                          key={groupId}
+                          className="group-card"
+                        >
                           <img
-                            src={group.cover_image || '/default-group.png'}
+                            src={group.cover_image || "/default-group.png"}
                             alt={group.name}
                             className="group-cover"
                           />
@@ -186,7 +198,9 @@ const Groups = () => {
                             <p>{group.description}</p>
                             <div className="group-meta">
                               {group.is_private ? <FaLock /> : <FaGlobe />}
-                              <span><FaUsers /> {group.members_count} members</span>
+                              <span>
+                                <FaUsers /> {group.members_count} members
+                              </span>
                             </div>
                           </div>
                         </Link>
@@ -209,7 +223,7 @@ const Groups = () => {
                       return (
                         <div key={groupId} className="group-card">
                           <img
-                            src={group.cover_image || '/default-group.png'}
+                            src={group.cover_image || "/default-group.png"}
                             alt={group.name}
                             className="group-cover"
                           />
@@ -218,14 +232,11 @@ const Groups = () => {
                             <p>{group.description}</p>
                             <div className="group-meta">
                               {group.is_private ? <FaLock /> : <FaGlobe />}
-                              <span><FaUsers /> {group.members_count} members</span>
+                              <span>
+                                <FaUsers /> {group.members_count} members
+                              </span>
                             </div>
-                            <button
-                              className="btn btn-primary"
-                              onClick={() => handleJoinGroup(groupId)}
-                            >
-                              Join Group
-                            </button>
+
                             <button
                               className="btn btn-secondary"
                               onClick={() => handleNonmemberView(groupId)}
@@ -278,20 +289,29 @@ const Groups = () => {
                 </div>
 
                 {/* Private checkbox */}
-                <div className="form-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={createData.is_private}
-                      onChange={(e) =>
-                        setCreateData({
-                          ...createData,
-                          is_private: e.target.checked,
-                        })
-                      }
-                    />
-                    Private Group
-                  </label>
+                <div className="form-group private-group-form-group">
+                  <label className="private-group-label">Group Privacy</label>
+                  <button
+                    type="button"
+                    className={`private-group-toggle ${createData.is_private ? 'active' : ''}`}
+                    onClick={() =>
+                      setCreateData({
+                        ...createData,
+                        is_private: !createData.is_private,
+                      })
+                    }
+                    aria-pressed={createData.is_private}
+                  >
+                    <span className={`toggle-knob ${createData.is_private ? 'active' : ''}`} />
+                    <span className="private-group-toggle-text">
+                      {createData.is_private ? 'Private Group' : 'Public Group'}
+                    </span>
+                  </button>
+                  <p className="private-group-helper">
+                    {createData.is_private
+                      ? 'Only approved members can join and view private content.'
+                      : 'Anyone can discover and join this group.'}
+                  </p>
                 </div>
 
                 {/* Cover Image Upload */}
@@ -352,7 +372,7 @@ const Groups = () => {
           </div>
         )
       }
-    </div >
+    </div>
   );
 };
 
