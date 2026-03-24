@@ -79,6 +79,11 @@ const Chat = () => {
   }, [chatUserId]);
 
   useEffect(() => {
+    // Allow per-link prefill each time the target chat user changes.
+    prefillAppliedRef.current = false;
+  }, [chatUserId]);
+
+  useEffect(() => {
     const starterMessage = searchParams.get('message');
     if (!chatUserId || !starterMessage || prefillAppliedRef.current) return;
     setNewMessage(starterMessage);
@@ -145,7 +150,19 @@ const Chat = () => {
       selectedUserRef.current = userId;
       setIsSidebarOpen(false);
     } catch (error) {
-      toast.error('Failed to load messages');
+      // Keep chat composer available for deep links even if history fetch fails.
+      setMessages([]);
+      setSelectedUser(Number(userId));
+      selectedUserRef.current = Number(userId);
+      setIsSidebarOpen(false);
+
+      const statusCode = error?.response?.status;
+      const errorMessage = error?.response?.data?.error;
+      if (statusCode === 403) {
+        toast.error(errorMessage || 'Messaging is not allowed with this user');
+      } else {
+        toast.error(errorMessage || 'Failed to load previous messages');
+      }
     } finally {
       setLoading(false);
     }

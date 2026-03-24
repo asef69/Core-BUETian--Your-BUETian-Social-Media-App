@@ -2,6 +2,38 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from decimal import Decimal, InvalidOperation
+
+
+def _validate_tuition_constraints(data):
+    salary_min = data.get('salary_min')
+    if salary_min not in (None, ''):
+        try:
+            salary_min_value = Decimal(str(salary_min))
+        except (InvalidOperation, ValueError):
+            return 'Min salary must be a valid number'
+        if salary_min_value < Decimal('1000'):
+            return 'Min salary must be at least 1000'
+
+    days_per_week = data.get('days_per_week')
+    if days_per_week not in (None, ''):
+        try:
+            days_value = int(days_per_week)
+        except (ValueError, TypeError):
+            return 'Days per week must be an integer between 1 and 7'
+        if days_value < 1 or days_value > 7:
+            return 'Days per week must be between 1 and 7'
+
+    duration_hours = data.get('duration_hours')
+    if duration_hours not in (None, ''):
+        try:
+            duration_value = Decimal(str(duration_hours))
+        except (InvalidOperation, ValueError):
+            return 'Hours per day must be a valid number'
+        if duration_value <= 0 or duration_value > Decimal('24'):
+            return 'Hours per day must be greater than 0 and at most 24'
+
+    return None
 
 class CreateBloodRequestView(APIView):
     """
@@ -281,6 +313,10 @@ class CreateTuitionPostView(APIView):
     """
     def post(self, request):
         data = request.data
+        validation_error = _validate_tuition_constraints(data)
+        if validation_error:
+            return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
+
         query = """
         INSERT INTO tution_posts (
             user_id, post_type, class_level, preferred_gender,
@@ -366,6 +402,10 @@ class TuitionPostDetailView(APIView):
             return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
 
         data = request.data
+        validation_error = _validate_tuition_constraints(data)
+        if validation_error:
+            return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
+
         update_fields = []
         params = []
 

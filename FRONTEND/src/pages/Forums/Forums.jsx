@@ -296,7 +296,7 @@ const Forums = () => {
                               </button>
                             </div>
                           )}
-                          {currentUser?.id && Number(currentUser.id) !== Number(post.poster_id) && post.poster_id && (
+                          {currentUser?.id && Number(currentUser.id) !== Number(post.poster_id) && Number(post.poster_id) && (
                             <div className="post-meta">
                               <Link
                                 to={`/chat/${post.poster_id}?message=${encodeURIComponent(`Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`)}`}
@@ -461,6 +461,7 @@ const Forums = () => {
                   <label>Min Salary</label>
                   <input
                     type="number"
+                    min="1000"
                     value={tuitionData.salary_min}
                     onChange={(e) => setTuitionData({ ...tuitionData, salary_min: e.target.value })}
                   />
@@ -479,6 +480,9 @@ const Forums = () => {
                   <label>Days per Week</label>
                   <input
                     type="number"
+                    min="1"
+                    max="7"
+                    step="1"
                     value={tuitionData.days_per_week}
                     onChange={(e) => setTuitionData({ ...tuitionData, days_per_week: e.target.value })}
                   />
@@ -488,6 +492,8 @@ const Forums = () => {
                   <input
                     type="number"
                     step="0.5"
+                    min="0.5"
+                    max="24"
                     value={tuitionData.duration_hours}
                     onChange={(e) => setTuitionData({ ...tuitionData, duration_hours: e.target.value })}
                   />
