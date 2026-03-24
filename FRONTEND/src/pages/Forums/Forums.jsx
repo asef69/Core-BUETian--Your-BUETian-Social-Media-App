@@ -271,6 +271,11 @@ const Forums = () => {
                     ) : (
                       tuitionPosts.map((post) => (
                         <div key={post.id || post.tuition_id} className="forum-post tuition-post">
+                          {(() => {
+                            const posterId = Number(post.poster_id || post.user_id || post.poster?.id || 0);
+                            const messageText = `Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`;
+                            return (
+                              <>
                           <div className="post-type-badge">
                             {post.post_type === 'seeking_tutor' ? 'Seeking Tutor' : 'Offering Tuition'}
                           </div>
@@ -286,7 +291,7 @@ const Forums = () => {
                             <span>Posted {moment.utc(post.created_at).local().fromNow()}</span>
                             <span className="status-badge">{post.status}</span>
                           </div>
-                          {currentUser?.id && Number(currentUser.id) === Number(post.poster_id) && (
+                          {currentUser?.id && Number(currentUser.id) === posterId && (
                             <div className="post-meta">
                               <button className="btn btn-secondary" onClick={() => handleEditTuition(post)}>
                                 Edit
@@ -296,16 +301,19 @@ const Forums = () => {
                               </button>
                             </div>
                           )}
-                          {currentUser?.id && Number(currentUser.id) !== Number(post.poster_id) && Number(post.poster_id) && (
+                          {currentUser?.id && Number(currentUser.id) !== posterId && posterId > 0 && (
                             <div className="post-meta">
                               <Link
-                                to={`/chat/${post.poster_id}?message=${encodeURIComponent(`Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`)}`}
+                                to={`/chat/${posterId}?message=${encodeURIComponent(messageText)}`}
                                 className="btn btn-primary"
                               >
                                 Message Poster
                               </Link>
                             </div>
                           )}
+                              </>
+                            );
+                          })()}
                         </div>
                       ))
                     )}
