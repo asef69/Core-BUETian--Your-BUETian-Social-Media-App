@@ -1042,22 +1042,34 @@ $$ LANGUAGE plpgsql;
 --USER FUNCTIONS
 
 --GET USER PROFILE
-CREATE OR REPLACE FUNCTION get_user_profile(p_user_id INTEGER)
+DROP FUNCTION IF EXISTS get_user_profile(INTEGER, INTEGER);
+
+CREATE OR REPLACE FUNCTION get_user_profile(
+    p_user_id INTEGER,
+    p_viewer_id INTEGER DEFAULT NULL
+)
 RETURNS TABLE(
     id INTEGER,
     student_id INTEGER,
     name VARCHAR(50),
     email VARCHAR(100),
     profile_picture VARCHAR(500),
-    bio TEXT,
     blood_group VARCHAR(10),
     batch INTEGER,
     hall_name VARCHAR(100),
     hall_attachement VARCHAR(20),
     department_name VARCHAR(100),
-    followers_count INTEGER,
-    following_count INTEGER,
+    bio TEXT,
     posts_count INTEGER,
+    followers_count BIGINT,
+    following_count BIGINT,
+    mutual_friends_count INTEGER,
+    follow_id INTEGER,
+    follow_status VARCHAR(20),
+    incoming_follow_request_id INTEGER,
+    follows_you BOOLEAN,
+    relationship_status TEXT,
+    is_following BOOLEAN,
     created_at TIMESTAMP
 ) AS $$
 BEGIN
@@ -1068,15 +1080,119 @@ BEGIN
         u.name,
         u.email,
         u.profile_picture,
-        u.bio,
         u.blood_group,
         u.batch,
         u.hall_name,
         u.hall_attachement,
         u.department_name,
+        u.bio,
+        (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id AND p.group_id IS NULL)::INTEGER AS posts_count,
         (SELECT COUNT(*) FROM follows f WHERE f.following_id = u.id AND f.status = 'accepted') AS followers_count,
         (SELECT COUNT(*) FROM follows f WHERE f.follower_id = u.id AND f.status = 'accepted') AS following_count,
-        (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS posts_count,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN (
+                WITH viewer_friends AS (
+                    SELECT f1.following_id AS friend_id
+                    FROM follows f1
+                    INNER JOIN follows f2
+                        ON f2.follower_id = f1.following_id
+                       AND f2.following_id = p_viewer_id
+                       AND f2.status = 'accepted'
+                    WHERE f1.follower_id = p_viewer_id
+                      AND f1.status = 'accepted'
+                ),
+                target_friends AS (
+                    SELECT f1.following_id AS friend_id
+                    FROM follows f1
+                    INNER JOIN follows f2
+                        ON f2.follower_id = f1.following_id
+                       AND f2.following_id = u.id
+                       AND f2.status = 'accepted'
+                    WHERE f1.follower_id = u.id
+                      AND f1.status = 'accepted'
+                )
+                SELECT COUNT(*)::INTEGER
+                FROM viewer_friends vf
+                INNER JOIN target_friends tf ON tf.friend_id = vf.friend_id
+            )
+            ELSE 0
+        END AS mutual_friends_count,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN (
+                SELECT f.id
+                FROM follows f
+                WHERE f.follower_id = p_viewer_id
+                  AND f.following_id = u.id
+                LIMIT 1
+            )
+            ELSE NULL
+        END AS follow_id,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN (
+                SELECT f.status
+                FROM follows f
+                WHERE f.follower_id = p_viewer_id
+                  AND f.following_id = u.id
+                LIMIT 1
+            )
+            ELSE NULL
+        END AS follow_status,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN (
+                SELECT f.id
+                FROM follows f
+                WHERE f.follower_id = u.id
+                  AND f.following_id = p_viewer_id
+                  AND f.status = 'pending'
+                LIMIT 1
+            )
+            ELSE NULL
+        END AS incoming_follow_request_id,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = u.id
+                  AND f.following_id = p_viewer_id
+                  AND f.status = 'accepted'
+            )
+            ELSE FALSE
+        END AS follows_you,
+        CASE
+            WHEN p_viewer_id IS NULL OR p_viewer_id = u.id THEN 'self'
+            WHEN EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = p_viewer_id
+                  AND f.following_id = u.id
+                  AND f.status = 'accepted'
+            ) THEN 'accepted'
+            WHEN EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = p_viewer_id
+                  AND f.following_id = u.id
+                  AND f.status = 'pending'
+            ) THEN 'pending_sent'
+            WHEN EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = u.id
+                  AND f.following_id = p_viewer_id
+                  AND f.status = 'pending'
+            ) THEN 'pending_received'
+            ELSE 'none'
+        END AS relationship_status,
+        CASE
+            WHEN p_viewer_id IS NOT NULL AND p_viewer_id <> u.id THEN EXISTS(
+                SELECT 1
+                FROM follows f
+                WHERE f.follower_id = p_viewer_id
+                  AND f.following_id = u.id
+                  AND f.status = 'accepted'
+            )
+            ELSE FALSE
+        END AS is_following,
         u.created_at
     FROM users u
     WHERE u.id = p_user_id AND u.is_active = TRUE;

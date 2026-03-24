@@ -611,9 +611,7 @@ class CommentView(APIView):
         if not post_context:
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Non-members can read comments on group posts in read-only views,
-        # but write interactions remain protected in POST/like endpoints.
-        if post_context.get('group_id') is None and not _can_user_access_post(
+        if not _can_user_access_post(
             request.user.id,
             post_context.get('user_id'),
             post_context.get('visibility', 'public'),

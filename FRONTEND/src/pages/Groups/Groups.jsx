@@ -101,6 +101,7 @@ const Groups = () => {
       const suggestedRes = responses[1];
       const followersRes = responses[2];
       const followingRes = responses[3];
+      
 
       const myGroupsData = extractItems(myGroupsRes.data);
       const suggestedData = extractItems(suggestedRes.data);
@@ -117,6 +118,11 @@ const Groups = () => {
 
         if (socialIds.size > 0) {
           filteredSuggested = suggestedData.filter((group) => {
+            const memberStatus = String(group?.member_status || "").toLowerCase();
+            if (memberStatus === "invited" || memberStatus === "pending") {
+              return true;
+            }
+
             const memberIds = getGroupMemberIds(group);
             if (memberIds.length === 0) return false;
             return memberIds.some((id) => socialIds.has(id));
@@ -133,7 +139,10 @@ const Groups = () => {
         ? filteredSuggested
         : suggestedData
       )
-        .filter((group) => String(group?.member_status || "") === "pending")
+        .filter((group) => {
+          const memberStatus = String(group?.member_status || "").toLowerCase();
+          return memberStatus === "pending" || memberStatus === "invited";
+        })
         .map((group) => Number(getGroupId(group)))
         .filter(Boolean);
 
@@ -279,7 +288,9 @@ const Groups = () => {
                     suggested.map((group) => {
                       const groupId = getGroupId(group);
                       if (!groupId) return null;
-                      const isPending = pendingGroupIds.has(Number(groupId));
+                      const memberStatus = String(group?.member_status || "").toLowerCase();
+                      const isInvited = memberStatus === "invited";
+                      const isPending = pendingGroupIds.has(Number(groupId)) || memberStatus === "pending";
 
                       return (
                         <div key={groupId} className="group-card">
@@ -305,7 +316,11 @@ const Groups = () => {
                               >
                                 View Group
                               </button>
-                              {isPending ? (
+                              {isInvited ? (
+                                <button className="btn btn-secondary" disabled>
+                                  Invited
+                                </button>
+                              ) : isPending ? (
                                 <button className="btn btn-secondary" disabled>
                                   Request Pending
                                 </button>

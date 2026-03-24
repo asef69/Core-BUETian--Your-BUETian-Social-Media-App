@@ -34,6 +34,7 @@ const NonMemberGroupView = () => {
     const [isInvited, setIsInvited] = useState(false);
     const [membershipStatus, setMembershipStatus] = useState('none');
     const [requestingJoin, setRequestingJoin] = useState(false);
+    const [canViewPosts, setCanViewPosts] = useState(false);
 
     useEffect(() => {
         const loadGroupData = async () => {
@@ -47,43 +48,55 @@ const NonMemberGroupView = () => {
                 };
 
                 const groupRes = await groupAPI.getGroup(groupId);
-                setGroup(groupRes.data);
-                setMembershipStatus(groupRes?.data?.member_status || 'none');
+                const groupData = groupRes.data;
+                const initialMembershipStatus = groupData?.member_status || 'none';
+
+                setGroup(groupData);
+                setMembershipStatus(initialMembershipStatus);
+
+                const canOpenBasedOnStatus =
+                    groupData?.is_member === true || initialMembershipStatus === 'accepted';
+                const allowPosts = !groupData?.is_private || canOpenBasedOnStatus;
+                setCanViewPosts(allowPosts);
 
                 const membersRes = await groupAPI.getMembers(groupId);
                 setMembers(extractItems(membersRes.data));
 
-                const postsRes = await groupAPI.getGroupPosts(groupId);
-                const rawPosts = extractItems(postsRes.data);
+                if (allowPosts) {
+                    const postsRes = await groupAPI.getGroupPosts(groupId);
+                    const rawPosts = extractItems(postsRes.data);
 
-                const mappedPosts = rawPosts.map((p) => {
-                    const author = p.author || p.user || {};
-                    const name =
-                        p.user_name ||
-                        p.author_name ||
-                        author.name ||
-                        author.username ||
-                        author.full_name ||
-                        'Unknown';
-                    const profile_picture =
-                        p.profile_picture ||
-                        p.author_profile_picture ||
-                        author.profile_picture ||
-                        author.avatar ||
-                        '/default-avatar.png';
+                    const mappedPosts = rawPosts.map((p) => {
+                        const author = p.author || p.user || {};
+                        const name =
+                            p.user_name ||
+                            p.author_name ||
+                            author.name ||
+                            author.username ||
+                            author.full_name ||
+                            'Unknown';
+                        const profile_picture =
+                            p.profile_picture ||
+                            p.author_profile_picture ||
+                            author.profile_picture ||
+                            author.avatar ||
+                            '/default-avatar.png';
 
-                    return {
-                        ...p,
-                        user_name: name,
-                        profile_picture: profile_picture,
-                        user_id: p.user_id || author.id,
-                        likes_count: p.likes_count || 0,
-                        comments_count: p.comments_count || 0,
-                        created_at: p.created_at,
-                    };
-                });
+                        return {
+                            ...p,
+                            user_name: name,
+                            profile_picture: profile_picture,
+                            user_id: p.user_id || author.id,
+                            likes_count: p.likes_count || 0,
+                            comments_count: p.comments_count || 0,
+                            created_at: p.created_at,
+                        };
+                    });
 
-                setPosts(mappedPosts);
+                    setPosts(mappedPosts);
+                } else {
+                    setPosts([]);
+                }
 
                 const invitesRes = await groupAPI.getInvites();
                 const invites = Array.isArray(invitesRes?.data)
@@ -91,7 +104,9 @@ const NonMemberGroupView = () => {
                     : Array.isArray(invitesRes?.data?.results)
                         ? invitesRes.data.results
                         : [];
-                const invited = invites.some((inv) => String(inv.group_id) === String(groupId));
+                const invited =
+                    initialMembershipStatus === 'invited' ||
+                    invites.some((inv) => String(inv.group_id) === String(groupId));
                 setIsInvited(invited);
 
             } catch (err) {
@@ -131,11 +146,21 @@ const NonMemberGroupView = () => {
         try {
             setRequestingJoin(true);
             await groupAPI.joinGroup(groupId);
-            setMembershipStatus('pending');
-            toast.success(group?.is_private ? 'Join request sent' : 'Join request submitted');
+            if (group?.is_private) {
+                setMembershipStatus('pending');
+                toast.success('Join request sent');
+            } else {
+                setMembershipStatus('accepted');
+                setCanViewPosts(true);
+                toast.success('Joined group successfully');
+            }
         } catch (err) {
             console.error(err);
-            toast.error(err?.response?.data?.error || 'Failed to send join request');
+            toast.error(
+                err?.response?.data?.message ||
+                err?.response?.data?.error ||
+                'Failed to send join request'
+            );
         } finally {
             setRequestingJoin(false);
         }
@@ -143,6 +168,7 @@ const NonMemberGroupView = () => {
 
     const canOpenGroup = membershipStatus === 'accepted' || group?.is_member === true;
     const isPending = membershipStatus === 'pending';
+    const isInvitedState = isInvited || membershipStatus === 'invited';
 
     if (loading) return <div className="loading">Loading group...</div>;
     if (!group) return <div>Group not found</div>;
@@ -186,7 +212,9 @@ const NonMemberGroupView = () => {
                     {/* Posts */}
                     <div className="group-posts">
                         <h2>Posts</h2>
-                        {posts.length === 0 ? (
+                        {!canViewPosts && group?.is_private ? (
+                            <p>This private group hides posts until you become an accepted member.</p>
+                        ) : posts.length === 0 ? (
                             <p>No posts yet</p>
                         ) : (
                             posts.map((post) => <PostCard key={post.id || post.post_id} post={post} readOnly />)
@@ -220,7 +248,7 @@ const NonMemberGroupView = () => {
                 </div>
 
                 <div className="nonmember-actions-panel">
-                    {isInvited && (
+                    {isInvitedState && (
                         <>
                             <button className="btn btn-primary" onClick={handleAcceptInvite}>
                                 <FaCheckCircle /> Accept Invitation
@@ -231,14 +259,14 @@ const NonMemberGroupView = () => {
                         </>
                     )}
 
-                    {!isInvited && !canOpenGroup && !isPending && (
+                    {!isInvitedState && !canOpenGroup && !isPending && (
                         <button className="btn btn-primary" onClick={handleJoinRequest} disabled={requestingJoin}>
                             {group?.is_private ? <FaPaperPlane /> : <FaUserPlus />}
                             {requestingJoin ? 'Sending...' : group?.is_private ? 'Send Join Request' : 'Join Group'}
                         </button>
                     )}
 
-                    {!isInvited && isPending && (
+                    {!isInvitedState && isPending && (
                         <button className="btn btn-secondary" disabled>
                             <FaPaperPlane /> Join Request Sent
                         </button>

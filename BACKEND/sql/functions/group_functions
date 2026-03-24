@@ -28,6 +28,8 @@ WHERE gm.user_id = p_user_id
 ORDER BY gm.joined_at DESC;
 END;
 $$ LANGUAGE plpgsql;
+DROP FUNCTION IF EXISTS get_suggested_groups(INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION get_suggested_groups(
         p_user_id INTEGER,
         p_limit INTEGER DEFAULT 10
@@ -38,7 +40,8 @@ CREATE OR REPLACE FUNCTION get_suggested_groups(
         cover_image VARCHAR(500),
         members_count BIGINT,
         is_private BOOLEAN,
-        common_members_count BIGINT
+        common_members_count BIGINT,
+        member_status VARCHAR(20)
     ) AS $$ BEGIN RETURN QUERY
 SELECT g.id AS group_id,
     g.name,
@@ -63,13 +66,32 @@ SELECT g.id AS group_id,
                 WHERE f.follower_id = p_user_id
             )
             AND gm.status = 'accepted'
-    ) AS common_members_count
-FROM groups g
-WHERE g.is_private = FALSE -- Exclude groups user already joined
-    AND g.id NOT IN (
-        SELECT gm.group_id
+    ) AS common_members_count,
+    (
+        SELECT gm.status
         FROM group_members gm
-        WHERE gm.user_id = p_user_id
+        WHERE gm.group_id = g.id
+            AND gm.user_id = p_user_id
+        ORDER BY gm.joined_at DESC NULLS LAST, gm.id DESC
+        LIMIT 1
+    ) AS member_status
+FROM groups g
+WHERE (
+        g.is_private = FALSE
+        OR EXISTS (
+            SELECT 1
+            FROM group_members gm
+            WHERE gm.group_id = g.id
+                AND gm.user_id = p_user_id
+                AND gm.status = 'invited'
+        )
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM group_members gm
+        WHERE gm.group_id = g.id
+            AND gm.user_id = p_user_id
+            AND gm.status = 'accepted'
     )
 ORDER BY common_members_count DESC,
     g.created_at DESC
