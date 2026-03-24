@@ -15,10 +15,35 @@ const Notifications = () => {
   const [filter, setFilter] = useState('all');
   const [groupInvites, setGroupInvites] = useState([]);
 
+  // Helper: Format notification type for display
+  const formatNotificationType = (type) => {
+    const typeMap = {
+      'like': 'Like',
+      'comment': 'Comment',
+      'reply': 'Reply',
+      'follow': 'Follow',
+      'follow_request': 'Follow Request',
+      'follow_accepted': 'Follow Accepted',
+      'message': 'Message',
+      'group_invite': 'Group Invite',
+      'group_join_request': 'Group Join Request',
+      'blog_like': 'Blog Like',
+      'blog_comment': 'Blog Comment',
+      'blog_reply': 'Blog Reply',
+      'blog_comment_like': 'Blog Comment Like',
+    };
+    return typeMap[type] || (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '));
+  };
+
   const loadGroupInvites = async () => {
     try {
       const res = await groupAPI.getInvites(); 
-      setGroupInvites(res.data || []);
+      const inviteList = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+          ? res.data.results
+          : [];
+      setGroupInvites(inviteList);
     } catch (error) {
       console.error('Failed to load group invites');
     }
@@ -27,10 +52,6 @@ const Notifications = () => {
   useEffect(() => {
     loadNotifications();
     loadGroupInvites();
-  }, [filter]);
-
-  useEffect(() => {
-    loadNotifications();
   }, [filter]);
 
   const loadNotifications = async () => {
@@ -187,6 +208,8 @@ const Notifications = () => {
       case 'follow_accepted':
         return `/profile/${notif.actor_id}`;
       case 'group_invite':
+      case 'group_join_request':
+        if (!Number.isFinite(normalizedReferenceId) || normalizedReferenceId <= 0) return '#';
         return `/groups/${referenceId}`;
       case 'message':
         return `/chat/${notif.actor_id}`;
@@ -194,6 +217,22 @@ const Notifications = () => {
         return '#';
     }
   };
+
+  const inviteGroupIds = new Set(
+    (Array.isArray(groupInvites) ? groupInvites : [])
+      .map((invite) => Number.parseInt(invite?.group_id, 10))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  );
+
+  const visibleNotifications = (Array.isArray(notifications) ? notifications : []).filter((notif) => {
+    const type = notif?.notification_type || notif?.type;
+    if (type !== 'group_invite') {
+      return true;
+    }
+
+    const referenceId = Number.parseInt(notif?.reference_id || notif?.target_id, 10);
+    return Number.isFinite(referenceId) && inviteGroupIds.has(referenceId);
+  });
 
   return (
     <div className="app-layout">
@@ -248,9 +287,10 @@ const Notifications = () => {
                 const type = item.notification_type || item.type || `type-${index}`;
                 const unread = item.unread_count || 0;
                 const total = item.total_count || 0;
+                const displayLabel = formatNotificationType(type);
                 return (
                   <button key={`${type}-${index}`} className="filter-btn" onClick={() => handleMarkTypeRead(type)}>
-                    {type}: {unread}/{total}
+                    {displayLabel}: {unread}/{total}
                   </button>
                 );
               })}
@@ -305,14 +345,14 @@ const Notifications = () => {
               )}
 
               <div className="notifications-list">
-                {notifications.length === 0 ? (
+                {visibleNotifications.length === 0 ? (
                   <div className="no-notifications">
                     <FaBell className="no-notifications-icon" />
                     <p>No notifications yet</p>
                     <span>When you get notifications, they'll appear here</span>
                   </div>
                 ) : (
-                  notifications.map((notif) => (
+                  visibleNotifications.map((notif) => (
                     <div
                       key={notif.id}
                       className={`notification-item ${!notif.is_read ? 'unread' : ''}`}

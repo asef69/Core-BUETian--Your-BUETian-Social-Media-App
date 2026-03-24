@@ -315,13 +315,45 @@ class JoinGroupView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, group_id):
+        group_exists = DatabaseManager.execute_query(
+            "SELECT id, is_private FROM groups WHERE id = %s",
+            (group_id,)
+        )
+        if not group_exists:
+            return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        group_is_private=bool(group_exists[0].get('is_private', False))
+
+
+        existing_membership = DatabaseManager.execute_query(
+            "SELECT status FROM group_members WHERE group_id = %s AND user_id = %s",
+            (group_id, request.user.id)
+        )
+        if existing_membership:
+            current_status = existing_membership[0]['status']
+            if current_status == 'accepted':
+                return Response({'message': 'You are already a member of this group'})
+            if current_status == 'pending':
+                return Response({'message': 'Join request already sent'})
+            if current_status == 'invited':
+                return Response({'message': 'You have a pending invitation. Please accept or reject it first.'})
+
         query = """
         INSERT INTO group_members (group_id, user_id, role, status)
-        VALUES (%s, %s, 'member', 'pending')
-        ON CONFLICT (group_id, user_id) DO NOTHING
+        VALUES(%s,%s,'member',%s)
+        ON CONFLICT (group_id, user_id)
+        DO UPDATE SET
+            role = EXCLUDED.role,
+            status = EXCLUDED.status,
+            joined_at = CURRENT_TIMESTAMP
+        WHERE group_members.status = 'rejected'
         """
-        DatabaseManager.execute_insert(query, (group_id, request.user.id))
-        return Response({'message': 'Join request sent'})
+        new_status = 'pending' if group_is_private else 'accepted'
+        DatabaseManager.execute_insert(query, (group_id, request.user.id, new_status))
+
+        if group_is_private:
+            return Response({'message': 'Join request sent'})
+        return Response({'message': 'Joined group successfully'})
 
 class AcceptGroupMemberView(APIView):
     """
@@ -472,14 +504,14 @@ class InviteGroupMemberView(APIView):
                 return Response({'message': 'User is already part of group'})
 
             DatabaseManager.execute_update(
-                "UPDATE group_members SET status = 'pending', role = 'member' WHERE group_id = %s AND user_id = %s",
+                "UPDATE group_members SET status = 'invited', role = 'member' WHERE group_id = %s AND user_id = %s",
                 (group_id, target_user_id)
             )
             _create_group_invite_notification(target_user_id, request.user.id, group_id)
             return Response({'message': 'User invited successfully'})
 
         DatabaseManager.execute_insert(
-            "INSERT INTO group_members (group_id, user_id, role, status) VALUES (%s, %s, 'member', 'pending')",
+            "INSERT INTO group_members (group_id, user_id, role, status) VALUES (%s, %s, 'member', 'invited')",
             (group_id, target_user_id)
         )
         _create_group_invite_notification(target_user_id, request.user.id, group_id)
@@ -773,20 +805,8 @@ class GroupPostsView(APIView):
             SELECT 1
             FROM group_members gm
             WHERE gm.group_id = %s
-                AND gm.user_id = %s
-                AND (
-                    gm.status = 'accepted'
-                    OR (
-                        gm.status = 'pending'
-                        AND EXISTS (
-                            SELECT 1
-                            FROM notifications n
-                            WHERE n.user_id = gm.user_id
-                                AND n.reference_id = gm.group_id
-                                AND n.notification_type = 'group_invite'
-                        )
-                    )
-                )
+            AND gm.user_id = %s
+            AND gm.status = 'accepted'
             """
             member_result = DatabaseManager.execute_query(member_query, (group_id, request.user.id))
             if not member_result:
@@ -800,27 +820,27 @@ class GroupPostsView(APIView):
         offset = (page - 1) * limit
         
         # Get posts with user info
-        posts_query = """
-        SELECT 
-            p.id,
-            p.user_id,
-            u.name as user_name,
-            u.profile_picture,
-            p.content,
-            p.likes_count,
-            p.comments_count,
-            p.created_at,
-            COALESCE(
-                (SELECT json_agg(media_url) FROM media_urls WHERE post_id = p.id),
-                '[]'::json
-            ) as media_urls
-        FROM posts p
-        INNER JOIN users u ON p.user_id = u.id
-        WHERE p.group_id = %s
-        ORDER BY p.created_at DESC
-        LIMIT %s OFFSET %s
-        """
-        posts = DatabaseManager.execute_query(posts_query, (group_id, limit, offset))
+        # posts_query =""" 
+        # SELECT 
+        #     p.id,
+        #     p.user_id,
+        #     u.name as user_name,
+        #     u.profile_picture,
+        #     p.content,
+        #     p.likes_count,
+        #     p.comments_count,
+        #     p.created_at,
+        #     COALESCE(
+        #         (SELECT json_agg(media_url) FROM media_urls WHERE post_id = p.id),
+        #         '[]'::json
+        #     ) as media_urls
+        # FROM posts p
+        # INNER JOIN users u ON p.user_id = u.id
+        # WHERE p.group_id = %s
+        # ORDER BY p.created_at DESC
+        # LIMIT %s OFFSET %s
+        # """
+        posts = DatabaseManager.execute_function('get_group_posts', (group_id, request.user.id, limit, offset))
         
         # Get total count
         count_query = "SELECT COUNT(*) as total FROM posts WHERE group_id = %s"
@@ -1079,7 +1099,7 @@ class SuggestedGroupsView(APIView):
     def get(self, request):
         limit = int(request.GET.get('limit', 10))
         result = DatabaseManager.execute_function('get_suggested_groups', (request.user.id, limit))
-        return Response(result)
+        return Response(result or [])
 
 class SearchGroupsView(APIView):
     """
@@ -1319,69 +1339,6 @@ class DemoteModeratorView(APIView):
                        status=status.HTTP_400_BAD_REQUEST)
         
         
-class AcceptGroupInviteView(APIView): # type: ignore
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, group_id):
-        updated = DatabaseManager.execute_update(
-            """
-            UPDATE group_members gm
-            SET status = 'accepted'
-            WHERE gm.group_id = %s
-              AND gm.user_id = %s
-              AND gm.status = 'pending'
-              AND EXISTS (
-                SELECT 1
-                FROM notifications n
-                WHERE n.user_id = gm.user_id
-                  AND n.reference_id = gm.group_id
-                  AND n.notification_type = 'group_invite'
-              )
-            """,
-            (group_id, request.user.id)
-        )
-
-        if not updated:
-            return Response({'error': 'No invitation found'}, status=404)
-
-        DatabaseManager.execute_update(
-            "DELETE FROM notifications WHERE user_id = %s AND reference_id = %s AND notification_type = 'group_invite'",
-            (request.user.id, group_id)
-        )
-
-        return Response({'message': 'Joined group successfully'})
-    
-    
-    class RejectGroupInviteView(APIView):
-        permission_classes = [IsAuthenticated]
-
-        def post(self, request, group_id):
-            deleted = DatabaseManager.execute_update(
-                """
-                DELETE FROM group_members gm
-                WHERE gm.group_id = %s
-                  AND gm.user_id = %s
-                  AND gm.status = 'pending'
-                  AND EXISTS (
-                    SELECT 1
-                    FROM notifications n
-                    WHERE n.user_id = gm.user_id
-                      AND n.reference_id = gm.group_id
-                      AND n.notification_type = 'group_invite'
-                  )
-                """,
-                (group_id, request.user.id)
-            )
-
-            if not deleted:
-                return Response({'error': 'No invitation found'}, status=404)
-
-            DatabaseManager.execute_update(
-                "DELETE FROM notifications WHERE user_id = %s AND reference_id = %s AND notification_type = 'group_invite'",
-                (request.user.id, group_id)
-            )
-
-            return Response({'message': 'Invitation rejected'})
         
 class InvitedMembersView(APIView):
     """
@@ -1429,7 +1386,7 @@ class InvitedMembersView(APIView):
         FROM group_members gm
         LEFT JOIN users u ON gm.user_id = u.id
                 WHERE gm.group_id = %s
-                    AND gm.status = 'pending'
+                    AND gm.status = 'invited'
                     AND EXISTS (
                         SELECT 1
                         FROM notifications n
@@ -1483,7 +1440,7 @@ class CancelGroupInvite(APIView):
             (target_user_id, group_id)
         )
 
-        if status_val != 'pending' or not is_group_invite:
+        if status_val != 'invited' or not is_group_invite:
             return Response({'error': 'User is not in invited state'}, status=400)
 
         DatabaseManager.execute_update(
@@ -1512,7 +1469,7 @@ class UserGroupInvitesView(APIView):
         FROM group_members gm
         INNER JOIN groups g ON gm.group_id = g.id
                 WHERE gm.user_id = %s
-                    AND gm.status = 'pending'
+                    AND gm.status = 'invited'
                     AND EXISTS (
                         SELECT 1
                         FROM notifications n
@@ -1537,7 +1494,7 @@ class AcceptGroupInviteView(APIView):
             SET status = 'accepted'
             WHERE gm.group_id = %s
               AND gm.user_id = %s
-              AND gm.status = 'pending'
+              AND gm.status = 'invited'
               AND EXISTS (
                 SELECT 1
                 FROM notifications n
@@ -1568,7 +1525,7 @@ class RejectGroupInviteView(APIView):
             DELETE FROM group_members gm
             WHERE gm.group_id = %s
               AND gm.user_id = %s
-              AND gm.status = 'pending'
+              AND gm.status = 'invited'
               AND EXISTS (
                 SELECT 1
                 FROM notifications n

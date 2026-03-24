@@ -9,6 +9,9 @@ import { FaPaperPlane, FaImage, FaBars, FaTimes } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Chat.css';
 
+const WS_UNAUTHORIZED_CLOSE_CODE = 4401;
+const WS_ABNORMAL_CLOSE_CODE = 1006;
+
 const Chat = () => {
   const { userId: chatUserId } = useParams();
   const [searchParams] = useSearchParams();
@@ -32,6 +35,7 @@ const Chat = () => {
   const peerTypingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
   const shouldReconnectRef = useRef(true);
+  const wsAuthRetryAttemptedRef = useRef(false);
 
   useEffect(() => {
     loadConversations();
@@ -152,7 +156,8 @@ const Chat = () => {
   };
 
   const connectWebSocket = () => {
-    const token = localStorage.getItem('accessToken');
+    const storedToken = localStorage.getItem('accessToken');
+    const token = (storedToken || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return null;
 
     const existingSocket = wsRef.current;
@@ -163,12 +168,13 @@ const Chat = () => {
     const wsBase = API_ORIGIN.startsWith('https:')
       ? API_ORIGIN.replace('https:', 'wss:')
       : API_ORIGIN.replace('http:', 'ws:');
-    const wsUrl = `${wsBase}/ws/chat/?token=${token}`;
+    const wsUrl = `${wsBase}/ws/chat/?token=${encodeURIComponent(token)}`;
     const websocket = new WebSocket(wsUrl);
     wsRef.current = websocket;
 
     websocket.onopen = () => {
       console.log('WebSocket connected');
+      wsAuthRetryAttemptedRef.current = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -225,8 +231,65 @@ const Chat = () => {
       console.error('WebSocket error:', error);
     };
 
-    websocket.onclose = () => {
-      console.log('WebSocket disconnected');
+    websocket.onclose = (event) => {
+      console.log(`WebSocket disconnected (code=${event.code}, reason=${event.reason || 'no-reason'})`);
+
+      const shouldAttemptTokenRefresh =
+        (event.code === WS_UNAUTHORIZED_CLOSE_CODE || event.code === WS_ABNORMAL_CLOSE_CODE)
+        && !wsAuthRetryAttemptedRef.current;
+
+      if (shouldAttemptTokenRefresh) {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (refreshToken) {
+          wsAuthRetryAttemptedRef.current = true;
+          (async () => {
+            try {
+              const response = await api.post('/users/token/refresh/', { refresh: refreshToken });
+              const nextAccessToken = response.data?.access;
+              if (!nextAccessToken) {
+                throw new Error('No access token returned');
+              }
+
+              localStorage.setItem('accessToken', nextAccessToken);
+              if (shouldReconnectRef.current) {
+                connectWebSocket();
+              }
+            } catch (refreshError) {
+              if (event.code === WS_UNAUTHORIZED_CLOSE_CODE) {
+                shouldReconnectRef.current = false;
+                toast.error('Chat connection failed: could not refresh session. Please log in again.');
+                return;
+              }
+
+              if (!shouldReconnectRef.current || wsRef.current !== websocket) {
+                return;
+              }
+              if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+              }
+              reconnectTimeoutRef.current = setTimeout(() => {
+                if (shouldReconnectRef.current && localStorage.getItem('accessToken')) {
+                  connectWebSocket();
+                }
+              }, 2000);
+            }
+          })();
+          return;
+        }
+
+        if (event.code === WS_UNAUTHORIZED_CLOSE_CODE) {
+          shouldReconnectRef.current = false;
+          toast.error('Chat connection failed: missing refresh token. Please log in again.');
+          return;
+        }
+      }
+
+      if (event.code === WS_UNAUTHORIZED_CLOSE_CODE) {
+        shouldReconnectRef.current = false;
+        toast.error('Chat connection failed: session expired or invalid token. Please log in again.');
+        return;
+      }
+
       if (!shouldReconnectRef.current || wsRef.current !== websocket) {
         return;
       }

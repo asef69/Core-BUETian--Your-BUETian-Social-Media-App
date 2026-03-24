@@ -1,10 +1,15 @@
 import json
+import logging
 from datetime import date, datetime
+from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import AccessToken
 from utils.database import DatabaseManager
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -49,7 +54,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.user = await self.get_user_from_token()
         
         if self.user is None or isinstance(self.user, AnonymousUser):
-            await self.close()
+            # Accept then close so browsers receive the application close code
+            # instead of generic abnormal closure (1006).
+            await self.accept()
+            await self.close(code=4401)
             return
         
         self.user_id = str(self.user.id)
@@ -142,47 +150,63 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         Returns early if receiver_id is missing.
         """
-        receiver_id = data.get('receiver_id')
-        content = (data.get('content') or '').strip()
-        media_url = data.get('media_url')  
-        
-        if not receiver_id:
-            return
+        try:
+            receiver_id = data.get('receiver_id')
+            content = (data.get('content') or '').strip()
+            media_url = data.get('media_url')  
+            
+            if not receiver_id:
+                return
 
-        if not content and not media_url:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Message cannot be empty'
-            }))
-            return
+            if not content and not media_url:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Message cannot be empty'
+                }))
+                return
 
-        if not await self.can_user_message(self.user.id, receiver_id):
+            if not await self.can_user_message(self.user.id, receiver_id):
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Messaging not allowed'
+                }))
+                return
+            
+            message = await self.save_message(
+                sender_id=self.user.id, # type: ignore
+                receiver_id=receiver_id,
+                content=content,
+                media_url=media_url
+            )
+            
+            if not message:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Failed to save message'
+                }))
+                return
+            
+            await self.channel_layer.group_send(
+                f'user_{receiver_id}',
+                {
+                    'type': 'chat_message',
+                    'message': message
+                }
+            )
+            
             await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Messaging not allowed'
-            }))
-            return
-        
-        message = await self.save_message(
-            sender_id=self.user.id, # type: ignore
-            receiver_id=receiver_id,
-            content=content,
-            media_url=media_url
-        )
-        
-        await self.channel_layer.group_send(
-            f'user_{receiver_id}',
-            {
-                'type': 'chat_message',
+                'type': 'message_sent',
                 'message': message
-            }
-        )
-        
-
-        await self.send(text_data=json.dumps({
-            'type': 'message_sent',
-            'message': message
-        }))
+            }))
+        except Exception as e:
+            logger.error(f'Error in handle_chat_message: {str(e)}', exc_info=True)
+            try:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Server error while sending message'
+                }))
+            except Exception as send_error:
+                logger.error(f'Failed to send error message: {str(send_error)}')
     
     async def handle_typing(self, data):
         """
@@ -202,23 +226,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "is_typing": bool
             }
         """
-        receiver_id = data.get('receiver_id')
-        is_typing = data.get('is_typing', False)
+        try:
+            receiver_id = data.get('receiver_id')
+            is_typing = data.get('is_typing', False)
 
-        if not receiver_id:
-            return
+            if not receiver_id:
+                return
 
-        if not await self.can_user_message(self.user.id, receiver_id):
-            return
-        
-        await self.channel_layer.group_send(
-            f'user_{receiver_id}',
-            {
-                'type': 'typing_indicator',
-                'sender_id': self.user.id, # type: ignore
-                'is_typing': is_typing
-            }
-        )
+            if not await self.can_user_message(self.user.id, receiver_id):
+                return
+            
+            await self.channel_layer.group_send(
+                f'user_{receiver_id}',
+                {
+                    'type': 'typing_indicator',
+                    'sender_id': self.user.id, # type: ignore
+                    'is_typing': is_typing
+                }
+            )
+        except Exception as e:
+            logger.error(f'Error in handle_typing: {str(e)}', exc_info=True)
     
     async def handle_read_message(self, data):
         """
@@ -235,19 +262,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             1. Update message is_read field to TRUE
             2. Notify sender's channel group
         """
-        message_id = data.get('message_id')
-        
-        await self.mark_message_as_read(message_id)
-        
-        sender_id = data.get('sender_id')
-        if sender_id:
-            await self.channel_layer.group_send(
-                f'user_{sender_id}',
-                {
-                    'type': 'message_read',
-                    'message_id': message_id
-                }
-            )
+        try:
+            message_id = data.get('message_id')
+            
+            await self.mark_message_as_read(message_id)
+            
+            sender_id = data.get('sender_id')
+            if sender_id:
+                await self.channel_layer.group_send(
+                    f'user_{sender_id}',
+                    {
+                        'type': 'message_read',
+                        'message_id': message_id
+                    }
+                )
+        except Exception as e:
+            logger.error(f'Error in handle_read_message: {str(e)}', exc_info=True)
     
     async def chat_message(self, event):
         """
@@ -323,7 +353,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             This is a synchronous database operation wrapped for async use.
         """
         try:
-            token = self.scope['query_string'].decode().split('token=')[1]
+            raw_query = self.scope.get('query_string', b'').decode(errors='ignore')
+            parsed_query = parse_qs(raw_query)
+            token_values = parsed_query.get('token', [])
+            token = token_values[0].strip() if token_values else ''
+
+            # Support accidentally prefixed values like "Bearer <token>".
+            if token.lower().startswith('bearer '):
+                token = token[7:].strip()
+
+            if not token:
+                logger.warning('WebSocket auth failed: missing token in query string')
+                return None
+
             access_token = AccessToken(token) # type: ignore
             user_id = access_token['user_id']
             
@@ -338,8 +380,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         self.name = data['name']
                 
                 return User(result[0])
+            logger.warning('WebSocket auth failed: user_id %s not found', user_id)
             return None
-        except Exception:
+        except Exception as exc:
+            logger.warning('WebSocket auth failed: %s', str(exc))
             return None
     
     @database_sync_to_async
@@ -348,7 +392,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'can_user_message',
             (sender_id, receiver_id)
         )
-        return result[0]['can_user_message'] if result else False
+        if result:
+            # SQL function returns column 'can_message', with fallback to old key name
+            return result[0].get('can_message', result[0].get('can_user_message', False))
+        return False
 
     @database_sync_to_async
     def save_message(self, sender_id, receiver_id, content, media_url):

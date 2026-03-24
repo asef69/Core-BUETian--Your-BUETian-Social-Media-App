@@ -1013,7 +1013,8 @@ class MarkProductSoldView(APIView):
             (product_id, request.user.id)
         )
         
-        if result and result[0].get('mark_product_sold'):
+        # SQL function returns column 'success'
+        if result and result[0].get('success', result[0].get('mark_product_sold', False)):
             return Response({'message': 'Product marked as sold'})
         return Response({'error': 'Unauthorized or product not found'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -1395,7 +1396,8 @@ class ReserveProductView(APIView):
                 'reserve_product',
                 (product_id, request.user.id)
             )
-            if result and result[0].get('reserve_product'):
+            # SQL function returns column 'success'
+            if result and result[0].get('success', result[0].get('reserve_product', False)):
                 return Response({'message': 'Product reserved successfully'})
         except ProgrammingError:
             pass

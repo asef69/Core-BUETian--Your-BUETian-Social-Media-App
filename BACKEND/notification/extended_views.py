@@ -12,7 +12,7 @@ class NotificationSummaryView(APIView):
     Authentication: Required (JWT)
     
     Returns:
-        Summary of notifications by type:
+        Summary of notifications by type (all types, not just hardcoded ones):
         [
             {
                 "notification_type": "like",
@@ -30,13 +30,22 @@ class NotificationSummaryView(APIView):
         ]
     
     Database:
-        Function: get_notification_summary(user_id)
+        Direct grouped query from notifications table (supports ALL notification types)
     """
     def get(self, request):
-        result = DatabaseManager.execute_function(
-            'get_notification_summary',
-            (request.user.id,)
-        )
+        # Query all notification types dynamically (not limited to hardcoded types)
+        query = """
+        SELECT
+            notification_type,
+            COUNT(*) AS total_count,
+            COUNT(*) FILTER (WHERE is_read = FALSE) AS unread_count,
+            MAX(created_at) AS latest_notification_time
+        FROM notifications
+        WHERE user_id = %s
+        GROUP BY notification_type
+        ORDER BY unread_count DESC, total_count DESC, notification_type ASC
+        """
+        result = DatabaseManager.execute_query(query, (request.user.id,))
         return Response(result or [])
 
 
@@ -65,7 +74,11 @@ class MarkNotificationsByTypeView(APIView):
             (request.user.id, notification_type)
         )
         
-        count = result[0]['mark_notifications_read_by_type'] if result else 0
+        # SQL function returns 'updated_count', with fallback to legacy key name
+        count = 0
+        if result:
+            row = result[0]
+            count = row.get('updated_count', row.get('mark_notifications_read_by_type', 0))
         return Response({'message': f'{count} notifications marked as read'})
 
 

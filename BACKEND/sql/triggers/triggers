@@ -243,7 +243,7 @@ CREATE TRIGGER after_insert_message_notification
     FOR EACH ROW
     EXECUTE FUNCTION create_message_notification();
 
-CREATE OR REPLACE FUNCTION create_group_invite_notification()
+CREATE OR REPLACE FUNCTION create_group_join_request_notification()
 RETURNS TRIGGER AS $$
 DECLARE 
     group_name_text VARCHAR(100);
@@ -251,12 +251,29 @@ DECLARE
 BEGIN
     IF NEW.status='pending' THEN
         SELECT name,admin_id INTO group_name_text,admin_id_val FROM groups WHERE id=NEW.group_id;
-        INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
-        VALUES(NEW.user_id,admin_id_val,'group_invite',NEW.id,'invited you to join the group "'||group_name_text||'"');  
+        IF admin_id_val IS NOT NULL AND admin_id_val<>NEW.user_id THEN
+            INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
+            SELECT admin_id_val,NEW.user_id,'group_join_request',NEW.group_id,'requested to join the group "'||group_name_text||'"'
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM notifications n
+                WHERE n.user_id = admin_id_val
+                  AND n.actor_id = NEW.user_id
+                  AND n.notification_type = 'group_join_request'
+                  AND n.reference_id = NEW.group_id
+            );
+        END IF;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS after_group_member_insert ON group_members;
+CREATE TRIGGER after_group_member_insert
+    AFTER INSERT ON group_members
+    FOR EACH ROW
+    EXECUTE FUNCTION create_group_join_request_notification();
+
 
 DROP TRIGGER IF EXISTS after_group_member_insert ON group_members;
 CREATE TRIGGER after_group_member_insert

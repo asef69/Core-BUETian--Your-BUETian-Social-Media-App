@@ -15,7 +15,6 @@ const GroupDetail = () => {
   const [posts, setPosts] = useState([]);
   const [members, setMembers] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
-  const [invitedMembers, setInvitedMembers] = useState([]);
   const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
@@ -33,6 +32,7 @@ const GroupDetail = () => {
   const [searchPageSize] = useState(5);
   const [activity, setActivity] = useState({});
   const [showEditForm, setShowEditForm] = useState(false);
+  const [invitedMembers, setInvitedMembers] = useState([]);
   const [editGroupData, setEditGroupData] = useState({
     name: '',
     description: '',
@@ -162,6 +162,8 @@ const GroupDetail = () => {
       const pendingData = extractItems(pendingRes.data).map(normalizeMember);
       const invitedData = extractItems(invitedRes.data).map(normalizeMember);
 
+      console.log("Normalized posts:", postsData);
+
       setGroup(groupData);
       setPosts(postsData);
       setMembers(membersData);
@@ -174,7 +176,6 @@ const GroupDetail = () => {
 
       if (currentUser?.id) {
         try {
-          setInvitedMembers(invitedData);
           console.log('invitedRes:', invitedRes);
           console.log('invitedData:', invitedData);
 
@@ -424,15 +425,50 @@ const GroupDetail = () => {
 
     try {
       const formData = new FormData();
-      formData.append('cover_image', coverImageFile);
+      if (editGroupData.name) formData.append('name', editGroupData.name);
+      if (editGroupData.description) formData.append('description', editGroupData.description);
+      formData.append('is_private', editGroupData.is_private);
+      if (editGroupData.cover_image) {
+
+        const uploadData = new FormData();
+        uploadData.append('media', editGroupData.cover_image);
+        uploadData.append('media_type', 'image');
+        const uploadRes = await postAPI.uploadMedia(uploadData);
+        const uploadedUrl = uploadRes?.data?.uploaded_files?.[0]?.url;
+        if (uploadedUrl) formData.append('cover_image', uploadedUrl);
+      }
+
       await groupAPI.updateGroup(groupId, formData);
-      toast.success('Cover image updated');
-      loadGroupData();
+
+      toast.success('Group updated successfully!');
+      setShowEditForm(false);
+
+      await loadGroupData();
+      setActiveTab('posts');
+
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to update group');
     } finally {
       setUpdatingGroup(false);
       setEditGroupData((prev) => ({ ...prev, cover_image: null }));
+    }
+  };
+
+  const handleUpdateCover = async (e) => {
+    e.preventDefault();
+    if (!coverImageFile) return;
+
+    setUpdatingCover(true);
+    try {
+      const formData = new FormData();
+      formData.append('cover_image', coverImageFile);
+      await groupAPI.updateGroup(groupId, formData);
+      toast.success('Cover image updated');
+      loadGroupData();
+    } catch (error) {
+      toast.error('Failed to update cover image');
+    } finally {
+      setUpdatingCover(false);
     }
   };
 
@@ -813,102 +849,75 @@ const GroupDetail = () => {
                   </div>
                 )}
 
-                {members.map((member) => (
-                  <div key={member.user_id} className="member-item">
-                    <img
-                      src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
-                      alt={member.name || 'User'}
-                      className="avatar"
-                      onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
-                    />
-                    <div className="member-info">
-                      <h4>{member.name}</h4>
-                      <span className="member-role">{member.role}</span>
-                    </div>
-                    {member.user_id !== currentUser?.id && (
-                      <div className="member-actions">
-                        {canChangeRoles && (
-                          <>
-                            {member.role === 'moderator' ? (
-                              <>
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleDemote(member.user_id)}
-                                >
-                                  Demote
-                                </button>
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handleTransferAdmin(member.user_id)}
-                                >
-                                  Make Admin
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handlePromote(member.user_id)}
-                                >
-                                  Promote
-                                </button>
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleTransferAdmin(member.user_id)}
-                                >
-                                  Make Admin
-                                </button>
-                              </>
-                            )}
-                          </>
-                        )}
-
-                        {canManageMembers &&
-                          !(
-                            currentUserRole === 'moderator' &&
-                            (member.role === 'admin' || member.role === 'owner')
-                          ) && (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleKickMember(member.user_id)}
-                          >
-                            Kick
-                          </button>
-                        )}
+                <div className='members'>
+                  <h3>Current Members</h3>
+                  {members.map((member) => (
+                    <div key={member.user_id} className="member-item">
+                      <img
+                        src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                        alt={member.name || 'User'}
+                        className="avatar"
+                        onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                      />
+                      <div className="member-info">
+                        <h4>{member.name}</h4>
+                        <span className="member-role">{member.role}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-                {canManageMembers && invitedMembers.length > 0 && (
-                  <div className="pending-members">
-                    <h3>Invited Members</h3>
-
-                    {invitedMembers.map((member) => (
-                      <div key={member.user_id} className="member-item pending">
-                        <img
-                          src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
-                          alt={member.name || 'User'}
-                          className="avatar"
-                          onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
-                        />
-
-                        <div className="member-info">
-                          <h4>{member.name}</h4>
-                          <span className="member-role">invited</span>
-                        </div>
-
+                      {member.user_id !== currentUser?.id && (
                         <div className="member-actions">
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleCancelInvite(member.user_id)}
-                          >
-                            Cancel Invitation
-                          </button>
+                          {canChangeRoles && (
+                            <>
+                              {member.role === 'moderator' ? (
+                                <>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => handleDemote(member.user_id)}
+                                  >
+                                    Demote
+                                  </button>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={() => handleTransferAdmin(member.user_id)}
+                                  >
+                                    Make Admin
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={() => handlePromote(member.user_id)}
+                                  >
+                                    Promote
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => handleTransferAdmin(member.user_id)}
+                                  >
+                                    Make Admin
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+
+                          {canManageMembers &&
+                            !(
+                              currentUserRole === 'moderator' &&
+                              (member.role === 'admin' || member.role === 'owner')
+                            ) && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => handleKickMember(member.user_id)}
+                              >
+                                Kick
+                              </button>
+                            )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

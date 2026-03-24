@@ -7,7 +7,7 @@ import moment from 'moment';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
 
-const PostCard = ({ post, onLike }) => {
+const PostCard = ({ post, onLike, readOnly = false }) => {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const [liked, setLiked] = useState(
@@ -74,15 +74,19 @@ const PostCard = ({ post, onLike }) => {
   }, [post.has_liked, post.is_liked, post.liked, post.likes_count, post.comments_count]);
 
   const handleLike = async () => {
+    if (readOnly) {
+      return;
+    }
+
     try {
       console.log('🔄 Attempting to like post:', { postId: post.id, postIdType: typeof post.id });
-      
+
       if (!postId) {
         console.error('❌ Post ID is missing:', post);
         toast.error('Cannot like post: Post ID is missing');
         return;
       }
-      
+
       const response = await postAPI.likePost(postId);
       console.log('✅ Post liked successfully:', response?.data);
 
@@ -107,7 +111,7 @@ const PostCard = ({ post, onLike }) => {
         url: error.config?.url,
         data: error.response?.data
       });
-      
+
       if (error.response?.status === 404) {
         toast.error('Post not found. The post may have been deleted.');
       } else if (error.response?.status === 401) {
@@ -191,7 +195,7 @@ const PostCard = ({ post, onLike }) => {
   };
   const handleCommentRemoved = () => {
     setCommentsCount(commentsCount - 1);
-  }; 
+  };
 
   const isOwner = user && Number(user.id) === Number(post.user_id);
 
@@ -231,7 +235,7 @@ const PostCard = ({ post, onLike }) => {
   const canOpenProfile = Boolean(post.user_id);
 
   return (
-    <div className="post-card">
+    <div className={`post-card ${readOnly ? 'read-only' : ''}`}>
       <div className="post-header">
         {canOpenProfile ? (
           <Link to={`/profile/${post.user_id}`} className="post-author">
@@ -329,7 +333,7 @@ const PostCard = ({ post, onLike }) => {
         ) : (
           <p>{renderContentWithHashtags(post.content)}</p>
         )}
-        
+
         {mediaItems.length > 0 && (
           <div className={`post-media ${mediaItems.length > 1 ? 'media-grid' : ''}`}>
             {mediaItems.map((media, index) => (
@@ -349,9 +353,12 @@ const PostCard = ({ post, onLike }) => {
         <button
           className={`action-btn ${liked ? 'liked' : ''}`}
           onClick={handleLike}
+          disabled={readOnly}
         >
           {liked ? <FaHeart color="#e74c3c" /> : <FaRegHeart />}
-          {likesCount > 0 ? (
+          {readOnly ? (
+            <span className="count-pill">{likesCount}</span>
+          ) : likesCount > 0 ? (
             <span className="count-pill">{likesCount}</span>
           ) : (
             <span>Like</span>
@@ -362,7 +369,9 @@ const PostCard = ({ post, onLike }) => {
           onClick={() => setShowComments(!showComments)}
         >
           <FaComment />
-          {commentsCount > 0 ? (
+          {readOnly ? (
+            <span className="count-pill">{commentsCount}</span>
+          ) : commentsCount > 0 ? (
             <span className="count-pill">{commentsCount}</span>
           ) : (
             <span>Comment</span>
@@ -375,6 +384,7 @@ const PostCard = ({ post, onLike }) => {
           postId={postId}
           onCommentAdded={handleCommentAdded}
           onCommentRemoved={handleCommentRemoved}
+          readOnly={readOnly}
         />
       )}
     </div>
