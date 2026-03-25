@@ -176,3 +176,143 @@
     flex-direction: column;
   }
 }
+
+/* Filter Panel Styles */
+.tuition-filter-panel {
+  width: 280px;
+  padding: 20px;
+  background: var(--surface);
+  border-radius: 8px;
+  height: fit-content;
+  position: sticky;
+  top: 20px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+
+.tuition-filter-panel h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: var(--light-color);
+  font-size: 1.05rem;
+}
+
+.filter-input-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--light-color);
+  font-size: 14px;
+}
+
+.filter-input-group select:focus {
+  outline: none;
+  border-color: var(--primary-color, #2374e1);
+  box-shadow: 0 0 0 3px rgba(35, 116, 225, 0.15);
+}
+
+.filter-input-group label input[type="checkbox"] {
+  accent-color: var(--primary-color, #2374e1);
+  cursor: pointer;
+}
+
+.filter-input-group label {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--light-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-type-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.filter-type-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--surface);
+  color: var(--light-color);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.filter-type-btn:hover {
+  border-color: var(--primary-color, #2374e1);
+}
+
+.filter-type-btn.active {
+  border: 2px solid;
+  font-weight: bold;
+}
+
+.filter-type-btn.active-all {
+  border-color: #2374e1;
+  background: rgba(35, 116, 225, 0.15);
+}
+
+.filter-type-btn.active-seek {
+  border-color: #42b883;
+  background: rgba(66, 184, 131, 0.15);
+}
+
+.filter-type-btn.active-offer {
+  border-color: #ffc107;
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.filter-input-group {
+  margin-bottom: 15px;
+}
+
+.filter-input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--light-color);
+}
+
+.filter-input-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--light-color);
+  font-size: 14px;
+}
+
+.filter-input-group input::placeholder {
+  color: var(--muted-color);
+}
+
+.filter-clear-btn {
+  width: 100%;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--light-color);
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.filter-clear-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--border-color);
+}
