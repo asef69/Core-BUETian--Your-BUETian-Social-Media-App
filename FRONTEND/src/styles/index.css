@@ -277,6 +277,11 @@ a {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.form-group select option {
+  background: var(--surface-solid);
+  color: var(--light-color);
+}
+
 .form-row {
   display: flex;
   gap: 20px;

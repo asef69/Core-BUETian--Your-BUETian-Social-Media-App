@@ -29,7 +29,6 @@ ORDER BY gm.joined_at DESC;
 END;
 $$ LANGUAGE plpgsql;
 DROP FUNCTION IF EXISTS get_suggested_groups(INTEGER, INTEGER);
-
 CREATE OR REPLACE FUNCTION get_suggested_groups(
         p_user_id INTEGER,
         p_limit INTEGER DEFAULT 10
@@ -72,7 +71,8 @@ SELECT g.id AS group_id,
         FROM group_members gm
         WHERE gm.group_id = g.id
             AND gm.user_id = p_user_id
-        ORDER BY gm.joined_at DESC NULLS LAST, gm.id DESC
+        ORDER BY gm.joined_at DESC NULLS LAST,
+            gm.id DESC
         LIMIT 1
     ) AS member_status
 FROM groups g
@@ -344,5 +344,30 @@ SELECT g.id AS group_id,
 FROM groups g
     INNER JOIN users u ON u.id = g.admin_id
 WHERE g.id = p_group_id;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION get_group_members_list(p_group_id INTEGER) RETURNS TABLE(
+        user_id INTEGER,
+        name VARCHAR(50),
+        profile_picture VARCHAR(500),
+        role VARCHAR(20),
+        joined_at TIMESTAMP
+    ) AS $$ BEGIN RETURN QUERY
+SELECT u.id,
+    u.name,
+    u.profile_picture,
+    gm.role,
+    gm.joined_at
+FROM group_members gm
+    INNER JOIN users u ON gm.user_id = u.id
+WHERE gm.group_id = p_group_id
+    AND gm.status = 'accepted'
+ORDER BY CASE
+        gm.role
+        WHEN 'admin' THEN 1
+        WHEN 'moderator' THEN 2
+        ELSE 3
+    END,
+    gm.joined_at;
 END;
 $$ LANGUAGE plpgsql;
