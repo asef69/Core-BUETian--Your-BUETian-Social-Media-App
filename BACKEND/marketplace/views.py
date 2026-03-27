@@ -1,8 +1,8 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.utils import ProgrammingError
+from rest_framework.views import APIView # type: ignore
+from rest_framework.response import Response # type: ignore
+from rest_framework import status # type: ignore
+from rest_framework.permissions import IsAuthenticated, AllowAny # type: ignore
+from django.db.utils import ProgrammingError # type: ignore
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 
@@ -54,68 +54,101 @@ class CreateProductView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
+        import logging
+        logger = logging.getLogger("marketplace.create_product")
         data = request.data
 
-        title = data.get('title')
-        price = data.get('price')
+        try:
+            title = data.get('title')
+            price = data.get('price')
+            logger.info(f"Received data: {data}")
 
-        if not title or price in (None, ''):
-            return Response(
-                {'error': 'title and price are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        raw_status = (data.get('status') or 'available')
-        normalized_status = str(raw_status).strip().lower()
-        if normalized_status not in VALID_PRODUCT_STATUSES:
-            normalized_status = 'available'
-
-        query = """
-        INSERT INTO marketplace_products (
-            seller_id, title, description, price, category,
-            condition, location, status
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """
-        
-        product_id = DatabaseManager.execute_insert(
-            query,
-            (request.user.id, title, data.get('description'),
-             price, data.get('category'), data.get('condition', 'good'),
-               data.get('location'), normalized_status)
-        )
-
-        image_urls = []
-
-        for image_file in request.FILES.getlist('images'):
+            if not title or price in (None, ''):
+                logger.error(f"Missing title or price. Title: {title}, Price: {price}")
+                return Response(
+                    {'error': 'title and price are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             try:
-                FileUploadHandler.validate_file(image_file, file_type='image')
-            except ValueError as e:
-                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            image_urls.append(FileUploadHandler.upload_file(image_file, folder='marketplace_images'))
+                price = float(price)
+            except (TypeError, ValueError):
+                logger.error(f"Invalid price value: {price}")
+                return Response({'error': 'Invalid price value'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if hasattr(data, 'getlist'):
-            raw_images = data.getlist('images')
-        else:
-            raw_images = data.get('images', [])
+            raw_status = (data.get('status') or 'available')
+            normalized_status = str(raw_status).strip().lower()
+            if normalized_status not in VALID_PRODUCT_STATUSES:
+                normalized_status = 'available'
 
-        if not isinstance(raw_images, list):
-            raw_images = [raw_images] if raw_images else []
+            # Handle image uploads and URLs
+            image_urls = []
+            for image_file in request.FILES.getlist('images'):
+                try:
+                    FileUploadHandler.validate_file(image_file, file_type='image')
+                except ValueError as e:
+                    logger.error(f"Image validation error: {e}")
+                    return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                url = FileUploadHandler.upload_file(image_file, folder='marketplace_images')
+                logger.info(f"Uploaded image file, got URL: {url}")
+                image_urls.append(url)
 
-        for img in raw_images:
-            if isinstance(img, str) and img.strip():
-                image_urls.append(img.strip())
+            if hasattr(data, 'getlist'):
+                raw_images = data.getlist('images')
+            else:
+                raw_images = data.get('images', [])
 
-        for img in image_urls:
-            DatabaseManager.execute_insert(
-                "INSERT INTO marketplace_product_images (product_id, image_url) VALUES (%s, %s)",
-                (product_id, img)
+            if not isinstance(raw_images, list):
+                raw_images = [raw_images] if raw_images else []
+
+            for img in raw_images:
+                if isinstance(img, str) and img.strip():
+                    logger.info(f"Appending raw image URL: {img.strip()}")
+                    image_urls.append(img.strip())
+
+            logger.info(f"Final image_urls array: {image_urls}")
+
+            # Prepare parameters for the procedure
+            params = (
+                request.user.id,
+                title,
+                data.get('description'),
+                price,
+                data.get('category'),
+                data.get('condition', 'good'),
+                data.get('location'),
+                normalized_status,
+                image_urls if image_urls else None,  # Pass as array or None
+                None,  # out_product_id (OUT)
+                None,  # out_success (OUT)
+                None   # out_message (OUT)
             )
-        
-        return Response({
-            'message': 'Product created successfully',
-            'product_id': product_id
-        }, status=status.HTTP_201_CREATED)
+
+            logger.info(f"Calling procedure with params: {params}")
+            # Call the stored procedure
+            result = DatabaseManager.execute_procedure('create_product_with_images', params)
+            logger.info(f"Procedure result: {result}")
+
+            # The result should be a list with one dict containing the OUT params
+            if result and isinstance(result, list) and len(result) > 0:
+                proc_out = result[0]
+                if proc_out.get('out_success'):
+                    logger.info(f"Product created successfully: {proc_out}")
+                    return Response({
+                        'message': proc_out.get('out_message', 'Product created successfully'),
+                        'product_id': proc_out.get('out_product_id')
+                    }, status=status.HTTP_201_CREATED)
+                else:
+                    logger.error(f"Procedure failed: {proc_out}")
+                    return Response({
+                        'error': proc_out.get('out_message', 'Product creation failed'),
+                        'debug': proc_out
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                logger.error(f"Procedure returned no result: {result}")
+                return Response({'error': 'Product creation failed', 'debug': str(result)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as ex:
+            logger.exception(f"Exception in CreateProductView.post: {ex}")
+            return Response({'error': 'Internal server error', 'exception': str(ex)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ProductDetailView(APIView):
     """

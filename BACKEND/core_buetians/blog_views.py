@@ -1,6 +1,6 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView # type: ignore
+from rest_framework.response import Response # type: ignore
+from rest_framework import status # type: ignore
 from utils.database import DatabaseManager
 
 
@@ -26,32 +26,39 @@ def _ensure_blog_comment_extensions():
 class CreateBlogPostView(APIView):
     def post(self, request):
         data = request.data
-        query = """
-        INSERT INTO blog_posts (
-            author_id, title, content, excerpt, cover_image,
-            category, is_published
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """
-        
-        blog_id = DatabaseManager.execute_insert(
-            query,
-            (request.user.id, data['title'], data['content'],
-             data.get('excerpt'), data.get('cover_image'),
-             data.get('category'), data.get('is_published', True))
+        # Explicitly cast types for PostgreSQL procedure
+        def cast_or_none(val, typ):
+            if val is None:
+                return None
+            if typ == 'str':
+                return str(val)
+            if typ == 'bool':
+                return bool(val)
+            if typ == 'list':
+                return list(val) if isinstance(val, (list, tuple)) else [val]
+            return val
+
+        params = (
+            int(request.user.id),
+            cast_or_none(data.get('title'), 'str'),
+            cast_or_none(data.get('content'), 'str'),
+            cast_or_none(data.get('excerpt'), 'str'),
+            cast_or_none(data.get('cover_image'), 'str'),
+            cast_or_none(data.get('category'), 'str'),
+            cast_or_none(data.get('is_published', True), 'bool'),
+            cast_or_none(data.get('tags', []), 'list'),
+            None,  # out_blog_id
+            None,  # out_success
+            None   # out_message
         )
-        
-        tags = data.get('tags', [])
-        for tag in tags:
-            DatabaseManager.execute_insert(
-                "INSERT INTO blog_post_tags (blog_post_id, tag_name) VALUES (%s, %s)",
-                (blog_id, tag)
-            )
-        
-        return Response({
-            'message': 'Blog post created successfully',
-            'blog_id': blog_id
-        }, status=status.HTTP_201_CREATED)
+        try:
+            result=DatabaseManager.execute_procedure('create_blog_post_with_tags', params)
+            if not result or not result[0].get('out_success'):
+                error_message=result[0].get('out_message','Unknown error') if result else 'Unknown error'
+                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': result[0]['out_message']   , 'blog_id': result[0]['out_blog_id']},status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)        
 
 class BlogPostDetailView(APIView):
     def get(self, request, blog_id):
@@ -98,65 +105,84 @@ class PublishedBlogsView(APIView):
     def get(self, request):
         category = request.query_params.get('category')
         tag = request.query_params.get('tag')
-        
-        query = "SELECT * FROM published_blogs WHERE 1=1"
+        is_published = request.query_params.get('is_published')
+        mine = request.query_params.get('mine')
+
+        # Start with all blogs (published_blogs is a view for published only)
+        # For drafts or mine, query blog_posts directly
+        base_table = 'published_blogs'
+        use_blog_posts = False
+        if is_published is not None and is_published.lower() == 'false':
+            use_blog_posts = True
+        if mine == 'true':
+            use_blog_posts = True
+        table = 'blog_posts' if use_blog_posts else 'published_blogs'
+
+        query = f"SELECT * FROM {table} WHERE 1=1"
         params = []
-        
+
+        if is_published is not None:
+            query += " AND is_published = %s"
+            params.append(is_published.lower() == 'true')
+
+        if mine == 'true':
+            query += " AND author_id = %s"
+            params.append(request.user.id)
+
         if category:
             query += " AND category = %s"
             params.append(category)
-        
+
         if tag:
             query += " AND %s = ANY(tags)"
             params.append(tag)
-        
-        query += " LIMIT 50"
+
+        # Use correct ordering column for each table
+        if table == 'blog_posts':
+            query += " ORDER BY created_at DESC LIMIT 50"
+        else:
+            query += " ORDER BY published_at DESC LIMIT 50"
+
         result = DatabaseManager.execute_query(query, tuple(params))
         return Response(result)
 
 class LikeBlogView(APIView):
     def post(self, request, blog_id):
-        check_query = "SELECT id FROM blog_likes WHERE user_id = %s AND blog_id = %s"
-        result = DatabaseManager.execute_query(check_query, (request.user.id, blog_id))
+        # Explicitly cast types and add OUT params for the procedure
+        def cast_or_none(val, typ):
+            if val is None:
+                return None
+            if typ == 'int':
+                return int(val)
+            return val
 
-        owner_result = DatabaseManager.execute_query(
-            "SELECT author_id FROM blog_posts WHERE id = %s",
-            (blog_id,)
+        params = (
+            cast_or_none(request.user.id, 'int'),
+            cast_or_none(blog_id, 'int'),
+            None,  # out_liked
+            None,  # out_likes_count
+            None,  # out_success
+            None   # out_message
         )
-        if not owner_result:
-            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
-        blog_author_id = owner_result[0]['author_id']
-        
-        if result:
-            DatabaseManager.execute_update(
-                "DELETE FROM blog_likes WHERE user_id = %s AND blog_id = %s",
-                (request.user.id, blog_id)
+        try:
+            result = DatabaseManager.execute_procedure(
+                'toggle_blog_like_with_notification',
+                params
             )
-            liked = False
-            message = 'Blog unliked'
-        else:
-            DatabaseManager.execute_insert(
-                "INSERT INTO blog_likes (user_id, blog_id) VALUES (%s, %s)",
-                (request.user.id, blog_id)
-            )
-            liked = True
-            message = 'Blog liked'
-
-            if blog_author_id != request.user.id:
-                DatabaseManager.execute_insert(
-                    """
-                    INSERT INTO notifications (user_id, actor_id, notification_type, reference_id, content)
-                    VALUES (%s, %s, 'blog_like', %s, 'liked your blog post')
-                    """,
-                    (blog_author_id, request.user.id, blog_id)
-                )
-
-        count_result = DatabaseManager.execute_query(
-            "SELECT COUNT(*) AS count FROM blog_likes WHERE blog_id = %s",
-            (blog_id,)
-        )
-        likes_count = count_result[0]['count'] if count_result else 0
-        return Response({'message': message, 'liked': liked, 'likes_count': likes_count, 'blog_id': blog_id})
+            if not result or not result[0].get('out_success'):
+                error_msg = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+                # If the error is blog not found, return 404, else 400
+                if 'not found' in error_msg.lower():
+                    return Response({'error': error_msg}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'message': result[0]['out_message'],
+                'liked': result[0]['out_liked'],
+                'likes_count': result[0]['out_likes_count'],
+                'blog_id': blog_id
+            })
+        except Exception as e:
+            return Response({'error': f'Internal error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class LikeBlogCommentView(APIView):
@@ -241,49 +267,20 @@ class BlogCommentsView(APIView):
         if parent_comment_id in ('', None):
             parent_comment_id = None
 
-        if parent_comment_id is not None:
-            parent_result = DatabaseManager.execute_query(
-                "SELECT id, user_id FROM blog_comments WHERE id = %s AND blog_id = %s",
-                (parent_comment_id, blog_id)
-            )
-            if not parent_result:
-                return Response({'error': 'Parent comment not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            parent_result = []
-
-        comment_id = DatabaseManager.execute_insert(
-            """
-            INSERT INTO blog_comments (user_id, blog_id, content, parent_comment_id)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (request.user.id, blog_id, data['content'], parent_comment_id)
+        # Use the stored procedure for comment creation and notification
+        params = (
+            int(request.user.id),
+            int(blog_id),
+            data['content'],
+            int(parent_comment_id) if parent_comment_id is not None else None,
+            None,  # out_comment_id
+            None,  # out_success
+            None   # out_message
         )
-
-        blog_owner_result = DatabaseManager.execute_query(
-            "SELECT author_id FROM blog_posts WHERE id = %s",
-            (blog_id,)
-        )
-        blog_owner_id = blog_owner_result[0]['author_id'] if blog_owner_result else None
-
-        if parent_comment_id is None:
-            if blog_owner_id and blog_owner_id != request.user.id:
-                DatabaseManager.execute_insert(
-                    """
-                    INSERT INTO notifications (user_id, actor_id, notification_type, reference_id, content)
-                    VALUES (%s, %s, 'blog_comment', %s, 'commented on your blog post')
-                    """,
-                    (blog_owner_id, request.user.id, blog_id)
-                )
-        else:
-            parent_owner_id = parent_result[0]['user_id'] if parent_result else None
-            if parent_owner_id and parent_owner_id != request.user.id:
-                DatabaseManager.execute_insert(
-                    """
-                    INSERT INTO notifications (user_id, actor_id, notification_type, reference_id, content)
-                    VALUES (%s, %s, 'blog_reply', %s, 'replied to your blog comment')
-                    """,
-                    (parent_owner_id, request.user.id, blog_id)
-                )
+        result = DatabaseManager.execute_procedure('add_blog_comment_with_notification', params)
+        if not result or not result[0].get('out_success'):
+            error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+            return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+        comment_id = result[0]['out_comment_id']
 
         return Response({'message': 'Comment added', 'comment_id': comment_id})

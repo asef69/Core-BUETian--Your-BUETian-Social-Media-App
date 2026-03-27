@@ -30,7 +30,7 @@ CREATE OR REPLACE FUNCTION get_similar_products(p_product_id INTEGER, p_limit IN
         category VARCHAR(100),
         condition VARCHAR(50),
         seller_name VARCHAR(50),
-        images TEXT [],
+        images VARCHAR(500)[],
         created_at TIMESTAMP
     ) AS $$
 DECLARE product_category VARCHAR(100);
