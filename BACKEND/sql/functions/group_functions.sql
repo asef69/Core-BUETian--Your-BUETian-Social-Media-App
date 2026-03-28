@@ -384,3 +384,20 @@ ORDER BY CASE
     gm.joined_at;
 END;
 $$ LANGUAGE plpgsql;
+
+DROP FUNCTION IF EXISTS is_group_member(INTEGER, INTEGER);
+CREATE OR REPLACE FUNCTION is_group_member(
+    p_user_id INTEGER,
+    p_group_id INTEGER
+) RETURNS BOOLEAN AS $$
+DECLARE
+    is_member BOOLEAN := FALSE;
+BEGIN
+    SELECT TRUE INTO is_member
+    FROM group_members
+    WHERE user_id = p_user_id AND group_id = p_group_id
+    LIMIT 1;
+
+    RETURN is_member;
+END;
+$$ LANGUAGE plpgsql;

@@ -962,7 +962,6 @@ SELECT FOUND;
 END;
 $$ LANGUAGE plpgsql;
 
---ACCEPT FOLLOW REQUEST
 DROP FUNCTION IF EXISTS accept_follow_request(INTEGER, INTEGER);
 CREATE OR REPLACE FUNCTION accept_follow_request(
     p_follow_id INTEGER,
@@ -983,5 +982,35 @@ RETURNING id,
     follower_id,
     following_id,
     updated_at AS accepted_at;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Check if two users can chat (must follow each other or have previous chat)
+DROP FUNCTION IF EXISTS can_users_chat(INTEGER, INTEGER);
+CREATE OR REPLACE FUNCTION can_users_chat(
+    p_user1_id INTEGER,
+    p_user2_id INTEGER
+) RETURNS TABLE(can_chat BOOLEAN) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT (
+        EXISTS(
+            SELECT 1 FROM follows f1
+            WHERE f1.follower_id = p_user1_id
+              AND f1.following_id = p_user2_id
+              AND f1.status = 'accepted'
+        )
+        AND EXISTS(
+            SELECT 1 FROM follows f2
+            WHERE f2.follower_id = p_user2_id
+              AND f2.following_id = p_user1_id
+              AND f2.status = 'accepted'
+        )
+        OR EXISTS(
+            SELECT 1 FROM messages m
+            WHERE (m.sender_id = p_user1_id AND m.receiver_id = p_user2_id)
+               OR (m.sender_id = p_user2_id AND m.receiver_id = p_user1_id)
+        )
+    ) AS can_chat;
 END;
 $$ LANGUAGE plpgsql;
