@@ -50,6 +50,7 @@ const Forums = () => {
     subject: '',
     location: '',
     minSalary: '',
+    preferredGender: '',
   });
   const [bloodFilters, setBloodFilters] = useState({
     bloodGroup: '',
@@ -117,20 +118,46 @@ const Forums = () => {
   const handleCreateTuitionPost = async (e) => {
     e.preventDefault();
     try {
+      // Ensure correct data types and required fields
       const cleanData = (data) => {
-        return Object.fromEntries(
-          Object.entries(data).map(([key, value]) => [
-            key,
-            value === '' ? null : value,
-          ])
-        );
+        const cleaned = { ...data };
+        // Required fields
+        if (!cleaned.post_type) throw new Error('Post type is required');
+        if (!cleaned.contact_number) throw new Error('Contact number is required');
+        // Subjects must be an array
+        if (!Array.isArray(cleaned.subjects)) cleaned.subjects = [];
+        // Convert empty strings to null for optional fields
+        [
+          'class_level',
+          'location',
+          'salary_min',
+          'salary_max',
+          'days_per_week',
+          'duration_hours',
+          'requirements',
+          'preferred_gender',
+        ].forEach((key) => {
+          if (cleaned[key] === '') cleaned[key] = null;
+        });
+        // Convert numeric fields to numbers or null
+        ['salary_min', 'salary_max', 'days_per_week', 'duration_hours'].forEach((key) => {
+          if (cleaned[key] !== null && cleaned[key] !== undefined && cleaned[key] !== '') {
+            const num = Number(cleaned[key]);
+            cleaned[key] = isNaN(num) ? null : num;
+          }
+        });
+        // Gender default
+        if (!cleaned.preferred_gender) cleaned.preferred_gender = 'any';
+        return cleaned;
       };
 
+      const payload = cleanData(tuitionData);
+
       if (editingTuitionId) {
-        await forumAPI.updateTuitionPost(editingTuitionId, cleanData(tuitionData));
+        await forumAPI.updateTuitionPost(editingTuitionId, payload);
         toast.success('Tuition post updated!');
       } else {
-        await forumAPI.createTuitionPost(cleanData(tuitionData));
+        await forumAPI.createTuitionPost(payload);
         toast.success('Tuition post created!');
       }
 
@@ -140,7 +167,7 @@ const Forums = () => {
       setTuitionData(initialTuitionData);
       loadForums();
     } catch (error) {
-      toast.error('Failed to save tuition post');
+      toast.error(error.message || 'Failed to save tuition post');
     }
   };
 
@@ -431,7 +458,10 @@ const Forums = () => {
                           const salaryMatch =
                             tuitionFilters.minSalary === '' ||
                             (post.salary_min && Number(post.salary_min) >= Number(tuitionFilters.minSalary));
-                          return typeMatch && subjectMatch && locationMatch && salaryMatch;
+                          const genderMatch =
+                            tuitionFilters.preferredGender === '' ||
+                            (post.preferred_gender && post.preferred_gender.toLowerCase() === tuitionFilters.preferredGender.toLowerCase());
+                          return typeMatch && subjectMatch && locationMatch && salaryMatch && genderMatch;
                         });
 
                         return filteredPosts.length === 0 ? (
@@ -469,7 +499,7 @@ const Forums = () => {
                                       <strong>Duration:</strong> {post.duration_hours} hours
                                     </p>
                                     <p>
-                                      <strong>Preferred Gender:</strong> {post.preferred_gender}
+                                      <strong>{post.post_type === 'offering_tuition' ? 'Student Preferred Gender' : 'Tutor Preferred Gender'}:</strong> {post.preferred_gender}
                                     </p>
                                     {post.requirements && (
                                       <p>
@@ -575,9 +605,20 @@ const Forums = () => {
                           }
                         />
                       </div>
+                      <div className="filter-input-group">
+                        <label>Preferred Gender (Optional)</label>
+                        <select
+                          value={tuitionFilters.preferredGender}
+                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, preferredGender: e.target.value })}
+                        >
+                          <option value="">All</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
+                      </div>
                       <button
                         onClick={() =>
-                          setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '' })
+                          setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '', preferredGender: '' })
                         }
                         className="filter-clear-btn"
                       >
@@ -741,9 +782,13 @@ const Forums = () => {
                 </datalist>
                 <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {tuitionData.subjects && tuitionData.subjects.map((subj) => (
-                    <span key={subj} style={{ background: '#eee', borderRadius: '12px', padding: '2px 10px', display: 'inline-flex', alignItems: 'center' }}>
+                    <span key={subj} className="subject-chip">
                       {subj}
-                      <button type="button" style={{ marginLeft: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c00', fontWeight: 'bold' }} onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}>&times;</button>
+                      <button
+                        type="button"
+                        className="remove-btn"
+                        onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
+                      >&times;</button>
                     </span>
                   ))}
                 </div>
@@ -817,7 +862,7 @@ const Forums = () => {
                 </div>
               </div>
               <div className="form-group">
-                <label>Preferred Gender</label>
+                <label>Tutor Preferred Gender</label>
                 <select
                   value={tuitionData.preferred_gender}
                   onChange={(e) => setTuitionData({ ...tuitionData, preferred_gender: e.target.value })}
@@ -908,12 +953,27 @@ const Forums = () => {
                 </datalist>
                 <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {tuitionData.subjects && tuitionData.subjects.map((subj) => (
-                    <span key={subj} style={{ background: '#eee', borderRadius: '12px', padding: '2px 10px', display: 'inline-flex', alignItems: 'center' }}>
+                    <span key={subj} className="subject-chip">
                       {subj}
-                      <button type="button" style={{ marginLeft: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#c00', fontWeight: 'bold' }} onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}>&times;</button>
+                      <button
+                        type="button"
+                        className="remove-btn"
+                        onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
+                      >&times;</button>
                     </span>
                   ))}
                 </div>
+              </div>
+              <div className="form-group">
+                <label>Student Preferred Gender</label>
+                <select
+                  value={tuitionData.preferred_gender}
+                  onChange={(e) => setTuitionData({ ...tuitionData, preferred_gender: e.target.value })}
+                >
+                  <option value="any">Any</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Class Level *</label>

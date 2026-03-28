@@ -235,4 +235,5 @@ export const blogAPI = {
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),
   likeComment: (commentId) => api.post(`/blogs/comments/${commentId}/like/`),
+  deleteBlog: (blogId) => api.delete(`/blogs/${blogId}/delete/`),
 };

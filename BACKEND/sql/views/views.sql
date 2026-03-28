@@ -232,23 +232,27 @@ WHERE t.status = 'active'
 ORDER BY t.created_at DESC;
 
 -- blog publication
+DROP VIEW IF EXISTS published_blogs;
 CREATE OR REPLACE VIEW published_blogs AS
 SELECT 
-    b.id,
-    b.title,
-    b.excerpt,
-    b.cover_image,
-    b.category,
-    ARRAY(SELECT tag_name FROM blog_post_tags WHERE blog_post_id = b.id) as tags,
-    b.views_count,
-    b.likes_count,
-    b.published_at,
-    u.name as author_name,
-    u.profile_picture as author_picture,
-    (SELECT COUNT(*) FROM blog_comments WHERE blog_id = b.id) as comments_count
+        b.id,
+        b.title,
+        b.excerpt,
+        b.cover_image,
+        b.category,
+        ARRAY(SELECT tag_name FROM blog_post_tags WHERE blog_post_id = b.id) as tags,
+        b.views_count,
+        b.likes_count,
+        b.is_published,
+        b.published_at,
+        b.scheduled_publish_at,
+        u.name as author_name,
+        u.profile_picture as author_picture,
+        (SELECT COUNT(*) FROM blog_comments WHERE blog_id = b.id) as comments_count
 FROM blog_posts b
 INNER JOIN users u ON b.author_id = u.id
 WHERE b.is_published = TRUE
+    AND (b.scheduled_publish_at IS NULL OR b.scheduled_publish_at <= NOW())
 ORDER BY b.published_at DESC;
 
 -- notification views

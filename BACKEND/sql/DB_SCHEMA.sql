@@ -180,6 +180,13 @@ CREATE TABLE blog_posts(
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE blog_posts
+ADD COLUMN scheduled_publish_at TIMESTAMP;
+
+UPDATE blog_posts
+SET is_published = TRUE
+WHERE scheduled_publish_at IS NOT NULL
+  AND scheduled_publish_at <= NOW();
 
 --table for blog post tags
 CREATE TABLE blog_post_tags(

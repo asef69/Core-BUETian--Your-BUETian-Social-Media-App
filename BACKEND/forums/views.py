@@ -1,6 +1,6 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView # type: ignore
+from rest_framework.response import Response # type: ignore
+from rest_framework import status # type: ignore
 from utils.database import DatabaseManager
 from decimal import Decimal, InvalidOperation
 
@@ -313,39 +313,49 @@ class CreateTuitionPostView(APIView):
     """
     def post(self, request):
         data = request.data
+        # Validate required fields
+        required_fields = ['post_type', 'contact_number']
+        missing = [f for f in required_fields if not data.get(f)]
+        if missing:
+            return Response({'error': f"Missing required field(s): {', '.join(missing)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate subjects is array
+        if 'subjects' in data and not isinstance(data['subjects'], list):
+            return Response({'error': 'Subjects must be an array of strings.'}, status=status.HTTP_400_BAD_REQUEST)
+
         validation_error = _validate_tuition_constraints(data)
         if validation_error:
             return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
-        query = """
-        INSERT INTO tution_posts (
-            user_id, post_type, class_level, preferred_gender,
-            location, salary_min, salary_max, days_per_week,
-            duration_hours, requirements, contact_number
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """
-        
-        tuition_id = DatabaseManager.execute_insert(
-            query,
-            (request.user.id, data['post_type'], data.get('class_level'),
-             data.get('preferred_gender', 'any'), data.get('location'),
-             data.get('salary_min'), data.get('salary_max'),
-             data.get('days_per_week'), data.get('duration_hours'),
-             data.get('requirements'), data['contact_number'])
-        )
-        
-        subjects = data.get('subjects', [])
-        for subject in subjects:
-            DatabaseManager.execute_insert(
-                "INSERT INTO tution_post_subjects (tution_post_id, subject_name) VALUES (%s, %s)",
-                (tuition_id, subject)
+        try:
+            subjects = data.get('subjects', [])
+            params = (
+                int(request.user.id),
+                data['post_type'],
+                data.get('class_level'),
+                data.get('preferred_gender', 'any'),
+                data.get('location'),
+                data.get('salary_min'),
+                data.get('salary_max'),
+                data.get('days_per_week'),
+                data.get('duration_hours'),
+                data.get('requirements'),
+                data['contact_number'],
+                subjects if subjects else None,
+                None,  # out_tuition_id
+                None,  # out_success
+                None   # out_message
             )
-        
-        return Response({
-            'message': 'Tuition post created successfully',
-            'tuition_id': tuition_id
-        }, status=status.HTTP_201_CREATED)
+            result = DatabaseManager.execute_procedure('create_tuition_post_with_subjects', params)
+            if not result or not result[0].get('out_success'):
+                error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'message': result[0]['out_message'],
+                'tuition_id': result[0]['out_tuition_id']
+            }, status=status.HTTP_201_CREATED)
+        except Exception as ex:
+            return Response({'error': f'Failed to create tuition post: {str(ex)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 class TuitionPostDetailView(APIView):
     """
@@ -406,48 +416,31 @@ class TuitionPostDetailView(APIView):
         if validation_error:
             return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
-        update_fields = []
-        params = []
-
-        for field in [
-            'post_type',
-            'class_level',
-            'preferred_gender',
-            'location',
-            'salary_min',
-            'salary_max',
-            'days_per_week',
-            'duration_hours',
-            'requirements',
-            'contact_number',
-            'status'
-        ]:
-            if field in data:
-                update_fields.append(f"{field} = %s")
-                params.append(data[field])
-
-        if update_fields:
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(post_id)
-            update_query = f"UPDATE tution_posts SET {', '.join(update_fields)} WHERE id = %s"
-            DatabaseManager.execute_update(update_query, tuple(params))
-
+        # Use stored procedure for update
         subjects = data.get('subjects')
-        if subjects is not None:
-            DatabaseManager.execute_update(
-                "DELETE FROM tution_post_subjects WHERE tution_post_id = %s",
-                (post_id,)
-            )
-            for subject in subjects:
-                DatabaseManager.execute_insert(
-                    "INSERT INTO tution_post_subjects (tution_post_id, subject_name) VALUES (%s, %s)",
-                    (post_id, subject)
-                )
-
-        if not update_fields and subjects is None:
-            return Response({'error': 'No fields to update'}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({'message': 'Tuition post updated successfully'})
+        params = (
+            int(post_id),
+            int(request.user.id),
+            data.get('post_type'),
+            data.get('class_level'),
+            data.get('preferred_gender'),
+            data.get('location'),
+            data.get('salary_min'),
+            data.get('salary_max'),
+            data.get('days_per_week'),
+            data.get('duration_hours'),
+            data.get('requirements'),
+            data.get('contact_number'),
+            subjects if subjects is not None else None,
+            None,  # out_tuition_id
+            None,  # out_success
+            None   # out_message
+        )
+        result = DatabaseManager.execute_procedure('update_tuition_post_with_subjects', params)
+        if not result or not result[0].get('out_success'):
+            error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+            return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': result[0]['out_message']})
 
     def delete(self, request, post_id):
         check_query = "SELECT user_id FROM tution_posts WHERE id = %s"
@@ -509,6 +502,7 @@ class ActiveTuitionPostsView(APIView):
         subject = request.query_params.get('subject')
         min_salary = request.query_params.get('min_salary')
         max_salary = request.query_params.get('max_salary')
+        preferred_gender = request.query_params.get('preferred_gender')
 
         query = """
         SELECT
@@ -540,22 +534,26 @@ class ActiveTuitionPostsView(APIView):
         WHERE t.status = 'active'
         """
         params = []
-        
+
         if post_type:
             query += " AND t.post_type = %s"
             params.append(post_type)
-        
+
         if subject:
             query += " AND EXISTS (SELECT 1 FROM tution_post_subjects tps WHERE tps.tution_post_id = t.id AND tps.subject_name = %s)"
             params.append(subject)
-        
+
         if min_salary:
             query += " AND t.salary_max >= %s"
             params.append(min_salary)
-        
+
         if max_salary:
             query += " AND t.salary_min <= %s"
             params.append(max_salary)
+
+        if preferred_gender and preferred_gender.lower() in ("male", "female", "any"):
+            query += " AND t.preferred_gender = %s"
+            params.append(preferred_gender.lower())
 
         query += " ORDER BY t.created_at DESC LIMIT 50"
         result = DatabaseManager.execute_query(query, tuple(params))
