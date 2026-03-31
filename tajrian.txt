@@ -34,14 +34,14 @@ Post:
 Group:
 1.Create Group 
 2.Get Group Details
------3.Update Group
-----4.Delete Group
+3.Update Group
+4.Delete Group
 5.Get Group Members
 6.Join Group
 7.Accept Group Member
 8.Reject Group Member
 8.1. remove group member
------9.Leave Group
+9.Leave Group
 10.Promote to Moderator
 11.Get Group Posts
 12.Check Group Membership
