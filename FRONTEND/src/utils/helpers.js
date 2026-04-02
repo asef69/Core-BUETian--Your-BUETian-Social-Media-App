@@ -41,14 +41,14 @@ export const isValidPhone = (phone) => {
 
 export const extractHashtags = (text) => {
   if (!text) return [];
-  const regex = /#(\w+)/g;
+  const regex = /#([A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*)/g;
   const matches = text.match(regex);
   return matches ? matches.map(tag => tag.slice(1)) : [];
 };
 
 export const highlightHashtags = (text) => {
   if (!text) return text;
-  return text.replace(/#(\w+)/g, '<span class="hashtag">#$1</span>');
+  return text.replace(/#([A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*)/g, '<span class="hashtag">#$1</span>');
 };
 
 export const getInitials = (name) => {

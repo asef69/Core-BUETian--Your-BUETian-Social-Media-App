@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { userAPI, postAPI } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
@@ -37,14 +37,38 @@ const Profile = () => {
   const [incomingFollowRequestId, setIncomingFollowRequestId] = useState(null);
   const [followActionLoading, setFollowActionLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [isModalClosing, setIsModalClosing] = useState(false);
   const [editData, setEditData] = useState({});
   const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+  const modalCloseTimerRef = useRef(null);
 
   useEffect(() => {
     loadProfile();
     loadUserPosts();
     loadFollowCounts();
   }, [userId]);
+
+  useEffect(() => {
+    return () => {
+      if (modalCloseTimerRef.current) {
+        clearTimeout(modalCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openEditModal = () => {
+    setIsModalClosing(false);
+    setEditMode(true);
+  };
+
+  const closeEditModal = () => {
+    if (!editMode || isModalClosing) return;
+    setIsModalClosing(true);
+    modalCloseTimerRef.current = setTimeout(() => {
+      setEditMode(false);
+      setIsModalClosing(false);
+    }, 180);
+  };
 
   useEffect(() => {
     const refreshCounts = () => {
@@ -284,7 +308,7 @@ const Profile = () => {
     }, {});
 
     if (Object.keys(payload).length === 0) {
-      setEditMode(false);
+      closeEditModal();
       toast.info('No profile changes to save');
       return;
     }
@@ -293,7 +317,7 @@ const Profile = () => {
       setProfileSaveLoading(true);
       await userAPI.updateProfile(payload);
       setProfile({ ...profile, ...payload });
-      setEditMode(false);
+      closeEditModal();
       await loadProfile();
       toast.success('Profile updated successfully!');
     } catch (error) {
@@ -367,122 +391,166 @@ const Profile = () => {
                 </div>
 
                 <div className="profile-details">
-                  {editMode ? (
-                    <div className="edit-profile">
-                      <input
-                        type="text"
-                        value={editData.name}
-                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                        placeholder="Name"
-                      />
-                      <textarea
-                        value={editData.bio}
-                        onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
-                        placeholder="Bio"
-                        rows="3"
-                      />
-                      <select
-                        value={editData.blood_group}
-                        onChange={(e) => setEditData({ ...editData, blood_group: e.target.value })}
-                      >
-                        <option value="">Select Blood Group</option>
-                        <option value="O+">O+</option>
-                        <option value="O-">O-</option>
-                        <option value="A+">A+</option>
-                        <option value="A-">A-</option>
-                        <option value="B+">B+</option>
-                        <option value="B-">B-</option>
-                        <option value="AB+">AB+</option>
-                        <option value="AB-">AB-</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={editData.hall_name}
-                        onChange={(e) => setEditData({ ...editData, hall_name: e.target.value })}
-                        placeholder="Hall Name"
-                      />
-                      <div className="radio-group">
-                        <label>
-                          Hall Attachment:
-                          <input
-                            type="radio"
-                            name="hall_attachement"
-                            value="Resident"
-                            checked={editData.hall_attachement === 'Resident'}
-                            onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
-                          />
-                          Resident
-                        </label>
-                        <label>
-                          <input
-                            type="radio"
-                            name="hall_attachement"
-                            value="Attached"
-                            checked={editData.hall_attachement === 'Attached'}
-                            onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
-                          />
-                          Attached
-                        </label>
-                      </div>
-                      <input
-                        type="text"
-                        value={editData.department_name}
-                        onChange={(e) => setEditData({ ...editData, department_name: e.target.value })}
-                        placeholder="Department"
-                      />
-                      <div className="edit-actions">
-                        <button className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
-                          {profileSaveLoading ? 'Saving...' : 'Save'}
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setEditMode(false)}>
-                          Cancel
-                        </button>
-                      </div>
+                  <>
+                    <h1>{profile.name}</h1>
+                    <p className="bio">{profile.bio || 'No bio yet'}</p>
+                    <div className="profile-meta">
+                      <span>Student ID: {profile.student_id}</span>
+                      <span>{profile.department_name}</span>
+                      <span>Batch {profile.batch}</span>
+                      {profile.blood_group && <span>Blood: {profile.blood_group}</span>}
                     </div>
-                  ) : (
-                    <>
-                      <h1>{profile.name}</h1>
-                      <p className="bio">{profile.bio || 'No bio yet'}</p>
-                      <div className="profile-meta">
-                        <span>Student ID: {profile.student_id}</span>
-                        <span>{profile.department_name}</span>
-                        <span>Batch {profile.batch}</span>
-                        {profile.blood_group && <span>Blood: {profile.blood_group}</span>}
-                      </div>
 
-                      <div className="profile-stats">
-                        <div className="stat">
-                          <strong>{profile.posts_count || 0}</strong>
-                          <span>Posts</span>
-                        </div>
-                        <div className="stat">
-                          <strong>{profile.followers_count || 0}</strong>
-                          <span>Followers</span>
-                        </div>
-                        <div className="stat">
-                          <strong>{profile.following_count || 0}</strong>
-                          <span>Following</span>
-                        </div>
-                        {!isOwnProfile && (
-                          <div className="stat">
-                            <strong>{profile.mutual_friends_count || 0}</strong>
-                            <span>Mutual Friends</span>
-                          </div>
-                        )}
+                    <div className="profile-stats">
+                      <div className="stat">
+                        <strong>{profile.posts_count || 0}</strong>
+                        <span>Posts</span>
                       </div>
-
-                      {isOwnProfile ? (
-                        <button className="btn btn-primary" onClick={() => setEditMode(true)}>
-                          <FaEdit /> Edit Profile
-                        </button>
-                      ) : (
-                        renderFollowAction()
+                      <div className="stat">
+                        <strong>{profile.followers_count || 0}</strong>
+                        <span>Followers</span>
+                      </div>
+                      <div className="stat">
+                        <strong>{profile.following_count || 0}</strong>
+                        <span>Following</span>
+                      </div>
+                      {!isOwnProfile && (
+                        <div className="stat">
+                          <strong>{profile.mutual_friends_count || 0}</strong>
+                          <span>Mutual Friends</span>
+                        </div>
                       )}
-                    </>
-                  )}
+                    </div>
+
+                    {isOwnProfile ? (
+                      <button className="btn btn-primary" onClick={openEditModal}>
+                        <FaEdit /> Edit Profile
+                      </button>
+                    ) : (
+                      renderFollowAction()
+                    )}
+                  </>
                 </div>
               </div>
             </div>
+
+            {isOwnProfile && editMode && (
+              <div
+                className={`profile-edit-overlay${isModalClosing ? ' closing' : ''}`}
+                onClick={closeEditModal}
+              >
+                <div
+                  className={`profile-edit-modal${isModalClosing ? ' closing' : ''}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="profile-edit-header">
+                    <h2>Update Profile</h2>
+                    <button
+                      className="profile-edit-close"
+                      onClick={closeEditModal}
+                      aria-label="Close edit profile modal"
+                    >
+                      x
+                    </button>
+                  </div>
+
+                  <div className="profile-edit-form">
+                    <label className="profile-edit-field">
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        value={editData.name || ''}
+                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        placeholder="Your full name"
+                      />
+                    </label>
+
+                    <label className="profile-edit-field">
+                      <span>Bio</span>
+                      <textarea
+                        value={editData.bio || ''}
+                        onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
+                        placeholder="Tell people a bit about yourself"
+                        rows="3"
+                      />
+                    </label>
+
+                    <div className="profile-edit-grid">
+                      <label className="profile-edit-field">
+                        <span>Blood Group</span>
+                        <select
+                          value={editData.blood_group || ''}
+                          onChange={(e) => setEditData({ ...editData, blood_group: e.target.value })}
+                        >
+                          <option value="">Select blood group</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                        </select>
+                      </label>
+
+                      <label className="profile-edit-field">
+                        <span>Hall Name</span>
+                        <input
+                          type="text"
+                          value={editData.hall_name || ''}
+                          onChange={(e) => setEditData({ ...editData, hall_name: e.target.value })}
+                          placeholder="Enter hall name"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="profile-edit-radio-group">
+                      <span>Hall Attachment</span>
+                      <label>
+                        <input
+                          type="radio"
+                          name="hall_attachement"
+                          value="Resident"
+                          checked={editData.hall_attachement === 'Resident'}
+                          onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
+                        />
+                        Resident
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name="hall_attachement"
+                          value="Attached"
+                          checked={editData.hall_attachement === 'Attached'}
+                          onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
+                        />
+                        Attached
+                      </label>
+                    </div>
+
+                    <label className="profile-edit-field">
+                      <span>Department</span>
+                      <input
+                        type="text"
+                        value={editData.department_name || ''}
+                        onChange={(e) => setEditData({ ...editData, department_name: e.target.value })}
+                        placeholder="Enter department"
+                      />
+                    </label>
+
+                    <div className="profile-edit-actions">
+                      <button className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
+                        {profileSaveLoading ? 'Saving...' : 'Save Changes'}
+                      </button>
+                      <button className="btn btn-secondary" onClick={closeEditModal}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="profile-tabs">
               <button

@@ -717,9 +717,8 @@ class TrendingPostsView(APIView):
     
     Returns:
         List of trending posts, typically sorted by:
-        - Recent engagement (likes, comments)
-        - View count
-        - Recency
+        - Recent engagement (likes, comments, views)
+        - Recency within the last 30 days
     
     Database:
         Function: get_trending_posts(limit)

@@ -20,7 +20,7 @@ class PostsByHashtagView(APIView):
     API Endpoint: GET /api/posts/hashtag/<hashtag>/
     Authentication: Required (JWT)
     
-    URL Parameters:
+    Query Parameters:
         hashtag (str): Hashtag to search (without # symbol)
     
     Query Parameters:
@@ -44,7 +44,14 @@ class PostsByHashtagView(APIView):
     Database:
         Function: get_posts_by_hashtag(hashtag, limit)
     """
-    def get(self, request, hashtag):
+    def get(self, request):
+        hashtag = request.query_params.get('hashtag', '').strip()
+        if not hashtag:
+            return Response(
+                {'error': 'Hashtag query parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         limit = int(request.query_params.get('limit', 20))
         
         result = DatabaseManager.execute_function(
@@ -140,6 +147,7 @@ class TrendingHashtagsView(APIView):
     
     Database:
         Function: get_trending_hashtags(limit)
+        Window: last 30 days of public, non-group posts
     """
     def get(self, request):
         limit = int(request.query_params.get('limit', 10))

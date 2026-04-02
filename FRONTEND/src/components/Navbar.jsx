@@ -62,7 +62,11 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-brand">
-          <h2>Core BUETians</h2>
+          <span className="navbar-brand-mark">CB</span>
+          <span className="navbar-brand-copy">
+            <h2>Core BUETians</h2>
+            <span>Where All BUETians align</span>
+          </span>
         </Link>
 
         <div className="navbar-search">
@@ -70,7 +74,7 @@ const Navbar = () => {
             <FaSearch className="search-icon" />
             <input 
               type="text" 
-              placeholder="Search users, posts, groups..." 
+              placeholder="Search people, posts, groups..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -79,45 +83,53 @@ const Navbar = () => {
 
         <ul className="navbar-menu">
           <li>
-            <NavLink to="/" className="nav-link" title="Home" end>
+            <NavLink to="/" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Home" end>
               <FaHome size={20} />
+              <span>Home</span>
             </NavLink>
           </li>
           <li>
-            <NavLink to="/chat" className="nav-link" title="Messages">
+            <NavLink to="/chat" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Messages">
               <FaComments size={20} />
+              <span>Chat</span>
               {unreadChats > 0 && <span className="nav-badge">{unreadChats > 99 ? '99+' : unreadChats}</span>}
             </NavLink>
           </li>
           <li>
-            <NavLink to="/groups" className="nav-link" title="Groups">
+            <NavLink to="/groups" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Groups">
               <FaUsers size={20} />
+              <span>Groups</span>
             </NavLink>
           </li>
           <li>
-            <NavLink to="/marketplace" className="nav-link" title="Marketplace">
+            <NavLink to="/marketplace" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Marketplace">
               <FaStore size={20} />
+              <span>Market</span>
             </NavLink>
           </li>
           <li>
-            <NavLink to="/forums" className="nav-link" title="Forums">
+            <NavLink to="/forums" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Forums">
               <FaBullhorn size={20} />
+              <span>Forums</span>
             </NavLink>
           </li>
           <li>
-            <NavLink to="/blogs" className="nav-link" title="Blogs">
+            <NavLink to="/blogs" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Blogs">
               <FaPenNib size={20} />
+              <span>Blogs</span>
             </NavLink>
           </li>
           <li>
-            <NavLink to="/notifications" className="nav-link" title="Notifications">
+            <NavLink to="/notifications" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Notifications">
               <FaBell size={20} />
+              <span>Notifications</span>
               {unreadNotifications > 0 && <span className="nav-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
             </NavLink>
           </li>
           <li>
-            <NavLink to={`/profile/${user?.id}`} className="nav-link" title="Profile">
+            <NavLink to={`/profile/${user?.id}`} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Profile">
               <FaUser size={20} />
+              <span>Profile</span>
             </NavLink>
           </li>
           <li>
@@ -127,11 +139,13 @@ const Navbar = () => {
               title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >
               {isDark ? <FaSun size={20} /> : <FaMoon size={20} />}
+              <span>{isDark ? 'Light' : 'Dark'}</span>
             </button>
           </li>
           <li>
             <button onClick={handleLogout} className="nav-link logout-btn" title="Logout">
               <FaSignOutAlt size={20} />
+              <span>Logout</span>
             </button>
           </li>
         </ul>

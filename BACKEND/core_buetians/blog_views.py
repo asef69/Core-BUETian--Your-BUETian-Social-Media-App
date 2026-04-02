@@ -164,7 +164,20 @@ class PublishedBlogsView(APIView):
             params.append(category)
 
         if tag:
-            query += " AND %s = ANY(b.tags)" if table == 'blog_posts' else " AND %s = ANY(tags)"
+            if table == 'blog_posts':
+                query += (
+                    " AND EXISTS ("
+                    "SELECT 1 FROM unnest(b.tags) AS t(tag_name) "
+                    "WHERE lower(regexp_replace(t.tag_name, '^#', '')) = lower(regexp_replace(%s, '^#', ''))"
+                    ")"
+                )
+            else:
+                query += (
+                    " AND EXISTS ("
+                    "SELECT 1 FROM unnest(tags) AS t(tag_name) "
+                    "WHERE lower(regexp_replace(t.tag_name, '^#', '')) = lower(regexp_replace(%s, '^#', ''))"
+                    ")"
+                )
             params.append(tag)
 
         # Use correct ordering column for each table

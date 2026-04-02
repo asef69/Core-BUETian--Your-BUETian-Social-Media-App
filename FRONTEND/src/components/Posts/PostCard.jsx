@@ -6,6 +6,7 @@ import { FaHeart, FaRegHeart, FaComment, FaEllipsisH } from 'react-icons/fa';
 import moment from 'moment';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const PostCard = ({ post, onLike, readOnly = false }) => {
   const { user } = useAuth();
@@ -24,9 +25,9 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
 
   const renderContentWithHashtags = (content) => {
     const text = content || '';
-    const parts = text.split(/(#[A-Za-z0-9_]+)/g);
+    const parts = text.split(/(#[A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*)/g);
     return parts.map((part, index) => {
-      if (/^#[A-Za-z0-9_]+$/.test(part)) {
+      if (/^#[A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*$/.test(part)) {
         const hashtag = part.slice(1);
         return (
           <Link key={`${hashtag}-${index}`} to={`/search?q=${encodeURIComponent(hashtag)}`} className="hashtag-link">
@@ -200,18 +201,28 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
   const isOwner = user && Number(user.id) === Number(post.user_id);
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this post?')) return;
-    try {
-      if (!postId) {
-        toast.error('Cannot delete: Post ID is missing');
-        return;
-      }
-      await postAPI.deletePost(postId);
-      toast.success('Post deleted');
-      window.location.reload();
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Failed to delete post');
+    if (!postId) {
+      toast.error('Cannot delete: Post ID is missing');
+      return;
     }
+
+    await confirmDialog({
+      title: 'Delete Post',
+      message: 'Are you sure you want to delete this post?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await postAPI.deletePost(postId);
+          toast.success('Post deleted');
+          window.location.reload();
+        } catch (error) {
+          toast.error(error?.response?.data?.error || 'Failed to delete post');
+          throw error;
+        }
+      },
+    });
   };
 
   const handleUpdate = async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
@@ -178,6 +178,26 @@ const BlogDetail = () => {
     return grouped;
   }, [comments, commentMap]);
 
+  const renderContentWithHashtags = (text, lineKeyPrefix = 'line') => {
+    const raw = String(text || '');
+    const parts = raw.split(/(#[A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*)/g);
+    return parts.map((part, index) => {
+      if (/^#[A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*$/.test(part)) {
+        const tag = part.slice(1);
+        return (
+          <Link
+            key={`${lineKeyPrefix}-tag-${tag}-${index}`}
+            to={`/blogs?tag=${encodeURIComponent(tag)}`}
+            className="blog-inline-hashtag"
+          >
+            {part}
+          </Link>
+        );
+      }
+      return <React.Fragment key={`${lineKeyPrefix}-text-${index}`}>{part}</React.Fragment>;
+    });
+  };
+
   const renderCommentNode = (comment, depth = 0, visited = new Set()) => {
     const commentId = Number(comment.comment_id);
     if (!commentId || visited.has(commentId)) return null;
@@ -268,29 +288,44 @@ const BlogDetail = () => {
         <div className="container blog-detail-layout">
           <article className="blog-article">
             {blog.cover_image && <img src={blog.cover_image} alt={blog.title} className="blog-detail-cover" />}
-            <h1>{blog.title}</h1>
-            <div className="blog-meta-row">
-              <span>{blog.author_name || 'Unknown Author'}</span>
-              <span>{blog.category || 'General'}</span>
-              <span>{moment(blog.created_at || blog.published_at).format('MMM D, YYYY')}</span>
+            <div className="blog-article-header">
+              <p className="blog-kicker">Article</p>
+              <h1>{blog.title}</h1>
+              <div className="blog-meta-row">
+                <span className="blog-meta-author">By {blog.author_name || 'Unknown Author'}</span>
+                <span className="blog-meta-sep">•</span>
+                <span className="blog-meta-category">{blog.category || 'General'}</span>
+                <span className="blog-meta-sep">•</span>
+                <span>{moment(blog.created_at || blog.published_at).format('MMM D, YYYY')}</span>
+              </div>
             </div>
             {Array.isArray(blog.tags) && blog.tags.length > 0 && (
               <div className="blog-tags">
-                {blog.tags.map((tag, index) => (
-                  <span key={`${tag}-${index}`} className="blog-tag">#{tag}</span>
-                ))}
+                {blog.tags.map((tag, index) => {
+                  const normalizedTag = String(tag || '').replace(/^#/, '').trim();
+                  if (!normalizedTag) return null;
+                  return (
+                    <Link
+                      key={`${normalizedTag}-${index}`}
+                      to={`/blogs?tag=${encodeURIComponent(normalizedTag)}`}
+                      className="blog-tag blog-tag-link"
+                    >
+                      #{normalizedTag}
+                    </Link>
+                  );
+                })}
               </div>
             )}
             <div className="blog-actions-row">
               <button className="btn btn-primary" onClick={handleLike}>
                 {liked ? 'Unlike' : 'Like'} ({blog.likes_count || 0})
               </button>
-              <span>{blog.views_count || 0} views</span>
-              <span>{blog.comments_count || comments.length || 0} comments</span>
+              <span className="blog-stat">{blog.views_count || 0} views</span>
+              <span className="blog-stat">{blog.comments_count || comments.length || 0} comments</span>
             </div>
             <div className="blog-content-block">
               {String(blog.content || '').split('\n').map((line, idx) => (
-                <p key={`line-${idx}`}>{line}</p>
+                <p key={`line-${idx}`}>{renderContentWithHashtags(line, `line-${idx}`)}</p>
               ))}
             </div>
           </article>

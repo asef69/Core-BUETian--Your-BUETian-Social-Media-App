@@ -6,6 +6,7 @@ import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
 import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const GroupDetail = () => {
   const { groupId } = useParams();
@@ -248,7 +249,13 @@ const GroupDetail = () => {
   };
 
   const handleLeaveGroup = async () => {
-    if (!window.confirm('Are you sure you want to leave this group?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Leave Group',
+      message: 'Are you sure you want to leave this group?',
+      confirmText: 'Leave',
+      danger: true,
+    });
+    if (!confirmed) return;
 
     try {
       await groupAPI.leaveGroup(groupId);
@@ -260,7 +267,13 @@ const GroupDetail = () => {
   };
 
   const handleDeleteGroup = async () => {
-    if (!window.confirm('Delete this group permanently? This cannot be undone.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Group',
+      message: 'Delete this group permanently? This cannot be undone.',
+      confirmText: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
 
     try {
       await groupAPI.deleteGroup(groupId);
@@ -312,7 +325,12 @@ const GroupDetail = () => {
   };
 
   const handleTransferAdmin = async (userId) => {
-    if (!window.confirm('Transfer admin rights to this member?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Transfer Admin Rights',
+      message: 'Transfer admin rights to this member?',
+      confirmText: 'Transfer',
+    });
+    if (!confirmed) return;
 
     try {
       await groupAPI.transferAdmin(groupId, { new_admin_id: userId });
@@ -344,7 +362,13 @@ const GroupDetail = () => {
   };
 
   const handleKickMember = async (userId) => {
-    if (!window.confirm('Remove this member from the group?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Remove Member',
+      message: 'Remove this member from the group?',
+      confirmText: 'Remove',
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       const response = await groupAPI.removeMember(groupId, userId);
       toast.success(response?.data?.message || 'Member removed successfully');

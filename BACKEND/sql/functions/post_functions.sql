@@ -416,18 +416,21 @@ CREATE OR REPLACE FUNCTION get_trending_hashtags(p_limit INTEGER DEFAULT 10) RET
     post_count BIGINT,
     total_engagement BIGINT
     ) AS $$ BEGIN RETURN QUERY
-SELECT m.hashtag,
-    COUNT(*) AS post_count,
-    COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
-FROM posts p
-    CROSS JOIN LATERAL (
-    SELECT DISTINCT lower(match [1]) AS hashtag
-    FROM regexp_matches(COALESCE(p.content, ''), '#([A-Za-z0-9_]+)', 'g') AS match
-    ) AS m
-WHERE p.visibility = 'public'
-    AND p.group_id IS NULL
-    AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
-GROUP BY m.hashtag
+SELECT lower(regexp_replace(bpt.tag_name, '^#', '')) AS hashtag,
+    COUNT(DISTINCT b.id) AS post_count,
+    COALESCE(SUM(b.likes_count + b.views_count + COALESCE(bc.comments_count, 0)), 0)::BIGINT AS total_engagement
+FROM blog_posts b
+    INNER JOIN blog_post_tags bpt ON bpt.blog_post_id = b.id
+    LEFT JOIN LATERAL (
+    SELECT COUNT(*)::INTEGER AS comments_count
+    FROM blog_comments c
+    WHERE c.blog_id = b.id
+    ) AS bc ON TRUE
+WHERE b.is_published = TRUE
+    AND (b.scheduled_publish_at IS NULL OR b.scheduled_publish_at <= NOW())
+    AND COALESCE(b.published_at, b.created_at) > CURRENT_TIMESTAMP - INTERVAL '30 days'
+    AND NULLIF(TRIM(regexp_replace(bpt.tag_name, '^#', '')), '') IS NOT NULL
+GROUP BY lower(regexp_replace(bpt.tag_name, '^#', ''))
 ORDER BY total_engagement DESC,
     post_count DESC
 LIMIT p_limit;
@@ -498,6 +501,7 @@ CREATE OR REPLACE FUNCTION get_trending_posts(p_limit INTEGER DEFAULT 10) RETURN
     created_at TIMESTAMP,
     likes_count INTEGER,
     comments_count INTEGER,
+    views_count INTEGER,
     has_liked BOOLEAN,
     media_urls JSON
     ) AS $$ BEGIN RETURN QUERY
@@ -515,6 +519,7 @@ SELECT p.id AS post_id,
     p.created_at,
     p.likes_count,
     p.comments_count,
+    0 AS views_count,
     FALSE AS has_liked,
     COALESCE(
     JSON_AGG(
@@ -534,7 +539,7 @@ FROM posts p
     LEFT JOIN media_urls m ON p.id = m.post_id
 WHERE p.visibility = 'public'
     AND p.group_id IS NULL
-    AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+    AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '30 days'
 GROUP BY p.id,
     u.id
 ORDER BY (p.likes_count * 2 + p.comments_count) DESC

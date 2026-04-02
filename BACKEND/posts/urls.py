@@ -24,7 +24,7 @@ urlpatterns = [
     path('<int:post_id>/comments/', CommentView.as_view()),
     path('<int:post_id>/engagement/', PostEngagementStatsView.as_view()),
     
-    path('hashtag/<str:hashtag>/', PostsByHashtagView.as_view()),
+    path('hashtag/', PostsByHashtagView.as_view()),
     path('hashtags/trending/', TrendingHashtagsView.as_view()),
     path('media/<str:media_type>/', PostsByMediaTypeView.as_view()),
     path('liked/<str:user_id>/', UserLikedPostsView.as_view()),

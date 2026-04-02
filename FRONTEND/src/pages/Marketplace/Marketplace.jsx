@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaMapMarkerAlt, FaTag, FaBox, FaChartLine } from 'react-icons/fa';
 import '../../styles/Marketplace.css';
 
 const HARD_CODED_CATEGORIES = [
@@ -211,10 +211,14 @@ const Marketplace = () => {
                           <div className="product-info">
                             <h3>{product.title}</h3>
                             <p className="product-price">
-                              BDT {product.price}
+                              <FaTag size={14} /> BDT {product.price}
                             </p>
-                            <p className="product-condition">{product.condition}</p>
-                            <p className="product-location">{product.location}</p>
+                            <p className="product-condition">
+                              <FaBox size={12} /> {product.condition}
+                            </p>
+                            <p className="product-location">
+                              <FaMapMarkerAlt size={12} /> {product.location}
+                            </p>
                             <p className={`market-status status-${(product.status || 'available').toLowerCase()}`}>
                               {(product.status || 'available').toUpperCase()}
                             </p>

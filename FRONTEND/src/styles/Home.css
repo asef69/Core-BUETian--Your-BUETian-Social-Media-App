@@ -94,8 +94,8 @@
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 0.82rem;
-  color: var(--muted-color);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--gray-color);
+  background: var(--surface-elevated);
   cursor: pointer;
 }
 
@@ -107,6 +107,48 @@
 
 .filter-select {
   outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 36px;
+  position: relative;
+  color: var(--light-color);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-color) 50%),
+    linear-gradient(135deg, var(--muted-color) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.filter-select:hover,
+.filter-select:focus {
+  border-color: rgba(35, 116, 225, 0.5);
+  box-shadow: 0 0 0 3px rgba(35, 116, 225, 0.15);
+}
+
+.filter-select option {
+  background: var(--surface-elevated);
+  color: var(--light-color);
+}
+
+body[data-theme='light'] .filter-chip {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--light-color);
+}
+
+body[data-theme='light'] .filter-select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, #5e6f86 50%),
+    linear-gradient(135deg, #5e6f86 50%, transparent 50%);
+}
+
+body[data-theme='light'] .filter-select option {
+  background: #ffffff;
+  color: var(--light-color);
 }
 
 .hashtag-list {

@@ -8,6 +8,7 @@ import ReviewRequirements from '../../components/ReviewRequirements';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import { FaMapMarkerAlt, FaUser, FaStar } from 'react-icons/fa';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const HARD_CODED_CATEGORIES = [
   'Electronics',
@@ -113,14 +114,23 @@ const ProductDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this product?')) return;
-    try {
-      await marketplaceAPI.deleteProduct(productId);
-      toast.success('Product deleted');
-      window.location.href = '/marketplace';
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Failed to delete product');
-    }
+    await confirmDialog({
+      title: 'Delete Product',
+      message: 'Are you sure you want to delete this product?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await marketplaceAPI.deleteProduct(productId);
+          toast.success('Product deleted');
+          window.location.href = '/marketplace';
+        } catch (error) {
+          toast.error(error?.response?.data?.error || 'Failed to delete product');
+          throw error;
+        }
+      },
+    });
   };
 
   const handleUpdate = async () => {

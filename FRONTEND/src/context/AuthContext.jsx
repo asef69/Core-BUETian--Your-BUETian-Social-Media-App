@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import { authAPI } from '../services/apiService';
-import { toast } from 'react-toastify';
+import { showToast } from '../utils/toast.jsx';
 
 const AuthContext = createContext();
 
@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }) => {
         name: userData.name,
       });
       
-      toast.success('Login successful!');
+      showToast.success('Welcome back!', 'Login successful');
       
      
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -73,7 +73,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (error) {
       const message = error.response?.data?.error || 'Login failed';
-      toast.error(message);
+      showToast.error('Login failed', message);
       return { success: false, error: message };
     }
   };
@@ -81,11 +81,11 @@ export const AuthProvider = ({ children }) => {
   const register = async (data) => {
     try {
       const response = await authAPI.register(data);
-      toast.success('Registration successful! Please login.');
+      showToast.success('Account created!', 'Please login with your credentials');
       return { success: true, data: response.data };
     } catch (error) {
       const message = error.response?.data?.error || 'Registration failed';
-      toast.error(message);
+      showToast.error('Registration failed', message);
       return { success: false, error: message };
     }
   };
@@ -94,7 +94,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);
-    toast.info('Logged out successfully');
+    showToast.info('Logged out', 'See you next time!');
   };
 
   const value = {

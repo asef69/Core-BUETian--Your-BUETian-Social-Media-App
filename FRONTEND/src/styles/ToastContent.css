@@ -1,0 +1,63 @@
+/* Toast Content Styling */
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.toast-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.toast-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: -0.3px;
+  flex: 1;
+}
+
+.toast-description {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin-left: 2.5rem;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  flex-shrink: 0;
+}
+
+.toast-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark mode */
+:root {
+  --toast-text: inherit;
+}
+
+body[data-theme='light'] {
+  --toast-text: inherit;
+}

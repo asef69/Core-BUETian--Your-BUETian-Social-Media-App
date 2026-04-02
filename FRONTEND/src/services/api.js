@@ -39,6 +39,14 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Handle Network Errors
+    if (!error.response) {
+      console.error('❌ Network error:', error.message);
+      error.displayMessage = 'Network error. Please check your connection and try again.';
+      return Promise.reject(error);
+    }
+
+    // Handle 401 Unauthorized - Token expired or invalid
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       
@@ -52,19 +60,62 @@ api.interceptors.response.use(
           localStorage.setItem('accessToken', access);
           
           originalRequest.headers.Authorization = `Bearer ${access}`;
+          console.log('🔄 Token refreshed successfully');
           return api(originalRequest);
         } catch (err) {
+          console.error('🔐 Token refresh failed:', err.message);
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
           window.location.href = '/login';
         }
       } else {
-        
+        console.warn('⚠️ No refresh token available');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         window.location.href = '/login';
       }
     }
+
+    // Handle 403 Forbidden
+    if (error.response?.status === 403) {
+      console.error('🚫 Access forbidden:', error.response.data);
+      error.displayMessage = 'You do not have permission to perform this action.';
+    }
+
+    // Handle 404 Not Found
+    if (error.response?.status === 404) {
+      console.error('🔍 Resource not found:', originalRequest.url);
+      error.displayMessage = 'The requested resource was not found.';
+    }
+
+    // Handle 500 Server Error
+    if (error.response?.status >= 500) {
+      console.error('⚠️ Server error:', error.response.status, error.response.data);
+      error.displayMessage = 'Server error. Please try again later or contact support.';
+    }
+
+    // Handle validation errors (400)
+    if (error.response?.status === 400) {
+      console.warn('⚠️ Validation error:', error.response.data);
+      error.displayMessage = error.response.data?.error || error.response.data?.message || 'Invalid request. Please check your input.';
+      error.validationErrors = error.response.data?.details || error.response.data?.errors || null;
+    }
+
+    // Extract display message from response
+    if (!error.displayMessage) {
+      error.displayMessage = 
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.response?.data?.detail ||
+        'An error occurred. Please try again.';
+    }
+
+    console.error('API Error:', {
+      status: error.response?.status,
+      message: error.displayMessage,
+      data: error.response?.data,
+    });
+
     return Promise.reject(error);
   }
 );

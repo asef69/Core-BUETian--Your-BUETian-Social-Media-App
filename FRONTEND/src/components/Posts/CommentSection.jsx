@@ -5,6 +5,7 @@ import moment from "moment";
 import { FaEllipsisH } from "react-icons/fa";
 import { useAuth } from "../../context/AuthContext";
 import { FaHeart, FaRegHeart } from "react-icons/fa";
+import { confirmDialog } from "../../utils/confirmDialog";
 
 const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = false }) => {
   const { user } = useAuth();
@@ -158,26 +159,34 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       return;
     }
 
-    if (!window.confirm("Delete this comment?")) return;
+    await confirmDialog({
+      title: "Delete Comment",
+      message: "Are you sure you want to delete this comment?",
+      confirmText: "Delete",
+      confirmLoadingText: "Deleting...",
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          console.log("Deleting comment ID:", comment_id);
 
-    try {
-      console.log("Deleting comment ID:", comment_id);
+          // Call API
+          await postAPI.deleteComment(comment_id);
 
-      // Call API
-      await postAPI.deleteComment(comment_id);
+          // Remove from state
+          setComments((prev) => prev.filter((c) => c.comment_id !== comment_id));
+          await loadComments();
+          if (onCommentRemoved) {
+            onCommentRemoved();
+          }
 
-      // Remove from state
-      setComments((prev) => prev.filter((c) => c.comment_id !== comment_id));
-      await loadComments();
-      if (onCommentRemoved) {
-        onCommentRemoved();
-      }
-
-      toast.success("Comment deleted");
-    } catch (error) {
-      console.error("❌ Failed to delete comment:", error);
-      toast.error(error?.response?.data?.error || "Failed to delete comment");
-    }
+          toast.success("Comment deleted");
+        } catch (error) {
+          console.error("❌ Failed to delete comment:", error);
+          toast.error(error?.response?.data?.error || "Failed to delete comment");
+          throw error;
+        }
+      },
+    });
   };
 
   const handleEditComment = (comment) => {

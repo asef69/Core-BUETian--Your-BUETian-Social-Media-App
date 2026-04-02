@@ -7,6 +7,7 @@ import { FaTint, FaBook, FaPlus } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Forums.css';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const Forums = () => {
   const { user: currentUser } = useAuth();
@@ -201,14 +202,23 @@ const Forums = () => {
   };
 
   const handleDeleteBlood = async (requestId) => {
-    if (!window.confirm('Delete this blood request?')) return;
-    try {
-      await forumAPI.deleteBloodRequest(requestId);
-      toast.success('Blood request deleted');
-      loadForums();
-    } catch (error) {
-      toast.error('Failed to delete blood request');
-    }
+    await confirmDialog({
+      title: 'Delete Blood Request',
+      message: 'Are you sure you want to delete this blood request?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await forumAPI.deleteBloodRequest(requestId);
+          toast.success('Blood request deleted');
+          loadForums();
+        } catch (error) {
+          toast.error('Failed to delete blood request');
+          throw error;
+        }
+      },
+    });
   };
 
   const handleEditTuition = (post) => {
@@ -238,14 +248,23 @@ const Forums = () => {
   };
 
   const handleDeleteTuition = async (postId) => {
-    if (!window.confirm('Delete this tuition post?')) return;
-    try {
-      await forumAPI.deleteTuitionPost(postId);
-      toast.success('Tuition post deleted');
-      loadForums();
-    } catch (error) {
-      toast.error('Failed to delete tuition post');
-    }
+    await confirmDialog({
+      title: 'Delete Tuition Post',
+      message: 'Are you sure you want to delete this tuition post?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await forumAPI.deleteTuitionPost(postId);
+          toast.success('Tuition post deleted');
+          loadForums();
+        } catch (error) {
+          toast.error('Failed to delete tuition post');
+          throw error;
+        }
+      },
+    });
   };
 
   return (

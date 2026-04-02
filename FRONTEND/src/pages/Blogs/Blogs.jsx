@@ -1,8 +1,9 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI, postAPI } from '../../services/apiService';
-import { toast } from 'react-toastify';
+import { showToast } from '../../utils/toast.jsx';
+import { confirmDialog } from '../../utils/confirmDialog';
 import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash } from 'react-icons/fa';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
@@ -25,6 +26,7 @@ const BLOG_CATEGORIES = [
 
 const Blogs = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -46,6 +48,7 @@ const Blogs = () => {
   const [tab, setTab] = useState('all'); // 'all' or 'drafts'
   const [editingBlog, setEditingBlog] = useState(null);
   const [deletingBlogId, setDeletingBlogId] = useState(null);
+  const tagFilter = String(searchParams.get('tag') || '').replace(/^#/, '').trim();
   // Helper: get current user id (assumes user info is in localStorage or context)
   const getCurrentUserId = () => {
     // Example: adjust as per your auth implementation
@@ -68,35 +71,45 @@ const Blogs = () => {
   };
 
   const handleDeleteBlog = async (blogId) => {
-    if (!window.confirm('Are you sure you want to delete this blog post?')) return;
-    setDeletingBlogId(blogId);
-    try {
-      await blogAPI.deleteBlog(blogId);
-      toast.success('Blog post deleted');
-      setBlogs((prev) => prev.filter((b) => getBlogId(b) !== blogId));
-    } catch (error) {
-      toast.error(error?.response?.data?.error || 'Failed to delete blog post');
-    } finally {
-      setDeletingBlogId(null);
-    }
+    await confirmDialog({
+      title: 'Delete Blog Post',
+      message: 'Are you sure you want to delete this blog post?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        setDeletingBlogId(blogId);
+        try {
+          await blogAPI.deleteBlog(blogId);
+          showToast.success('Post deleted', 'Blog post has been removed');
+          setBlogs((prev) => prev.filter((b) => getBlogId(b) !== blogId));
+        } catch (error) {
+          showToast.error('Delete failed', error?.response?.data?.error || 'Failed to delete blog post');
+          throw error;
+        } finally {
+          setDeletingBlogId(null);
+        }
+      },
+    });
   };
 
   // Fetch blogs for the selected tab
-  const loadBlogs = async (selectedTab = tab) => {
+  const loadBlogs = async (selectedTab = tab, selectedTag = tagFilter) => {
     try {
       setLoading(true);
       let response;
       if (selectedTab === 'drafts') {
         response = await blogAPI.getMyBlogs({ mine: true, drafts_tab: true });
       } else {
-        response = await blogAPI.getPublishedBlogs();
+        const params = selectedTag ? { tag: selectedTag } : {};
+        response = await blogAPI.getPublishedBlogs(params);
       }
       const items = Array.isArray(response.data)
         ? response.data
         : response.data?.results || [];
       setBlogs(items);
     } catch (error) {
-      toast.error('Failed to load blogs');
+      showToast.error('Failed to load', 'Could not retrieve blog posts');
       setBlogs([]);
     } finally {
       setLoading(false);
@@ -104,9 +117,9 @@ const Blogs = () => {
   };
 
   useEffect(() => {
-    loadBlogs(tab);
+    loadBlogs(tab, tagFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, tagFilter]);
 
   const getBlogId = (blog) => blog?.blog_id || blog?.id || blog?.pk;
 
@@ -145,7 +158,7 @@ const Blogs = () => {
 
         uploadedCoverImage = uploadedFiles[0]?.url || null;
       } catch (error) {
-        toast.error(error?.response?.data?.error || 'Failed to upload cover image');
+        showToast.error('Upload failed', error?.response?.data?.error || 'Failed to upload cover image');
         setCreating(false);
         return;
       }
@@ -172,7 +185,7 @@ const Blogs = () => {
 
     try {
       await blogAPI.createBlog(payload);
-      toast.success('Blog post created successfully');
+      showToast.success('Post created', 'Your blog post is now live');
       setShowCreateModal(false);
       setCreateData({
         title: '',
@@ -189,7 +202,7 @@ const Blogs = () => {
       setCoverImagePreview('');
       loadBlogs();
     } catch (error) {
-      toast.error(error?.response?.data?.error || 'Failed to create blog post');
+      showToast.error('Creation failed', error?.response?.data?.error || 'Failed to create blog post');
     } finally {
       setCreating(false);
     }
@@ -201,7 +214,7 @@ const Blogs = () => {
 
     const validation = validateImageFile(file);
     if (!validation.valid) {
-      toast.error(validation.error);
+      showToast.error('Invalid image', validation.error);
       return;
     }
 
@@ -247,6 +260,19 @@ const Blogs = () => {
             <div>
               <h1>Blogs</h1>
               <p>Write long-form posts, ideas, and tutorials for the community.</p>
+              {tagFilter && (
+                <div style={{ marginTop: '10px' }}>
+                  <span className="blog-tag">Showing hashtag: #{tagFilter}</span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ marginLeft: '10px' }}
+                    onClick={() => setSearchParams({})}
+                  >
+                    Clear hashtag filter
+                  </button>
+                </div>
+              )}
             </div>
             <button
               className="btn btn-primary"
@@ -312,25 +338,27 @@ const Blogs = () => {
                 const disableActions = isDraft || isScheduledFuture;
                 return (
                   <div key={blogId} className="blog-card">
-                    <div style={{ position: 'absolute', right: 8, top: 8, display: 'flex', gap: 8, zIndex: 2 }}>
+                    <div className="blog-card-actions">
                       {isAuthor && (
                         <>
                           <button
                             className="blog-card-action"
-                            title="Edit"
+                            type="button"
+                            title="Edit blog"
                             onClick={() => handleEditBlog(blog)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#007bff' }}
                           >
                             <FaEdit />
+                            <span>Edit</span>
                           </button>
                           <button
-                            className="blog-card-action"
-                            title="Delete"
+                            className="blog-card-action blog-card-action-danger"
+                            type="button"
+                            title="Delete blog"
                             onClick={() => handleDeleteBlog(blogId)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc3545' }}
                             disabled={deletingBlogId === blogId}
                           >
                             <FaTrash />
+                            <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
                           </button>
                         </>
                       )}

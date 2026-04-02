@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationAPI, userAPI, groupAPI } from '../../services/apiService';
+import { notificationAPI, groupAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaBell, FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes } from 'react-icons/fa';
+import { FaBell, FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes, FaHeart, FaComment, FaUserPlus, FaComments } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Notifications.css';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [summary, setSummary] = useState([]);
-  const [preferences, setPreferences] = useState({ email_notifications: true, push_notifications: true });
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
   const [groupInvites, setGroupInvites] = useState([]);
 
   const loadGroupInvites = async () => {
@@ -32,19 +31,17 @@ const Notifications = () => {
   useEffect(() => {
     loadNotifications();
     loadGroupInvites();
-  }, [filter]);
+  }, []);
 
   const loadNotifications = async () => {
     try {
-      const [response, summaryRes, preferencesRes] = await Promise.all([
-        filter === 'unread' ? notificationAPI.getUnread() : notificationAPI.getAll(),
+      const [response, summaryRes] = await Promise.all([
+        notificationAPI.getAll(),
         notificationAPI.getSummary().catch(() => ({ data: [] })),
-        notificationAPI.getPreferences().catch(() => ({ data: { email_notifications: true, push_notifications: true } })),
       ]);
 
       setNotifications(response.data.results || response.data);
       setSummary(Array.isArray(summaryRes.data) ? summaryRes.data : summaryRes.data?.results || []);
-      setPreferences(preferencesRes.data || { email_notifications: true, push_notifications: true });
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -103,32 +100,26 @@ const Notifications = () => {
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm('Are you sure you want to clear all notifications?')) return;
-
-    try {
-      await notificationAPI.clearAll();
-      setNotifications([]);
-      toast.success('All notifications cleared');
-      emitCountsRefresh();
-    } catch (error) {
-      toast.error('Failed to clear notifications');
-    }
+    await confirmDialog({
+      title: 'Clear Read Notifications',
+      message: 'Are you sure you want to clear all read notifications?',
+      confirmText: 'Clear',
+      confirmLoadingText: 'Clearing...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await notificationAPI.clearAll();
+          setNotifications([]);
+          toast.success('All notifications cleared');
+          emitCountsRefresh();
+        } catch (error) {
+          toast.error('Failed to clear notifications');
+          throw error;
+        }
+      },
+    });
   };
 
-  const handlePreferenceToggle = async (key) => {
-    const updated = {
-      ...preferences,
-      [key]: !preferences[key],
-    };
-
-    try {
-      await notificationAPI.updatePreferences(updated);
-      setPreferences(updated);
-      toast.success('Notification preferences updated');
-    } catch (error) {
-      toast.error('Failed to update preferences');
-    }
-  };
   const handleAcceptInvite = async (groupId) => {
     try {
       await groupAPI.acceptInvite(groupId);
@@ -198,6 +189,35 @@ const Notifications = () => {
     }
   };
 
+  const getNotificationIcon = (notif) => {
+    const type = notif?.notification_type || notif?.type;
+    
+    const iconProps = { size: 18, style: { marginRight: '4px' } };
+    
+    switch (type) {
+      case 'like':
+      case 'blog_like':
+        return <FaHeart {...iconProps} style={{ color: '#ff5252', marginRight: '4px' }} />;
+      case 'comment':
+      case 'reply':
+      case 'blog_comment':
+      case 'blog_reply':
+      case 'blog_comment_like':
+        return <FaComment {...iconProps} style={{ color: '#7bbcff', marginRight: '4px' }} />;
+      case 'follow':
+      case 'follow_request':
+      case 'follow_accepted':
+        return <FaUserPlus {...iconProps} style={{ color: '#42b883', marginRight: '4px' }} />;
+      case 'message':
+        return <FaComments {...iconProps} style={{ color: '#ffa500', marginRight: '4px' }} />;
+      case 'group_invite':
+      case 'group_join_request':
+        return <FaUserCheck {...iconProps} style={{ color: '#9c27b0', marginRight: '4px' }} />;
+      default:
+        return <FaBell {...iconProps} />;
+    }
+  };
+
   const inviteGroupIds = new Set(
     (Array.isArray(groupInvites) ? groupInvites : [])
       .map((invite) => Number.parseInt(invite?.group_id, 10))
@@ -229,36 +249,6 @@ const Notifications = () => {
                 <FaTrash /> Clear All
               </button>
             </div>
-          </div>
-
-          <div className="notifications-filter">
-            <button
-              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-              onClick={() => setFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={`filter-btn ${filter === 'unread' ? 'active' : ''}`}
-              onClick={() => setFilter('unread')}
-            >
-              Unread
-            </button>
-          </div>
-
-          <div className="notifications-filter" style={{ marginTop: '10px', alignItems: 'center' }}>
-            <button
-              className={`filter-btn ${preferences.email_notifications ? 'active' : ''}`}
-              onClick={() => handlePreferenceToggle('email_notifications')}
-            >
-              Email Alerts {preferences.email_notifications ? 'On' : 'Off'}
-            </button>
-            <button
-              className={`filter-btn ${preferences.push_notifications ? 'active' : ''}`}
-              onClick={() => handlePreferenceToggle('push_notifications')}
-            >
-              Push Alerts {preferences.push_notifications ? 'On' : 'Off'}
-            </button>
           </div>
 
           {summary.length > 0 && (
@@ -344,6 +334,7 @@ const Notifications = () => {
                         />
                         <div className="notification-content">
                           <p>
+                            {getNotificationIcon(notif)}
                             <strong>{notif.actor_name}</strong> {notif.content}
                           </p>
                           <span className="notification-time">
