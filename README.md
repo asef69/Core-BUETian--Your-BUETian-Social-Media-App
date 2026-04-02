@@ -30,7 +30,6 @@ The project is organized to support maintainable growth: each core business area
 The Mermaid diagrams below render dynamically on GitHub and are styled to present a polished, industry-ready system narrative.
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables': { 'primaryColor': '#E9F5FF', 'primaryTextColor': '#0A2540', 'primaryBorderColor': '#1E88E5', 'lineColor': '#305A72', 'secondaryColor': '#F4F8D3', 'tertiaryColor': '#FFF4E6', 'fontFamily': 'Segoe UI' }}}%%
 flowchart LR
     U([Student User]) --> FE[React Vite UI]
 
@@ -57,10 +56,10 @@ flowchart LR
     NOTIF --> FE
     SEARCH --> FE
 
-    classDef user fill:#D9F0FF,stroke:#1E88E5,stroke-width:2px,color:#0A2540;
-    classDef client fill:#EAF7E8,stroke:#2E7D32,stroke-width:2px,color:#0F3D1D;
-    classDef platform fill:#FFF3E0,stroke:#F57C00,stroke-width:2px,color:#4A2C00;
-    classDef data fill:#F4ECFF,stroke:#6A1B9A,stroke-width:2px,color:#2F1147;
+    classDef user fill:#A8D8FF,stroke:#0B66C3,stroke-width:3px;
+    classDef client fill:#B8E6C1,stroke:#1B7F3A,stroke-width:3px;
+    classDef platform fill:#FFD7A3,stroke:#B85C00,stroke-width:3px;
+    classDef data fill:#D8C2FF,stroke:#5B21B6,stroke-width:3px;
 
     class U user;
     class FE,UX client;
@@ -69,7 +68,6 @@ flowchart LR
 ```
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables': { 'fontFamily': 'Segoe UI', 'lineColor': '#2F5D7C', 'textColor': '#0A2540' }}}%%
 sequenceDiagram
     participant User
     participant UI as React Frontend
@@ -92,7 +90,6 @@ sequenceDiagram
 ```
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables': { 'fontFamily': 'Segoe UI', 'primaryColor': '#E8F1FF', 'primaryTextColor': '#0A2540', 'primaryBorderColor': '#2D6CDF' }}}%%
 journey
     title Core BUETians User Journey
     section Onboarding
