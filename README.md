@@ -30,41 +30,28 @@ The project is organized to support maintainable growth: each core business area
 The Mermaid diagrams below render dynamically on GitHub and are styled to present a polished, industry-ready system narrative.
 
 ```mermaid
-%%{init: {'theme':'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 60, 'rankSpacing': 85}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#475569', 'background': '#ffffff' }}}%%
-flowchart LR
-    U([Student User]) --> FE[React Vite UI]
-
-  subgraph Client Layer[Client Layer]
-    FE --> UX[Pages / Components / Hooks]
-    end
-
-  subgraph Platform Layer[Platform Layer]
-        UX --> API[REST Endpoints]
-        UX --> WS[WebSocket Gateway]
-    API --> SRV[Django Domain Services]
-        WS --> CHAT[Channels Consumers]
-    end
-
-  subgraph Data and Infra[Data and Infra]
+%%{init: {'theme':'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 95, 'rankSpacing': 120}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '20px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#475569', 'background': '#ffffff' }}}%%
+flowchart TD
+    U([Student]) --> FE[Frontend]
+    FE --> API[API Layer]
+    FE --> WS[Live Chat]
+    API --> SRV[Domain Services]
     SRV --> DB[(PostgreSQL)]
-    CHAT --> DB
-        SRV --> REDIS[(Redis Channel Layer)]
-    SRV --> MEDIA[(Media Storage)]
-    end
-
-    SRV --> NOTIF[Notification Flow]
-    SRV --> SEARCH[Search Flow]
+    WS --> REDIS[(Redis)]
+    SRV --> MEDIA[(Media)]
+    SRV --> NOTIF[Notifications]
+    SRV --> SEARCH[Search]
     NOTIF --> FE
     SEARCH --> FE
 
-    classDef user fill:#D8ECFF,stroke:#2563EB,stroke-width:2px,color:#0F172A;
-    classDef client fill:#E2F6E9,stroke:#15803D,stroke-width:2px,color:#0F172A;
-    classDef platform fill:#FFF0D6,stroke:#D97706,stroke-width:2px,color:#0F172A;
-    classDef data fill:#EFE1FF,stroke:#7C3AED,stroke-width:2px,color:#0F172A;
+    classDef user fill:#D8ECFF,stroke:#2563EB,stroke-width:3px,color:#0F172A;
+    classDef client fill:#E2F6E9,stroke:#15803D,stroke-width:3px,color:#0F172A;
+    classDef platform fill:#FFF0D6,stroke:#D97706,stroke-width:3px,color:#0F172A;
+    classDef data fill:#EFE1FF,stroke:#7C3AED,stroke-width:3px,color:#0F172A;
 
     class U user;
-    class FE,UX client;
-    class API,WS,SRV,CHAT,NOTIF,SEARCH platform;
+    class FE client;
+    class API,WS,SRV,NOTIF,SEARCH platform;
     class DB,REDIS,MEDIA data;
 ```
 
