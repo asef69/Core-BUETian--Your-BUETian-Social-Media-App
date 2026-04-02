@@ -64,7 +64,12 @@ export const postAPI = {
   getPublicPosts: (limit = 30) => api.get(`/posts/public/?limit=${limit}`),
   getTrending: () => api.get('/posts/trending/'),
   getPost: (postId) => api.get(`/posts/${postId}/`),
-  updatePost: (postId, data) => api.patch(`/posts/${postId}/`, data),
+  updatePost: (postId, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.patch(`/posts/${postId}/`, data, isFormData ? {
+      // Let the browser set the multipart boundary automatically.
+    } : undefined);
+  },
   deletePost: (postId) => api.delete(`/posts/${postId}/`),
   likePost: (postId) => api.post(`/posts/${postId}/like/`),
   getComments: (postId) => api.get(`/posts/${postId}/comments/`),

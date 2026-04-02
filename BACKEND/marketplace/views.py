@@ -1082,7 +1082,9 @@ class ConfirmTransactionView(APIView):
     
     def post(self, request, product_id):
         data = request.data
-        role = data.get('role', 'buyer').lower()
+        role = str(data.get('role', 'buyer')).lower()
+        if role not in {'buyer', 'seller'}:
+            return Response({'error': 'Invalid role. Use buyer or seller'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Get product and verify it's sold
         product_query = "SELECT seller_id FROM marketplace_products WHERE id = %s AND status = 'sold'"
@@ -1100,44 +1102,57 @@ class ConfirmTransactionView(APIView):
             buyer_id = data.get('buyer_id')
             if not buyer_id:
                 return Response({'error': 'buyer_id required for seller confirmation'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Upsert transaction record
-            query = """
-            INSERT INTO buyer_seller_transactions (product_id, buyer_id, seller_id, seller_confirmed, seller_confirmed)
-            VALUES (%s, %s, %s, TRUE, CURRENT_TIMESTAMP)
-            ON CONFLICT (product_id, buyer_id, seller_id) 
-            DO UPDATE SET seller_confirmed = TRUE, confirmed_at = CASE 
-                WHEN buyer_seller_transactions.buyer_confirmed THEN CURRENT_TIMESTAMP 
-                ELSE buyer_seller_transactions.confirmed_at 
-            END
-            RETURNING buyer_confirmed, seller_confirmed, confirmed_at
-            """
-            result = DatabaseManager.execute_query(query, (product_id, buyer_id, seller_id))
+            try:
+                buyer_id = int(buyer_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'buyer_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+            proc_result = DatabaseManager.execute_procedure(
+                'confirm_marketplace_transaction',
+                (
+                    product_id,
+                    buyer_id,
+                    seller_id,
+                    'seller',
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
         else:
-            # Buyer confirmation
-            # Get seller_id for this product
             buyer_id = request.user.id
-            
-            query = """
-            INSERT INTO buyer_seller_transactions (product_id, buyer_id, seller_id, buyer_confirmed, confirmed_at)
-            VALUES (%s, %s, %s, TRUE, CASE WHEN FALSE THEN CURRENT_TIMESTAMP ELSE NULL END)
-            ON CONFLICT (product_id, buyer_id, seller_id) 
-            DO UPDATE SET buyer_confirmed = TRUE, confirmed_at = CASE 
-                WHEN buyer_seller_transactions.seller_confirmed THEN CURRENT_TIMESTAMP 
-                ELSE buyer_seller_transactions.confirmed_at 
-            END
-            RETURNING buyer_confirmed, seller_confirmed, confirmed_at
-            """
-            result = DatabaseManager.execute_query(query, (product_id, buyer_id, seller_id))
-        
-        if result:
-            transaction = result[0]
-            both_confirmed = transaction.get('buyer_confirmed') and transaction.get('seller_confirmed')
+            proc_result = DatabaseManager.execute_procedure(
+                'confirm_marketplace_transaction',
+                (
+                    product_id,
+                    buyer_id,
+                    seller_id,
+                    'buyer',
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+
+        if proc_result and isinstance(proc_result, list) and len(proc_result) > 0:
+            proc_out = proc_result[0]
+            if not proc_out.get('out_success'):
+                return Response(
+                    {'error': proc_out.get('out_message', 'Failed to confirm transaction')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            buyer_confirmed = bool(proc_out.get('out_buyer_confirmed', False))
+            seller_confirmed = bool(proc_out.get('out_seller_confirmed', False))
             return Response({
                 'message': 'Transaction confirmed',
-                'buyer_confirmed': transaction.get('buyer_confirmed', False),
-                'seller_confirmed': transaction.get('seller_confirmed', False),
-                'transaction_complete': both_confirmed
+                'buyer_confirmed': buyer_confirmed,
+                'seller_confirmed': seller_confirmed,
+                'transaction_complete': buyer_confirmed and seller_confirmed
             })
         
         return Response({'error': 'Failed to confirm transaction'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1182,7 +1197,12 @@ class CreateReviewView(APIView):
         
         # Check rating validity
         rating = data.get('rating')
-        if not rating or not (1 <= int(rating) <= 5):
+        try:
+            rating = int(rating)
+        except (TypeError, ValueError):
+            return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (1 <= rating <= 5):
             return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Check product status
@@ -1202,56 +1222,42 @@ class CreateReviewView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # For easier testing/use: Allow review if product is sold, without requiring explicit transaction confirmation
-        # In production, you might want to require both parties to confirm first
         if product_status != 'sold':
             return Response(
-                {'error': f'Product must be marked as sold before reviewing. Current status: {product_status}'}, 
+                {'error': f'Product must be marked as sold before reviewing. Current status: {product_status}'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Optional: Check if transaction exists (for stricter control, uncomment below)
-        # trans_query = """
-        # SELECT seller_id FROM buyer_seller_transactions 
-        # WHERE product_id = %s AND buyer_id = %s AND buyer_confirmed = TRUE AND seller_confirmed = TRUE
-        # """
-        # trans_result = DatabaseManager.execute_query(trans_query, (product_id, buyer_id))
-        # 
-        # if not trans_result:
-        #     return Response({'error': 'Transaction not confirmed by both parties'}, status=status.HTTP_403_FORBIDDEN)
-        
         review_text = data.get('review_text', '').strip()
-        
-        # Create or update review
-        query = """
-        INSERT INTO product_reviews (product_id, buyer_id, seller_id, rating, review_text)
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (product_id, buyer_id) DO UPDATE SET rating = %s, review_text = %s, updated_at = CURRENT_TIMESTAMP
-        RETURNING id
-        """
-        
-        review_id = DatabaseManager.execute_insert(
-            query,
-            (product_id, buyer_id, seller_id, rating, review_text, rating, review_text)
+        proc_result = DatabaseManager.execute_procedure(
+            'create_or_update_review',
+            (
+                product_id,
+                buyer_id,
+                seller_id,
+                rating,
+                review_text,
+                None,
+                None,
+            )
         )
-        
-        # Update seller reputation score
-        rep_query = """
-        WITH avg_rating AS (
-            SELECT AVG(rating) as avg_r, COUNT(*) as total_r FROM product_reviews WHERE seller_id = %s
-        )
-        INSERT INTO seller_reputation (seller_id, average_rating, total_reviews)
-        SELECT %s, COALESCE(avg_r, 0), COALESCE(total_r, 0) FROM avg_rating
-        ON CONFLICT (seller_id) DO UPDATE SET 
-            average_rating = (SELECT AVG(rating) FROM product_reviews WHERE seller_id = %s),
-            total_reviews = (SELECT COUNT(*) FROM product_reviews WHERE seller_id = %s),
-            last_updated = CURRENT_TIMESTAMP
-        """
-        DatabaseManager.execute_update(rep_query, (seller_id, seller_id, seller_id, seller_id))
+
+        if not proc_result or not isinstance(proc_result, list) or len(proc_result) == 0:
+            return Response({'error': 'Failed to submit review'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        proc_out = proc_result[0]
+        if not proc_out.get('out_success'):
+            message = proc_out.get('out_message', 'Failed to submit review')
+            status_code = status.HTTP_400_BAD_REQUEST
+            lowered = str(message).lower()
+            if 'not found' in lowered:
+                status_code = status.HTTP_404_NOT_FOUND
+            elif 'cannot review your own product' in lowered or 'must be sold' in lowered:
+                status_code = status.HTTP_403_FORBIDDEN
+            return Response({'error': message}, status=status_code)
         
         return Response({
-            'message': 'Review created successfully',
-            'review_id': review_id
+            'message': proc_out.get('out_message', 'Review created successfully')
         }, status=status.HTTP_201_CREATED)
 
 

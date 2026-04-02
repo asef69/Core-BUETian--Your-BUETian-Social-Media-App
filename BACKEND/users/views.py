@@ -222,46 +222,28 @@ class FollowUserView(APIView):
         if not user_exists:
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        existing = DatabaseManager.execute_query(
-            """
-            SELECT id, status
-            FROM follows
-            WHERE follower_id = %s AND following_id = %s
-            """,
-            (follower_id, user_id)
+        result = DatabaseManager.execute_procedure(
+            'toggle_follow_request_with_cleanup',
+            (
+                follower_id,
+                user_id,
+                None,
+                None,
+                None
+            )
         )
 
-        follow_status = None
-        relationship_status = 'none'
-        message = 'Follow request sent'
-
-        if existing:
-            follow_id = existing[0]['id']
-            current_status = existing[0]['status']
-            if current_status == 'accepted':
-                DatabaseManager.execute_update(
-                    "DELETE FROM follows WHERE id = %s",
-                    (follow_id,)
-                )
-                message = 'Unfollowed successfully'
-                follow_status = None
-                relationship_status = 'none'
-            else:
-                DatabaseManager.execute_update(
-                    "DELETE FROM follows WHERE id = %s",
-                    (follow_id,)
-                )
-                _delete_follow_request_notification(follow_id)
-                message = 'Follow request cancelled'
-                follow_status = None
-                relationship_status = 'none'
-        else:
-            DatabaseManager.execute_insert(
-                "INSERT INTO follows (follower_id, following_id, status) VALUES (%s, %s, 'pending')",
-                (follower_id, user_id)
+        proc_row = result[0] if result else {}
+        if not proc_row.get('out_success'):
+            return Response(
+                {'error': proc_row.get('out_message') or 'Follow request action failed'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            follow_status = 'pending'
-            relationship_status = 'pending_sent'
+
+        out_follow = bool(proc_row.get('out_follow'))
+        message = proc_row.get('out_message') or 'Follow request action completed'
+        follow_status = 'pending' if out_follow else None
+        relationship_status = 'pending_sent' if out_follow else 'none'
 
         target_counts = _get_follow_counts(user_id)
 

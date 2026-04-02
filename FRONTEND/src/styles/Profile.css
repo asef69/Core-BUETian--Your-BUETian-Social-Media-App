@@ -251,7 +251,28 @@
   padding: 11px 12px;
   font-size: 0.94rem;
   outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color-scheme: dark !important;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+body:not([data-theme='light']) .profile-edit-field select,
+body:not([data-theme='light']) .profile-edit-field select option,
+body:not([data-theme='light']) .profile-edit-field select optgroup {
+  color-scheme: dark !important;
+  background-color: var(--surface-solid) !important;
+  color: var(--light-color) !important;
+}
+
+body[data-theme='light'] .profile-edit-field select,
+body[data-theme='light'] .profile-edit-field select option,
+body[data-theme='light'] .profile-edit-field select optgroup {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
+  color: #1a2432 !important;
+  border-color: rgba(64, 80, 106, 0.24) !important;
 }
 
 .profile-edit-field textarea {

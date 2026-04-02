@@ -130,20 +130,17 @@ class CreateGroupView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        query = """
-        INSERT INTO groups(name, description, admin_id, is_private, cover_image)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id
-        """
-
-        result=DatabaseManager.execute_query(
-            query,
+        result = DatabaseManager.execute_procedure(
+            'create_group_with_creator',
             (
+                request.user.id,
                 data['name'],
                 data.get('description'),
-                request.user.id,
                 data.get('is_private', False),
-                cover_image_url
+                cover_image_url,
+                None,
+                None,
+                None
             )
         )
         
@@ -153,20 +150,17 @@ class CreateGroupView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        group_id = result[0]['id']
-        
-        DatabaseManager.execute_insert(
-             """
-            INSERT INTO group_members (group_id, user_id, role, status)
-            VALUES (%s, %s, 'admin', 'accepted')
-            """,
-            (group_id, request.user.id)
-        )
+        proc_result = result[0]
+        if not proc_result.get('out_success') or not proc_result.get('group_id'):
+            return Response(
+                {'error': proc_result.get('out_message') or 'Group creation failed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        _create_group_cover_post(group_id, request.user.id, cover_image_url, 'Set the group cover photo.')
+        group_id = proc_result['group_id']
         
         return Response({
-            'message': 'Group created successfully',
+            'message': proc_result.get('out_message') or 'Group created successfully',
             'group_id': group_id
         }, status=status.HTTP_201_CREATED)
     

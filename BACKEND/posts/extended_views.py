@@ -466,33 +466,25 @@ class LikeCommentView(APIView):
             if not comment_exists:
                 return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
 
-            # Check if user already liked the comment
-            query = "SELECT id FROM comment_likes WHERE user_id = %s AND comment_id = %s"
-            result = DatabaseManager.execute_query(query, (user_id, comment_id))
-
-            if result:
-                # Unlike
-                DatabaseManager.execute_update(
-                    "DELETE FROM comment_likes WHERE user_id = %s AND comment_id = %s",
-                    (user_id, comment_id)
-                )
-                liked = False
-            else:
-                # Add like
-                DatabaseManager.execute_insert(
-                    "INSERT INTO comment_likes (user_id, comment_id) VALUES (%s, %s)",
-                    (user_id, comment_id)
-                )
-                liked = True
-
-            # Get updated like count
-            count_query = "SELECT COUNT(*) AS count FROM comment_likes WHERE comment_id = %s"
-            count_result = DatabaseManager.execute_query(count_query, (comment_id,))
-            count = count_result[0]['count'] if count_result else 0
-
+            # Use procedure for comment like toggle with notification
+            params = (
+                int(user_id),
+                int(comment_id),
+                None,  # out_liked
+                None,  # out_likes_count
+                None,  # out_success
+                None   # out_message
+            )
+            result = DatabaseManager.execute_procedure('toggle_comment_like_with_notification', params)
+            
+            if not result or not result[0].get('out_success'):
+                error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            
             return Response({
-                "liked": liked,
-                "likes_count": count
+                'liked': result[0]['out_liked'],
+                'likes_count': result[0]['out_likes_count'],
+                'comment_id': comment_id,
             })
 
         except Exception as e:

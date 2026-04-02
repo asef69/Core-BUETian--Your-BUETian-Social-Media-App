@@ -110,9 +110,11 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+  color-scheme: dark !important;
   padding-right: 36px;
   position: relative;
   color: var(--light-color);
+  background-color: var(--surface-elevated) !important;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--muted-color) 50%),
     linear-gradient(135deg, var(--muted-color) 50%, transparent 50%);
@@ -135,20 +137,40 @@
   color: var(--light-color);
 }
 
+.feed-filters .filter-select {
+  border-color: var(--border-color);
+}
+
 body[data-theme='light'] .filter-chip {
   background: rgba(255, 255, 255, 0.94);
   color: var(--light-color);
 }
 
 body[data-theme='light'] .filter-select {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
+  border-color: rgba(64, 80, 106, 0.24);
+  color: #1a2432 !important;
   background-image:
     linear-gradient(45deg, transparent 50%, #5e6f86 50%),
     linear-gradient(135deg, #5e6f86 50%, transparent 50%);
 }
 
 body[data-theme='light'] .filter-select option {
-  background: #ffffff;
-  color: var(--light-color);
+  background: #ffffff !important;
+  color: #1a2432 !important;
+}
+
+/* Override for select.filter-chip - highest specificity */
+body[data-theme='light'] select.filter-chip.filter-select {
+  background-color: #ffffff !important;
+  color: #1a2432 !important;
+  color-scheme: light !important;
+  border-color: rgba(64, 80, 106, 0.24) !important;
+}
+
+body[data-theme='light'] select.filter-chip.filter-select:focus {
+  background-color: #ffffff !important;
 }
 
 .hashtag-list {
@@ -456,6 +478,158 @@ body[data-theme='light'] .filter-select option {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--light-color);
+}
+
+.post-card .create-post-form {
+  background: linear-gradient(160deg, rgba(42, 50, 67, 0.96), rgba(30, 37, 52, 0.96));
+  border: 1px solid rgba(132, 158, 199, 0.28);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(5, 10, 20, 0.28);
+  display: grid;
+  gap: 12px;
+}
+
+.post-edit-visibility {
+  width: fit-content;
+  min-width: 122px;
+  border-radius: 8px;
+  border: 1px solid rgba(126, 149, 188, 0.36);
+  background: rgba(20, 25, 36, 0.74);
+  color: #e9efff;
+  padding: 7px 10px;
+  font-weight: 600;
+}
+
+.post-edit-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(120, 145, 182, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.post-edit-section-title {
+  margin: 0 0 8px;
+  color: #dde8ff;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.post-edit-media-grid {
+  margin: 0;
+}
+
+.post-edit-media-item,
+.post-edit-preview-item {
+  position: relative;
+}
+
+.post-edit-media-preview,
+.post-edit-preview-media {
+  width: 100%;
+  display: block;
+  border-radius: 10px;
+  border: 1px solid rgba(138, 162, 201, 0.24);
+}
+
+.post-edit-media-remove,
+.post-edit-preview-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  background: rgba(231, 76, 60, 0.92);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
+}
+
+.post-edit-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #e2ebff;
+  font-weight: 700;
+}
+
+.post-edit-file-input {
+  width: 100%;
+  border: 1px solid rgba(126, 149, 188, 0.34);
+  border-radius: 9px;
+  padding: 8px;
+  background: rgba(19, 25, 35, 0.65);
+  color: #dde7fb;
+}
+
+.post-edit-upload-info {
+  margin-top: 10px;
+  color: #aebbd6;
+  font-size: 0.88rem;
+}
+
+.post-edit-preview-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 10px;
+}
+
+.post-edit-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.post-edit-save,
+.post-edit-cancel {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.post-edit-save {
+  background: linear-gradient(140deg, #2d7ef7, #1f61cb);
+  color: #fff;
+}
+
+.post-edit-save:hover {
+  background: linear-gradient(140deg, #3a88fb, #2b6fe0);
+}
+
+.post-edit-cancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7e3ff;
+}
+
+body[data-theme='light'] .post-card .create-post-form {
+  background: linear-gradient(160deg, #ffffff, #f4f7ff);
+  border-color: rgba(111, 137, 176, 0.3);
+}
+
+body[data-theme='light'] .post-edit-visibility {
+  background: #ffffff;
+  color: #26344a;
+  border-color: rgba(90, 114, 150, 0.36);
+}
+
+body[data-theme='light'] .post-edit-section {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(105, 130, 167, 0.25);
+}
+
+body[data-theme='light'] .post-edit-section-title,
+body[data-theme='light'] .post-edit-label {
+  color: #2f3f57;
+}
+
+body[data-theme='light'] .post-edit-upload-info {
+  color: #566884;
+}
+
+body[data-theme='light'] .post-edit-cancel {
+  background: rgba(68, 88, 120, 0.08);
+  color: #2f3f57;
 }
 
 .hashtag-link {

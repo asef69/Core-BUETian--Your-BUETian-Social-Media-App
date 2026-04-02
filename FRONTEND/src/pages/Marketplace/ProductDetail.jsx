@@ -221,9 +221,11 @@ const ProductDetail = () => {
                 <h3>Description</h3>
                 {editing ? (
                   <textarea
+                    className="product-edit-input product-edit-textarea"
                     value={editData.description}
                     onChange={(e) => setEditData({ ...editData, description: e.target.value })}
                     rows="4"
+                    placeholder="Describe the product clearly"
                   />
                 ) : (
                   <p>{product.description}</p>
@@ -233,26 +235,44 @@ const ProductDetail = () => {
               <div className="product-info-section">
                 <h3>Details</h3>
                 {editing ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editData.title}
-                      onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                      placeholder="Title"
-                    />
-                    <input
-                      type="number"
-                      value={editData.price}
-                      onChange={(e) => setEditData({ ...editData, price: e.target.value })}
-                      placeholder="Price"
-                    />
-                    <input
-                      type="text"
-                      value={editData.location}
-                      onChange={(e) => setEditData({ ...editData, location: e.target.value })}
-                      placeholder="Location"
-                    />
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <div className="product-edit-form">
+                    <div className="product-edit-grid">
+                      <div className="product-edit-field">
+                        <label>Title</label>
+                        <input
+                          className="product-edit-input"
+                          type="text"
+                          value={editData.title}
+                          onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                          placeholder="Product title"
+                        />
+                      </div>
+                      <div className="product-edit-field">
+                        <label>Price (BDT)</label>
+                        <input
+                          className="product-edit-input"
+                          type="number"
+                          value={editData.price}
+                          onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                          placeholder="Price"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="product-edit-field">
+                      <label>Location</label>
+                      <input
+                        className="product-edit-input"
+                        type="text"
+                        value={editData.location}
+                        onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+                        placeholder="Location"
+                      />
+                    </div>
+
+                    <div className="product-edit-field">
+                      <label>Category</label>
+                      <div className="product-edit-segmented">
                       <button
                         type="button"
                         className={`btn ${editCategoryMode === 'existing' ? 'btn-primary' : 'btn-secondary'}`}
@@ -279,6 +299,7 @@ const ProductDetail = () => {
 
                     {editCategoryMode === 'existing' ? (
                       <select
+                        className="product-edit-input"
                         value={editData.category}
                         onChange={(e) => setEditData({ ...editData, category: e.target.value })}
                       >
@@ -290,13 +311,19 @@ const ProductDetail = () => {
                       </select>
                     ) : (
                       <input
+                        className="product-edit-input"
                         type="text"
                         value={customEditCategory}
                         onChange={(e) => setCustomEditCategory(e.target.value)}
                         placeholder="Type new category"
                       />
                     )}
+                    </div>
+
+                    <div className="product-edit-field">
+                      <label>Condition</label>
                     <select
+                      className="product-edit-input"
                       value={editData.condition}
                       onChange={(e) => setEditData({ ...editData, condition: e.target.value })}
                     >
@@ -306,7 +333,8 @@ const ProductDetail = () => {
                       <option value="fair">Fair</option>
                       <option value="poor">Poor</option>
                     </select>
-                  </>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className="info-item">
@@ -342,13 +370,13 @@ const ProductDetail = () => {
               )}
 
               {isOwnProduct && (
-                <div className="product-actions">
+                <div className={`product-actions ${editing ? 'product-edit-actions' : ''}`}>
                   {editing ? (
                     <>
-                      <button className="btn btn-primary" onClick={handleUpdate}>
+                      <button className="btn btn-primary product-edit-save-btn" onClick={handleUpdate}>
                         Save Changes
                       </button>
-                      <button className="btn btn-secondary" onClick={() => setEditing(false)}>
+                      <button className="btn btn-secondary product-edit-cancel-btn" onClick={() => setEditing(false)}>
                         Cancel
                       </button>
                     </>
