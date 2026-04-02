@@ -30,25 +30,26 @@ The project is organized to support maintainable growth: each core business area
 The Mermaid diagrams below render dynamically on GitHub and are styled to present a polished, industry-ready system narrative.
 
 ```mermaid
+%%{init: {'theme':'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 60, 'rankSpacing': 85}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#475569', 'background': '#ffffff' }}}%%
 flowchart LR
     U([Student User]) --> FE[React Vite UI]
 
-    subgraph Client Layer
-        FE --> UX[Pages Components Context Hooks]
+  subgraph Client Layer[Client Layer]
+    FE --> UX[Pages / Components / Hooks]
     end
 
-    subgraph Platform Layer
+  subgraph Platform Layer[Platform Layer]
         UX --> API[REST Endpoints]
         UX --> WS[WebSocket Gateway]
-        API --> SRV[Django Services]
+    API --> SRV[Django Domain Services]
         WS --> CHAT[Channels Consumers]
     end
 
-    subgraph Data and Infra
-        SRV --> DB[(PostgreSQL)]
-        CHAT --> DB
+  subgraph Data and Infra[Data and Infra]
+    SRV --> DB[(PostgreSQL)]
+    CHAT --> DB
         SRV --> REDIS[(Redis Channel Layer)]
-        SRV --> MEDIA[(Media Storage)]
+    SRV --> MEDIA[(Media Storage)]
     end
 
     SRV --> NOTIF[Notification Flow]
@@ -56,10 +57,10 @@ flowchart LR
     NOTIF --> FE
     SEARCH --> FE
 
-    classDef user fill:#A8D8FF,stroke:#0B66C3,stroke-width:3px;
-    classDef client fill:#B8E6C1,stroke:#1B7F3A,stroke-width:3px;
-    classDef platform fill:#FFD7A3,stroke:#B85C00,stroke-width:3px;
-    classDef data fill:#D8C2FF,stroke:#5B21B6,stroke-width:3px;
+    classDef user fill:#D8ECFF,stroke:#2563EB,stroke-width:2px,color:#0F172A;
+    classDef client fill:#E2F6E9,stroke:#15803D,stroke-width:2px,color:#0F172A;
+    classDef platform fill:#FFF0D6,stroke:#D97706,stroke-width:2px,color:#0F172A;
+    classDef data fill:#EFE1FF,stroke:#7C3AED,stroke-width:2px,color:#0F172A;
 
     class U user;
     class FE,UX client;
@@ -68,6 +69,7 @@ flowchart LR
 ```
 
 ```mermaid
+%%{init: {'theme':'base', 'sequence': {'mirrorActors': false}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#64748B', 'actorBorder': '#94A3B8', 'actorTextColor': '#0F172A', 'signalColor': '#334155', 'signalTextColor': '#0F172A', 'noteBkgColor': '#EFF6FF', 'noteTextColor': '#0F172A' }}}%%
 sequenceDiagram
     participant User
     participant UI as React Frontend
@@ -76,20 +78,21 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant NT as Notification Service
 
-    User->>UI: Login / Browse / Interact
-    UI->>API: JWT Auth + Feature Requests
-    API->>DB: Read/Write Domain Data
-    DB-->>API: Query Results
-    API-->>UI: JSON Responses
-    User->>UI: Open Chat
-    UI->>WS: Connect ws://.../ws/chat/
-    WS->>DB: Persist Messages
-    WS-->>UI: Real-time Events
-    API->>NT: Trigger platform notifications
-    NT-->>UI: Push unread counts and alerts
+    User->>UI: Sign in and explore platform
+    UI->>API: JWT-authenticated requests
+    API->>DB: Read and write domain data
+    DB-->>API: Query results
+    API-->>UI: Structured JSON response
+    User->>UI: Open live chat
+    UI->>WS: Connect to ws://.../ws/chat/
+    WS->>DB: Persist conversation events
+    WS-->>UI: Deliver real-time updates
+    API->>NT: Trigger notifications
+    NT-->>UI: Show unread counts and alerts
 ```
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#64748B' }}}%%
 journey
     title Core BUETians User Journey
     section Onboarding
