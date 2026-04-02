@@ -30,7 +30,7 @@ The project is organized to support maintainable growth: each core business area
 The Mermaid diagrams below render dynamically on GitHub and are styled to present a polished, industry-ready system narrative.
 
 ```mermaid
-%%{init: {'theme':'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 95, 'rankSpacing': 120}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '20px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#475569', 'background': '#ffffff' }}}%%
+%%{init: {'theme':'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 95, 'rankSpacing': 120}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '20px', 'lineColor': '#475569', 'background': 'transparent' }}}%%
 flowchart TD
     U([Student]) --> FE[Frontend]
     FE --> API[API Layer]
@@ -44,10 +44,10 @@ flowchart TD
     NOTIF --> FE
     SEARCH --> FE
 
-    classDef user fill:#D8ECFF,stroke:#2563EB,stroke-width:3px,color:#0F172A;
-    classDef client fill:#E2F6E9,stroke:#15803D,stroke-width:3px,color:#0F172A;
-    classDef platform fill:#FFF0D6,stroke:#D97706,stroke-width:3px,color:#0F172A;
-    classDef data fill:#EFE1FF,stroke:#7C3AED,stroke-width:3px,color:#0F172A;
+    classDef user fill:#D8ECFF,stroke:#2563EB,stroke-width:3px;
+    classDef client fill:#E2F6E9,stroke:#15803D,stroke-width:3px;
+    classDef platform fill:#FFF0D6,stroke:#D97706,stroke-width:3px;
+    classDef data fill:#EFE1FF,stroke:#7C3AED,stroke-width:3px;
 
     class U user;
     class FE client;
@@ -56,7 +56,7 @@ flowchart TD
 ```
 
 ```mermaid
-%%{init: {'theme':'base', 'sequence': {'mirrorActors': false}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#64748B', 'actorBorder': '#94A3B8', 'actorTextColor': '#0F172A', 'signalColor': '#334155', 'signalTextColor': '#0F172A', 'noteBkgColor': '#EFF6FF', 'noteTextColor': '#0F172A' }}}%%
+%%{init: {'theme':'base', 'sequence': {'mirrorActors': false}, 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'lineColor': '#64748B', 'actorBorder': '#94A3B8', 'signalColor': '#334155', 'noteBkgColor': '#EFF6FF' }}}%%
 sequenceDiagram
     participant User
     participant UI as React Frontend
@@ -79,7 +79,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'primaryTextColor': '#0F172A', 'textColor': '#0F172A', 'lineColor': '#64748B' }}}%%
+%%{init: {'theme':'base', 'themeVariables': { 'fontFamily': 'Segoe UI, Inter, sans-serif', 'fontSize': '16px', 'lineColor': '#64748B' }}}%%
 journey
     title Core BUETians User Journey
     section Onboarding
