@@ -30,7 +30,7 @@ CREATE OR REPLACE FUNCTION get_similar_products(p_product_id INTEGER, p_limit IN
         category VARCHAR(100),
         condition VARCHAR(50),
         seller_name VARCHAR(50),
-        images VARCHAR(500) [],
+        images VARCHAR(500)[],
         created_at TIMESTAMP
     ) AS $$
 DECLARE product_category VARCHAR(100);
@@ -194,5 +194,46 @@ WHERE p.status = 'available'
     AND u.is_active = TRUE
 ORDER BY p.created_at DESC
 LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+--MARKETPLACE PRODUCTS
+CREATE OR REPLACE FUNCTION get_product_details(p_product_id INTEGER)
+RETURNS TABLE(
+    product_id INTEGER,
+    title VARCHAR(250),
+    description TEXT,
+    price DECIMAL(10,2),
+    category VARCHAR(100),
+    condition VARCHAR(50),
+    location VARCHAR(250),
+    status VARCHAR(20),
+    seller_id INTEGER,
+    seller_name VARCHAR(50),
+    seller_picture VARCHAR(500),
+    seller_department VARCHAR(100),
+    images TEXT[],
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id as product_id,
+        p.title,
+        p.description,
+        p.price,
+        p.category,
+        p.condition,
+        p.location,
+        p.status,
+        u.id as seller_id,
+        u.name as seller_name,
+        u.profile_picture as seller_picture,
+        u.department_name as seller_department,
+        ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
+        p.created_at
+    FROM marketplace_products p
+    INNER JOIN users u ON p.seller_id = u.id
+    WHERE p.id = p_product_id;
 END;
 $$ LANGUAGE plpgsql;

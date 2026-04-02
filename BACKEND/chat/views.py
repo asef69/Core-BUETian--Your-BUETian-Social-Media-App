@@ -11,7 +11,7 @@ def _can_message(sender_id, receiver_id):
         'can_user_message',
         (sender_id, receiver_id)
     )
-    return result[0]['can_user_message'] if result else False
+    return result[0]['can_message'] if result else False
 
 class ConversationListView(APIView):
     """
@@ -557,6 +557,20 @@ class ContactSellerView(APIView):
                 {'error': 'Cannot message yourself'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        user1_id = min(buyer_id, seller_id)
+        user2_id = max(buyer_id, seller_id)
+        DatabaseManager.execute_update(
+            """
+            INSERT INTO contextual_chat_permission (user1_id, user2_id, context_type, context_id, is_active)
+            VALUES (%s, %s, 'marketplace_product', %s, TRUE)
+            ON CONFLICT (user1_id, user2_id, context_type, context_id)
+            DO UPDATE SET
+                is_active = TRUE,
+                expires_at = NULL
+            """,
+            (user1_id, user2_id, product_id)
+        )
         
         # Create contact message
         if not message_text:

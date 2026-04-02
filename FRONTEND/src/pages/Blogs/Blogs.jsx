@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI, postAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
-import { FaImage, FaPlus, FaSearch, FaTimes } from 'react-icons/fa';
+import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash } from 'react-icons/fa';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
 
@@ -21,6 +21,7 @@ const BLOG_CATEGORIES = [
   'Entrepreneurship',
   'Announcements',
 ];
+
 
 const Blogs = () => {
   const navigate = useNavigate();
@@ -40,12 +41,56 @@ const Blogs = () => {
     category: BLOG_CATEGORIES[0],
     tags: '',
     is_published: true,
+    scheduled_publish_at: '',
   });
+  const [tab, setTab] = useState('all'); // 'all' or 'drafts'
+  const [editingBlog, setEditingBlog] = useState(null);
+  const [deletingBlogId, setDeletingBlogId] = useState(null);
+  // Helper: get current user id (assumes user info is in localStorage or context)
+  const getCurrentUserId = () => {
+    // Example: adjust as per your auth implementation
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.id;
+  };
 
-  const loadBlogs = async () => {
+  const handleEditBlog = (blog) => {
+    setEditingBlog(blog);
+    setShowCreateModal(true);
+    setCreateData({
+      title: blog.title || '',
+      excerpt: blog.excerpt || '',
+      content: blog.content || '',
+      category: blog.category || BLOG_CATEGORIES[0],
+      tags: (blog.tags || []).join(', '),
+      is_published: blog.is_published,
+      scheduled_publish_at: blog.scheduled_publish_at ? blog.scheduled_publish_at.slice(0, 16) : '',
+    });
+  };
+
+  const handleDeleteBlog = async (blogId) => {
+    if (!window.confirm('Are you sure you want to delete this blog post?')) return;
+    setDeletingBlogId(blogId);
+    try {
+      await blogAPI.deleteBlog(blogId);
+      toast.success('Blog post deleted');
+      setBlogs((prev) => prev.filter((b) => getBlogId(b) !== blogId));
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to delete blog post');
+    } finally {
+      setDeletingBlogId(null);
+    }
+  };
+
+  // Fetch blogs for the selected tab
+  const loadBlogs = async (selectedTab = tab) => {
     try {
       setLoading(true);
-      const response = await blogAPI.getPublishedBlogs();
+      let response;
+      if (selectedTab === 'drafts') {
+        response = await blogAPI.getMyBlogs({ mine: true, drafts_tab: true });
+      } else {
+        response = await blogAPI.getPublishedBlogs();
+      }
       const items = Array.isArray(response.data)
         ? response.data
         : response.data?.results || [];
@@ -59,8 +104,9 @@ const Blogs = () => {
   };
 
   useEffect(() => {
-    loadBlogs();
-  }, []);
+    loadBlogs(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const getBlogId = (blog) => blog?.blog_id || blog?.id || blog?.pk;
 
@@ -116,8 +162,12 @@ const Blogs = () => {
       content: createData.content,
       category: normalizedCategory || null,
       cover_image: uploadedCoverImage,
-      is_published: createData.is_published,
+      // If scheduled_publish_at is set, always force is_published to true
+      is_published: createData.scheduled_publish_at ? true : createData.is_published,
       tags,
+      scheduled_publish_at: (createData.scheduled_publish_at && !isNaN(new Date(createData.scheduled_publish_at).getTime()))
+        ? new Date(createData.scheduled_publish_at).toISOString()
+        : null,
     };
 
     try {
@@ -131,6 +181,7 @@ const Blogs = () => {
         category: BLOG_CATEGORIES[0],
         tags: '',
         is_published: true,
+        scheduled_publish_at: '',
       });
       setCategoryMode('preset');
       setCustomCategory('');
@@ -215,11 +266,29 @@ const Blogs = () => {
             </button>
           </div>
 
+          {/* Tab navigation */}
+          <div className="blogs-tabs" style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+            <button
+              className={tab === 'all' ? 'blogs-tab active' : 'blogs-tab'}
+              onClick={() => setTab('all')}
+              style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: tab === 'all' ? 'var(--primary-color)' : 'var(--surface-soft)', color: tab === 'all' ? '#fff' : 'var(--muted-color)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              All Blogs
+            </button>
+            <button
+              className={tab === 'drafts' ? 'blogs-tab active' : 'blogs-tab'}
+              onClick={() => setTab('drafts')}
+              style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: tab === 'drafts' ? 'var(--primary-color)' : 'var(--surface-soft)', color: tab === 'drafts' ? '#fff' : 'var(--muted-color)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              My Drafts
+            </button>
+          </div>
+
           <div className="blogs-search">
             <FaSearch />
             <input
               type="text"
-              placeholder="Search by title, author, category..."
+              placeholder={tab === 'drafts' ? 'Search your drafts...' : 'Search by title, author, category...'}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
@@ -228,40 +297,97 @@ const Blogs = () => {
           {loading ? (
             <div className="loading">Loading blogs...</div>
           ) : filteredBlogs.length === 0 ? (
-            <div className="empty-state">No blog posts found.</div>
+            <div className="empty-state">{tab === 'drafts' ? 'No draft blogs found.' : 'No blog posts found.'}</div>
           ) : (
             <div className="blogs-grid">
               {filteredBlogs.map((blog) => {
                 const blogId = getBlogId(blog);
                 if (!blogId) return null;
 
+                const isAuthor = String(blog.author_id) === String(getCurrentUserId());
+                // Determine if like/view should be disabled
+                const now = new Date();
+                const isDraft = !blog.is_published;
+                const isScheduledFuture = blog.scheduled_publish_at && new Date(blog.scheduled_publish_at) > now;
+                const disableActions = isDraft || isScheduledFuture;
                 return (
-                  <Link
-                    key={blogId}
-                    to={`/blogs/${blogId}`}
-                    className="blog-card"
-                    onClick={(event) => handleBlogCardClick(event, blogId)}
-                  >
-                    {blog.cover_image ? (
-                      <div className="blog-cover-wrap">
-                        <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
-                        {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                      </div>
-                    ) : (
-                      <div className="blog-cover-placeholder">
-                        <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
-                        {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                      </div>
-                    )}
-                    <div className="blog-card-content">
-                      <h3>{blog.title}</h3>
-                      <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
-                      <div className="blog-card-footer">
-                        <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
-                        <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
-                      </div>
+                  <div key={blogId} className="blog-card">
+                    <div style={{ position: 'absolute', right: 8, top: 8, display: 'flex', gap: 8, zIndex: 2 }}>
+                      {isAuthor && (
+                        <>
+                          <button
+                            className="blog-card-action"
+                            title="Edit"
+                            onClick={() => handleEditBlog(blog)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#007bff' }}
+                          >
+                            <FaEdit />
+                          </button>
+                          <button
+                            className="blog-card-action"
+                            title="Delete"
+                            onClick={() => handleDeleteBlog(blogId)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc3545' }}
+                            disabled={deletingBlogId === blogId}
+                          >
+                            <FaTrash />
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </Link>
+                    <Link
+                      to={disableActions ? undefined : `/blogs/${blogId}`}
+                      onClick={disableActions ? (e) => e.preventDefault() : (event) => handleBlogCardClick(event, blogId)}
+                      style={{ textDecoration: 'none', color: disableActions ? '#aaa' : 'inherit', pointerEvents: disableActions ? 'none' : 'auto' }}
+                    >
+                      {blog.cover_image ? (
+                        <div className="blog-cover-wrap">
+                          <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
+                          {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                        </div>
+                      ) : (
+                        <div className="blog-cover-placeholder">
+                          <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
+                          {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                        </div>
+                      )}
+                      <div className="blog-card-content">
+                        <h3>{blog.title}</h3>
+                        <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
+                        <div className="blog-card-footer">
+                          <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
+                          <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
+                          {disableActions && <span style={{ color: '#dc3545', marginLeft: 8, fontSize: 12 }}>(Draft/Scheduled: Like/View disabled)</span>}
+                        </div>
+                        {tab === 'drafts' && (
+                          <div className="blog-card-draft-meta">
+                            <span className="blog-card-draft-author">Author: {blog.author_name || 'Unknown'}</span>
+                            {blog.scheduled_publish_at && (
+                              <span className="blog-card-draft-schedule">
+                                Scheduled: {(() => {
+                                  // Parse as UTC if not already
+                                  let dt;
+                                  if (typeof blog.scheduled_publish_at === 'string' && !blog.scheduled_publish_at.endsWith('Z')) {
+                                    dt = new Date(blog.scheduled_publish_at + 'Z');
+                                  } else {
+                                    dt = new Date(blog.scheduled_publish_at);
+                                  }
+                                  return dt.toLocaleString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  });
+                                })()}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  </div>
                 );
               })}
             </div>
@@ -273,138 +399,166 @@ const Blogs = () => {
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content blog-modal" onClick={(e) => e.stopPropagation()}>
             <div className="blog-modal-header">
-              <div>
-                <h2>Create Blog Post</h2>
-                <p className="blog-modal-subtitle">Share your ideas with the BUET community</p>
+              <div className="blog-modal-header-flex">
+                <div>
+                  <h2 className="blog-modal-title">Create Blog Post</h2>
+                  <p className="blog-modal-subtitle">Share your ideas with the BUET community</p>
+                </div>
+                <button type="button" className="modal-close-btn" aria-label="Close" onClick={() => setShowCreateModal(false)}>
+                  <FaTimes />
+                </button>
               </div>
-              <button type="button" className="modal-close-btn" onClick={() => setShowCreateModal(false)}>
-                <FaTimes />
-              </button>
-            </div>
-            <form onSubmit={handleCreateBlog}>
-              <div className="form-group">
-                <label>Title</label>
-                <input
-                  type="text"
-                  value={createData.title}
-                  onChange={(e) => setCreateData({ ...createData, title: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Short Summary (Optional)</label>
-                <textarea
-                  rows="2"
-                  value={createData.excerpt}
-                  onChange={(e) => setCreateData({ ...createData, excerpt: e.target.value })}
-                  placeholder="Write 1-2 lines that describe your blog. This will show on the blog card."
-                />
-              </div>
-              <div className="form-group">
-                <label>Content</label>
-                <textarea
-                  rows="8"
-                  value={createData.content}
-                  onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-row">
+              <form onSubmit={handleCreateBlog} className="blog-create-form animate-fade-in">
                 <div className="form-group">
-                  <label>Category</label>
-                  <div className="blog-cat-toggle">
-                    <button
-                      type="button"
-                      className={`blog-cat-option${categoryMode === 'preset' ? ' active' : ''}`}
-                      onClick={() => setCategoryMode('preset')}
-                    >
-                      Choose from list
-                    </button>
-                    <button
-                      type="button"
-                      className={`blog-cat-option${categoryMode === 'custom' ? ' active' : ''}`}
-                      onClick={() => setCategoryMode('custom')}
-                    >
-                      Custom
-                    </button>
-                  </div>
-
-                  {categoryMode === 'preset' ? (
-                    <select
-                      value={createData.category}
-                      onChange={(e) => setCreateData({ ...createData, category: e.target.value })}
-                    >
-                      {BLOG_CATEGORIES.map((category) => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={customCategory}
-                      onChange={(e) => setCustomCategory(e.target.value)}
-                      placeholder="e.g. Open Source, Mental Health"
-                      required
-                    />
-                  )}
+                  <label htmlFor="blog-title">Title</label>
+                  <input
+                    id="blog-title"
+                    type="text"
+                    className="input-lg"
+                    value={createData.title}
+                    onChange={(e) => setCreateData({ ...createData, title: e.target.value })}
+                    required
+                    maxLength={120}
+                    placeholder="Enter a catchy title"
+                  />
                 </div>
                 <div className="form-group">
-                  <label>Cover Image (Optional)</label>
-                  {coverImagePreview ? (
-                    <div className="blog-upload-preview-wrap">
-                      <img src={coverImagePreview} alt="Cover preview" className="blog-cover-preview" />
+                  <label htmlFor="blog-excerpt">Short Summary <span className="optional">(Optional)</span></label>
+                  <textarea
+                    id="blog-excerpt"
+                    rows="2"
+                    className="input-md"
+                    value={createData.excerpt}
+                    onChange={(e) => setCreateData({ ...createData, excerpt: e.target.value })}
+                    placeholder="Write 1-2 lines that describe your blog. This will show on the blog card."
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="blog-content">Content</label>
+                  <textarea
+                    id="blog-content"
+                    rows="8"
+                    className="input-md"
+                    value={createData.content}
+                    onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
+                    required
+                    placeholder="Write your blog post here..."
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Category</label>
+                    <div className="blog-cat-toggle">
                       <button
                         type="button"
-                        className="blog-upload-remove"
-                        onClick={() => { setCoverImageFile(null); setCoverImagePreview(''); }}
+                        className={`blog-cat-option${categoryMode === 'preset' ? ' active' : ''}`}
+                        onClick={() => setCategoryMode('preset')}
+                        tabIndex={0}
                       >
-                        <FaTimes /> Remove
+                        Choose from list
+                      </button>
+                      <button
+                        type="button"
+                        className={`blog-cat-option${categoryMode === 'custom' ? ' active' : ''}`}
+                        onClick={() => setCategoryMode('custom')}
+                        tabIndex={0}
+                      >
+                        Custom
                       </button>
                     </div>
-                  ) : (
-                    <label className="blog-upload-zone">
-                      <FaImage className="blog-upload-icon" />
-                      <span>Click to upload a cover photo</span>
-                      <span className="blog-upload-hint">JPG, PNG, GIF, WEBP &mdash; max 5 MB</span>
+                    {categoryMode === 'preset' ? (
+                      <select
+                        className="input-md"
+                        value={createData.category}
+                        onChange={(e) => setCreateData({ ...createData, category: e.target.value })}
+                      >
+                        {BLOG_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+                    ) : (
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleCoverImageChange}
-                        style={{ display: 'none' }}
+                        type="text"
+                        className="input-md"
+                        value={customCategory}
+                        onChange={(e) => setCustomCategory(e.target.value)}
+                        placeholder="e.g. Open Source, Mental Health"
+                        required
                       />
-                    </label>
-                  )}
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label>Cover Image <span className="optional">(Optional)</span></label>
+                    {coverImagePreview ? (
+                      <div className="blog-upload-preview-wrap animate-fade-in">
+                        <img src={coverImagePreview} alt="Cover preview" className="blog-cover-preview" />
+                        <button
+                          type="button"
+                          className="blog-upload-remove"
+                          onClick={() => { setCoverImageFile(null); setCoverImagePreview(''); }}
+                        >
+                          <FaTimes /> Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="blog-upload-zone">
+                        <FaImage className="blog-upload-icon" />
+                        <span>Click to upload a cover photo</span>
+                        <span className="blog-upload-hint">JPG, PNG, GIF, WEBP &mdash; max 5 MB</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleCoverImageChange}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="form-group">
-                <label>Tags (comma separated)</label>
-                <input
-                  type="text"
-                  value={createData.tags}
-                  onChange={(e) => setCreateData({ ...createData, tags: e.target.value })}
-                  placeholder="react, django, buet"
-                />
-              </div>
-              <div className="form-group">
-                <label>
+                <div className="form-group">
+                  <label htmlFor="blog-tags">Tags <span className="optional">(comma separated)</span></label>
                   <input
-                    type="checkbox"
-                    checked={createData.is_published}
-                    onChange={(e) => setCreateData({ ...createData, is_published: e.target.checked })}
-                  />{' '}
-                  Publish immediately
-                </label>
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-primary" type="submit" disabled={creating}>
-                  {creating ? 'Publishing...' : 'Publish Blog'}
-                </button>
-                <button className="btn btn-secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              </div>
-            </form>
+                    id="blog-tags"
+                    type="text"
+                    className="input-md"
+                    value={createData.tags}
+                    onChange={(e) => setCreateData({ ...createData, tags: e.target.value })}
+                    placeholder="react, django, buet"
+                  />
+                </div>
+                <div className="form-group form-checkbox">
+                  <label htmlFor="blog-publish">
+                    <input
+                      id="blog-publish"
+                      type="checkbox"
+                      checked={createData.is_published}
+                      onChange={(e) => setCreateData({ ...createData, is_published: e.target.checked })}
+                    />{' '}
+                    Publish immediately
+                  </label>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="blog-schedule">Schedule publish date <span className="optional">(Optional)</span></label>
+                  <input
+                    id="blog-schedule"
+                    type="datetime-local"
+                    className="input-md"
+                    value={createData.scheduled_publish_at}
+                    onChange={(e) => setCreateData({ ...createData, scheduled_publish_at: e.target.value })}
+                  />
+                  <small className="form-hint">Leave blank to not schedule. If set, the blog will be published at this date/time.</small>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-primary btn-lg" type="submit" disabled={creating}>
+                    {creating ? 'Publishing...' : 'Publish Blog'}
+                  </button>
+                  <button className="btn btn-secondary btn-lg" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+          </div>
+        )}
     </div>
   );
 };

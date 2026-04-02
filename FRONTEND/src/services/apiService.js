@@ -226,6 +226,8 @@ export const notificationAPI = {
 
 export const blogAPI = {
   getPublishedBlogs: (params = {}) => api.get('/blogs/', { params }),
+  // Fetches current user's drafts (unpublished blogs)
+  getMyBlogs: (params = {}) => api.get('/blogs/', { params: { ...params, mine: true, is_published: false } }),
   getBlogDetail: (blogId) => api.get(`/blogs/${blogId}/`),
   trackView: (blogId) => api.post(`/blogs/${blogId}/view/`),
   createBlog: (data) => api.post('/blogs/create/', data),
@@ -233,4 +235,5 @@ export const blogAPI = {
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),
   likeComment: (commentId) => api.post(`/blogs/comments/${commentId}/like/`),
+  deleteBlog: (blogId) => api.delete(`/blogs/${blogId}/delete/`),
 };

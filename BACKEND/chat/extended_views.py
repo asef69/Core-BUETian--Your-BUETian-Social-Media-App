@@ -54,12 +54,8 @@ class TotalUnreadMessagesView(APIView):
             'get_total_unread_messages',
             (request.user.id,)
         )
-
-        # SQL function returns column name `total_unread`.
-        total = 0
-        if result:
-            row = result[0]
-            total = row.get('total_unread', row.get('get_total_unread_messages', 0))
+        
+        total = result[0]['get_total_unread_messages'] if result else 0
         return Response({'total_unread': total})
 
 
@@ -134,12 +130,8 @@ class DeleteConversationView(APIView):
             'delete_conversation',
             (request.user.id, user_id)
         )
-
-        # SQL function returns column name `deleted_count`.
-        deleted_count = 0
-        if result:
-            row = result[0]
-            deleted_count = row.get('deleted_count', row.get('delete_conversation', 0))
+        
+        deleted_count = result[0]['delete_conversation'] if result else 0
         return Response({
             'message': 'Conversation deleted successfully',
             'deleted_count': deleted_count
@@ -171,12 +163,8 @@ class MarkConversationReadView(APIView):
             'mark_conversation_read',
             (request.user.id, user_id)
         )
-
-        # SQL function returns column name `updated_count`.
-        marked_count = 0
-        if result:
-            row = result[0]
-            marked_count = row.get('updated_count', row.get('mark_conversation_read', 0))
+        
+        marked_count = result[0]['mark_conversation_read'] if result else 0
         return Response({
             'message': 'Conversation marked as read',
             'marked_count': marked_count
@@ -278,5 +266,5 @@ class CanSendMessageView(APIView):
             (request.user.id, user_id)
         )
         
-        can_message = result[0]['can_user_message'] if result else False
+        can_message = result[0]['can_message'] if result else False
         return Response({'can_message': can_message})

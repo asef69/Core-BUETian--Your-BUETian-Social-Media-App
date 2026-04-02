@@ -150,6 +150,29 @@ class DatabaseManager:
         else:
             query = f"SELECT * FROM {func_name}()"
         return DatabaseManager.execute_query(query,params)
+
+    @staticmethod
+    def execute_procedure(proc_name: str, params: tuple=()) -> List[Dict[str, Any]]:
+        """
+        Execute a PostgreSQL procedure using CALL.
+
+        Supports procedures with IN / INOUT arguments. If the procedure
+        yields a result row (e.g., INOUT values), it is returned as a list
+        of dictionaries, similar to execute_query/execute_function.
+        """
+        with connection.cursor() as cursor:
+            if params and len(params) > 0:
+                placeholders = ','.join(['%s'] * len(params))
+                query = f"CALL {proc_name}({placeholders})"
+                cursor.execute(query, params)
+            else:
+                query = f"CALL {proc_name}()"
+                cursor.execute(query)
+
+            if cursor.description:
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return []
     
     @staticmethod
     def execute_insert(query:str,params:tuple=None) ->Optional[int]: # type: ignore
