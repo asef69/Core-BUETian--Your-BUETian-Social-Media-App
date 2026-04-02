@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { marketplaceAPI, chatAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import ReviewForm from '../../components/ReviewForm';
@@ -24,6 +24,7 @@ const HARD_CODED_CATEGORIES = [
 
 const ProductDetail = () => {
   const { productId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,10 +85,10 @@ const ProductDetail = () => {
         message: `Hi! I'm interested in your product: ${product.title}`,
       });
       toast.success('Message sent to seller!');
-      // Optionally redirect to chat
-      window.location.href = `/chat/${response.data.seller_id}`;
+      navigate(`/chat/${response.data.seller_id}?product_id=${productId}`);
     } catch (error) {
-      toast.error('Failed to contact seller');
+      const message = error?.response?.data?.error || 'Failed to contact seller';
+      toast.error(message);
     }
   };
 

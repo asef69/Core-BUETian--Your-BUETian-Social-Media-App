@@ -32,6 +32,8 @@ const Chat = () => {
   const peerTypingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
   const shouldReconnectRef = useRef(true);
+  const messagesCacheRef = useRef({});
+  const loadRequestIdRef = useRef(0);
 
   useEffect(() => {
     loadConversations();
@@ -138,23 +140,44 @@ const Chat = () => {
   };
 
   const loadMessages = async (userId) => {
+    const normalizedUserId = Number(userId);
+    const requestId = ++loadRequestIdRef.current;
+
+    setSelectedUser(normalizedUserId);
+    selectedUserRef.current = normalizedUserId;
+    setIsSidebarOpen(false);
+
+    const cachedMessages = messagesCacheRef.current[normalizedUserId];
+    if (Array.isArray(cachedMessages)) {
+      setMessages(cachedMessages);
+    }
+
     setLoading(true);
     try {
-      const response = await chatAPI.getMessages(userId);
+      const response = await chatAPI.getMessages(normalizedUserId);
+
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       const rawMessages = response.data.results || response.data || [];
       const sanitizedMessages = rawMessages.filter(
         (message) => (message.content && String(message.content).trim()) || message.media_url,
       );
       setMessages(sanitizedMessages);
-      setSelectedUser(userId);
-      selectedUserRef.current = userId;
-      setIsSidebarOpen(false);
+      messagesCacheRef.current[normalizedUserId] = sanitizedMessages;
     } catch (error) {
-      // Keep chat composer available for deep links even if history fetch fails.
-      setMessages([]);
-      setSelectedUser(Number(userId));
-      selectedUserRef.current = Number(userId);
-      setIsSidebarOpen(false);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
+      // Keep already-loaded history visible when a fetch fails.
+      const fallbackMessages = messagesCacheRef.current[normalizedUserId];
+      if (Array.isArray(fallbackMessages)) {
+        setMessages(fallbackMessages);
+      } else {
+        setMessages([]);
+      }
 
       const statusCode = error?.response?.status;
       const errorMessage = error?.response?.data?.error;
@@ -164,7 +187,9 @@ const Chat = () => {
         toast.error(errorMessage || 'Failed to load previous messages');
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

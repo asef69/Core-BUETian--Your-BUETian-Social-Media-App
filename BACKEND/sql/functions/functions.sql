@@ -575,19 +575,28 @@ $$ LANGUAGE plpgsql;
 -- CHAT / MESSAGING FUNCTIONS
 -- =====================================================================
 -- Check if sender is allowed to message receiver
--- (must follow each other, or have an existing conversation)
+-- (mutual follow, existing conversation, or active contextual permission)
 DROP FUNCTION IF EXISTS can_user_message(INTEGER, INTEGER);
 CREATE OR REPLACE FUNCTION can_user_message(
     p_sender_id INTEGER,
     p_receiver_id INTEGER
     ) RETURNS TABLE(can_message BOOLEAN) AS $$ BEGIN RETURN QUERY
 SELECT (
-    EXISTS(
-        SELECT 1
-        FROM follows
-        WHERE follower_id = p_sender_id
-        AND following_id = p_receiver_id
-        AND status = 'accepted'
+    (
+        EXISTS(
+            SELECT 1
+            FROM follows f1
+            WHERE f1.follower_id = p_sender_id
+              AND f1.following_id = p_receiver_id
+              AND f1.status = 'accepted'
+        )
+        AND EXISTS(
+            SELECT 1
+            FROM follows f2
+            WHERE f2.follower_id = p_receiver_id
+              AND f2.following_id = p_sender_id
+              AND f2.status = 'accepted'
+        )
     )
     OR EXISTS(
         SELECT 1
@@ -600,6 +609,14 @@ SELECT (
             sender_id = p_receiver_id
             AND receiver_id = p_sender_id
         )
+    )
+    OR EXISTS(
+        SELECT 1
+        FROM contextual_chat_permission ccp
+        WHERE ccp.user1_id = LEAST(p_sender_id, p_receiver_id)
+          AND ccp.user2_id = GREATEST(p_sender_id, p_receiver_id)
+          AND ccp.is_active = TRUE
+          AND (ccp.expires_at IS NULL OR ccp.expires_at > CURRENT_TIMESTAMP)
     )
     ) AS can_message;
 END;
@@ -985,7 +1002,7 @@ RETURNING id,
 END;
 $$ LANGUAGE plpgsql;
 
--- Check if two users can chat (must follow each other or have previous chat)
+-- Check if two users can chat (mutual follow, previous chat, or active contextual permission)
 DROP FUNCTION IF EXISTS can_users_chat(INTEGER, INTEGER);
 CREATE OR REPLACE FUNCTION can_users_chat(
     p_user1_id INTEGER,
@@ -1010,6 +1027,14 @@ BEGIN
             SELECT 1 FROM messages m
             WHERE (m.sender_id = p_user1_id AND m.receiver_id = p_user2_id)
                OR (m.sender_id = p_user2_id AND m.receiver_id = p_user1_id)
+        )
+        OR EXISTS(
+            SELECT 1
+            FROM contextual_chat_permission ccp
+            WHERE ccp.user1_id = LEAST(p_user1_id, p_user2_id)
+              AND ccp.user2_id = GREATEST(p_user1_id, p_user2_id)
+              AND ccp.is_active = TRUE
+              AND (ccp.expires_at IS NULL OR ccp.expires_at > CURRENT_TIMESTAMP)
         )
     ) AS can_chat;
 END;

@@ -461,16 +461,16 @@ CREATE OR REPLACE PROCEDURE update_tuition_post_with_subjects(
     IN p_requirements TEXT,
     IN p_contact_number VARCHAR(15),
     IN p_subjects TEXT[],
-
-    OUT out_tuition_id INTEGER,
-    OUT out_success BOOLEAN,
-    OUT out_message TEXT
+    OUT out_tuition_id INTEGER ,
+    OUT out_success BOOLEAN ,
+    OUT out_message TEXT 
 )
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_subject TEXT;
 BEGIN
+    out_tuition_id := p_post_id;
     out_success := FALSE;
     out_message := '';
 
@@ -494,7 +494,6 @@ BEGIN
             duration_hours = COALESCE(p_duration_hours, duration_hours),
             requirements = COALESCE(p_requirements, requirements),
             contact_number = COALESCE(p_contact_number, contact_number),
-            status = COALESCE(p_status, status),
             updated_at = CURRENT_TIMESTAMP
         WHERE id = p_post_id;
 

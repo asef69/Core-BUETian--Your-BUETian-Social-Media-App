@@ -307,3 +307,18 @@ CREATE TABLE comment_likes (
 ALTER TABLE messages 
 ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES marketplace_products(id) ON DELETE SET NULL;
 
+--table for contextual chat permissions
+DROP TABLE IF EXISTS contextual_chat_permission;
+CREATE TABLE contextual_chat_permission(
+    id SERIAL PRIMARY KEY,
+    user1_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    user2_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    context_type VARCHAR(32) NOT NULL,
+    context_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    CHECK (user1_id <> user2_id),
+    UNIQUE(user1_id, user2_id, context_type, context_id)
+);
+

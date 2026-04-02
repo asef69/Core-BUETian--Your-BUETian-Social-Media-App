@@ -266,5 +266,5 @@ class CanSendMessageView(APIView):
             (request.user.id, user_id)
         )
         
-        can_message = result[0]['can_user_message'] if result else False
+        can_message = result[0]['can_message'] if result else False
         return Response({'can_message': can_message})
