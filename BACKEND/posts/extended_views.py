@@ -14,6 +14,7 @@ def _normalize_media_url(url):
     return f"/{str(url).lstrip('/')}"
 
 class PostsByHashtagView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts containing a specific hashtag.
     
@@ -62,6 +63,7 @@ class PostsByHashtagView(APIView):
 
 
 class UserLikedPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts liked by a specific user.
     
@@ -94,6 +96,7 @@ class UserLikedPostsView(APIView):
 
 
 class PostEngagementStatsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get detailed engagement statistics for a specific post.
     
@@ -125,6 +128,7 @@ class PostEngagementStatsView(APIView):
 
 
 class TrendingHashtagsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get currently trending hashtags.
     
@@ -160,6 +164,7 @@ class TrendingHashtagsView(APIView):
 
 
 class PostsByMediaTypeView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts filtered by media type.
     
@@ -189,6 +194,7 @@ class PostsByMediaTypeView(APIView):
 
 
 class SearchPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Search posts by content.
     
@@ -282,6 +288,7 @@ class SearchPostsView(APIView):
 
 
 class DeleteCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Delete a comment.
     
@@ -348,6 +355,7 @@ class DeleteCommentView(APIView):
 
 
 class UpdateCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Update a comment's content.
     
@@ -431,6 +439,7 @@ class UpdateCommentView(APIView):
     
     
 class LikeCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Like or unlike a comment (toggle functionality).
 

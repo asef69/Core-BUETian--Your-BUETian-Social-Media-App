@@ -2,8 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from rest_framework.permissions import IsAuthenticated
 
 class UpdateBloodRequestStatusView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Update the status of a blood donation request.
     
@@ -65,6 +67,7 @@ class UpdateBloodRequestStatusView(APIView):
 
 
 class SearchBloodRequestsByLocationView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Search blood donation requests by location.
     
@@ -101,6 +104,7 @@ class SearchBloodRequestsByLocationView(APIView):
 
 
 class UserBloodRequestsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get blood donation requests created by authenticated user.
     
@@ -122,6 +126,7 @@ class UserBloodRequestsView(APIView):
 
 
 class UpdateTuitionPostStatusView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Update the status of a tuition post.
     
@@ -180,6 +185,7 @@ class UpdateTuitionPostStatusView(APIView):
 
 
 class SearchTuitionPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Search tuition posts with multiple filters.
     
@@ -214,6 +220,7 @@ class SearchTuitionPostsView(APIView):
 
 
 class UserTuitionPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get tuition posts created by authenticated user.
     

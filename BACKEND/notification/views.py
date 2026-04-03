@@ -1,8 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 
 class NotificationsListView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get list of all notifications for authenticated user.
     
@@ -74,6 +76,7 @@ class NotificationsListView(APIView):
         return Response(result)
 
 class UnreadNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get only unread notifications for authenticated user.
     
@@ -137,6 +140,7 @@ class UnreadNotificationsView(APIView):
         return Response(result)
 
 class NotificationCountView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get count of unread notifications for authenticated user.
     
@@ -163,9 +167,10 @@ class NotificationCountView(APIView):
             'get_unread_notification_count',
             (request.user.id,)
         )
-        return Response({'count': result[0]['get_unread_notification_count']})
+        return Response({'count': result[0]['unread_count']})
 
 class MarkNotificationReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark a specific notification as read.
     
@@ -200,6 +205,7 @@ class MarkNotificationReadView(APIView):
         return Response({'message': 'Marked as read'})
 
 class MarkAllReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark all notifications as read for authenticated user.
     
@@ -230,4 +236,5 @@ class MarkAllReadView(APIView):
             'mark_all_notifications_read',
             (request.user.id,)
         )
-        return Response({'message': f'{count[0]["mark_all_notifications_read"]} notifications marked as read'})
+        marked = count[0].get('count', 0) if count else 0
+        return Response({'message': f'{marked} notifications marked as read'})

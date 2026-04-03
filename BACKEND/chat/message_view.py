@@ -2,8 +2,22 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from rest_framework.permissions import IsAuthenticated
+
+
+def _row_value(row, keys, default=None):
+    if not isinstance(row, dict):
+        return default
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    if row:
+        first = next(iter(row.values()))
+        return first if first is not None else default
+    return default
 
 class SendMessageView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Send a message to another user with chat permission validation.
     
@@ -56,8 +70,10 @@ class SendMessageView(APIView):
             'can_users_chat',
             (request.user.id, receiver_id)
         )
-        
-        if not result[0]['can_users_chat']:
+
+        row = result[0] if result else {}
+        can_chat = bool(_row_value(row, ['can_users_chat', 'can_message'], False))
+        if not can_chat:
             return Response({'error': 'Cannot send message to this user'}, 
                           status=status.HTTP_403_FORBIDDEN)
         
@@ -73,6 +89,7 @@ class SendMessageView(APIView):
 
 
 class ConversationView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Retrieve full message history with another user.
     
@@ -140,6 +157,7 @@ class ConversationView(APIView):
 
 
 class RecentConversationsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get list of recent conversations for authenticated user.
     
@@ -174,6 +192,7 @@ class RecentConversationsView(APIView):
 
 
 class MarkAsReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark a specific message as read.
     

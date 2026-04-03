@@ -3,8 +3,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
 from django.db import ProgrammingError
+from rest_framework.permissions import IsAuthenticated
 
 class NotificationSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get notification summary grouped by type.
     
@@ -33,14 +35,24 @@ class NotificationSummaryView(APIView):
         Function: get_notification_summary(user_id)
     """
     def get(self, request):
-        result = DatabaseManager.execute_function(
-            'get_notification_summary',
-            (request.user.id,)
-        )
+        # Build a stable per-type summary for the frontend filter buttons.
+        query = """
+        SELECT
+            notification_type,
+            COUNT(*)::int AS total_count,
+            COUNT(*) FILTER (WHERE is_read = FALSE)::int AS unread_count,
+            MAX(created_at) AS latest_notification_time
+        FROM notifications
+        WHERE user_id = %s
+        GROUP BY notification_type
+        ORDER BY latest_notification_time DESC
+        """
+        result = DatabaseManager.execute_query(query, (request.user.id,))
         return Response(result or [])
 
 
 class MarkNotificationsByTypeView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark all notifications of a specific type as read.
     
@@ -60,16 +72,29 @@ class MarkNotificationsByTypeView(APIView):
         Function: mark_notifications_read_by_type(user_id, type)
     """
     def post(self, request, notification_type):
+        if not notification_type or notification_type.startswith('type-'):
+            return Response(
+                {'error': 'Invalid notification type'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         result = DatabaseManager.execute_function(
             'mark_notifications_read_by_type',
             (request.user.id, notification_type)
         )
-        
-        count = result[0]['mark_notifications_read_by_type'] if result else 0
+
+        row = result[0] if result else {}
+        count = (
+            row.get('mark_notifications_read_by_type')
+            or row.get('updated_count')
+            or row.get('count')
+            or 0
+        )
         return Response({'message': f'{count} notifications marked as read'})
 
 
 class ActivityNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get activity-based notifications (likes, comments, follows, etc.).
     
@@ -109,6 +134,7 @@ class ActivityNotificationsView(APIView):
 
 
 class DeleteNotificationView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Delete a specific notification.
     
@@ -160,6 +186,7 @@ class DeleteNotificationView(APIView):
 
 
 class ClearAllNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Delete all read notifications for authenticated user.
     
@@ -183,6 +210,7 @@ class ClearAllNotificationsView(APIView):
 
 
 class NotificationPreferencesView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get or update notification preferences.
     

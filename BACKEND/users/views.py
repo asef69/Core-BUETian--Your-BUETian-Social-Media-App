@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
 from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
@@ -47,6 +48,7 @@ def _mark_follow_request_notification_read(user_id, follow_id):
     )
 
 class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Retrieve user profile information.
     
@@ -102,6 +104,7 @@ class UserProfileView(APIView):
         return Response(result[0])
     
 class UpdateProfileView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Update authenticated user's profile information.
     
@@ -175,6 +178,7 @@ class UpdateProfileView(APIView):
         return self._update_profile(request)
     
 class FollowUserView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Follow or unfollow a user (toggle functionality).
     
@@ -257,6 +261,7 @@ class FollowUserView(APIView):
         })
         
 class AcceptFollowView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Accept a pending follow request.
     
@@ -333,6 +338,7 @@ class AcceptFollowView(APIView):
         )
     
 class SuggestedUsersView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get suggested users to follow.
     
@@ -402,6 +408,7 @@ class SuggestedUsersView(APIView):
 
 
 class MutualFollowersView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get mutual followers (users who follow each other).
     
@@ -426,6 +433,7 @@ class MutualFollowersView(APIView):
     
 
 class UserActivityView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get activity summary for authenticated user.
     
@@ -458,6 +466,7 @@ class UserActivityView(APIView):
 
 
 class UploadProfilePictureView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Upload or update user's profile picture.
     

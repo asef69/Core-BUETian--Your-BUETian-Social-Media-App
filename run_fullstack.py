@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run backend and frontend together")
     parser.add_argument(
         "--backend-cmd",
-        default="python manage.py runserver",
+        default="python -m daphne -b 0.0.0.0 -p 8000 core_buetians.asgi:application",
         help="Command to start backend from BACKEND directory",
     )
     parser.add_argument(

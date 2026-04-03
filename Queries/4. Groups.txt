@@ -1,0 +1,118 @@
+1.Create Group
+
+INSERT INTO groups(name,description,admin_id,is_private,cover_image)
+VALUES (%s,%s,%s,%s,%s)
+RETURNING id
+
+INSERT INTO group_members (group_id, user_id, role, status) 
+VALUES (%s, %s, 'admin', 'accepted')
+
+COMBINED:
+WITH new_grp AS (
+    INSERT INTO groups (name, description, admin_id, is_private, cover_image)
+    VALUES (%s, %s, %s, %s, %s)
+    RETURNING id
+)
+INSERT INTO group_members (group_id, user_id, role, status)
+SELECT 
+    id, %s, 'admin', 'accepted'
+FROM new_grp
+RETURNING group_id;
+
+
+
+
+
+2.Get Group Details
+
+CREATE INDEX IF NOT EXISTS idx_group_members_user_gid ON group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_status_gid ON group_members(status);
+
+
+SELECT 
+    g.id as group_id,
+    g.name,
+    g.description,
+    g.admin_id,
+    u.name as admin_name,
+    g.is_private,
+    g.cover_image,
+    COUNT(DISTINCT gm_all.user_id) FILTER (WHERE gm_all.status = 'accepted') AS members_count,
+    COUNT(DISTINCT p.id) AS posts_count,
+    CASE WHEN p_user_id IS NOT NULL THEN 
+        MAX(CASE WHEN gm_user.user_id IS NOT NULL AND gm_user.status = 'accepted' THEN TRUE ELSE FALSE END)
+    ELSE FALSE END AS is_member,
+    MAX(gm_user.status) AS member_status,
+    g.created_at
+FROM groups g
+INNER JOIN users u ON g.admin_id = u.id
+LEFT JOIN group_members gm_all ON g.id = gm_all.group_id 
+LEFT JOIN posts p ON g.id = p.group_id                  
+LEFT JOIN group_members gm_user ON g.id = gm_user.group_id AND gm_user.user_id = p_user_id  -- current user membership
+WHERE g.id = p_group_id
+GROUP BY g.id, g.name, g.description, g.admin_id, u.name, g.is_private, g.cover_image, g.created_at;
+
+
+
+SELECT *
+FROM get_group_details(p_group_id, p_user_id);
+
+
+
+
+3.Update Group
+
+
+UPDATE groups 
+SET 
+   name = COALESCE(%s, name),
+   description = COALESCE(%s, description),
+   is_private = COALESCE(%s, is_private),
+   cover_image = COALESCE(%s, cover_image)
+WHERE id = %s;
+
+
+4.Delete Group
+
+DELETE FROM groups 
+WHERE id = %s
+
+5.Get Group Members
+
+SELECT *
+FROM get_group_members_list(p_group_id)
+
+6.Join Group
+
+INSERT INTO group_members (group_id, user_id, role, status)
+VALUES (%s, %s, 'member', 'pending')
+ON CONFLICT (group_id, user_id) DO NOTHING;
+
+7.Accept Group Member
+
+UPDATE group_member
+SET
+   status = 'accepted'
+where group_id = %s AND user_d = %s;
+
+8.Reject Group Member
+
+DELETE FROM group_members
+WHERE (user_id = %s AND group_id = %s) AND status = 'pending';  
+
+9.Leave Group
+
+
+
+10.Promote to Moderator
+
+
+
+11.Get Group Posts
+
+
+
+12.Check Group Membership
+
+
+
