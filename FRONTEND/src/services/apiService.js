@@ -33,6 +33,7 @@ export const userAPI = {
   followUser: (userId) => api.post(`/users/follow/${userId}/`),
   acceptFollow: (followId) => api.post(`/users/follow/accept/${followId}/`),
   rejectFollow: (followId) => api.post(`/users/follow/reject/${followId}/`),
+  removeFollower: (followerId) => api.delete(`/users/followers/remove/${followerId}/`),
   getPendingRequests: () => api.get('/users/follow-requests/pending/'),
   getSuggestions: () => api.get('/users/suggestions/'),
   getMutualFollowers: () => api.get('/users/mutual-followers/'),

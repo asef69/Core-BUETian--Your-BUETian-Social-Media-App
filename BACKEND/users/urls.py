@@ -7,7 +7,7 @@ from .views import (
 from .auth_views import RegisterView, LoginView, TokenRefreshView
 from .extended_views import (
     UserFollowersView, UserFollowingView, PendingFollowRequestsView,
-    RejectFollowRequestView, UserSearchView, UsersByDepartmentView,
+    RejectFollowRequestView, RemoveFollowerView, UserSearchView, UsersByDepartmentView,
     UsersByBloodGroupView, UserEngagementMetricsView, UserPostsView
 )
 
@@ -23,6 +23,7 @@ urlpatterns = [
     path('follow/<int:user_id>/', FollowUserView.as_view()),
     path('follow/accept/<int:follow_id>/', AcceptFollowView.as_view()),
     path('follow/reject/<int:follow_id>/', RejectFollowRequestView.as_view()),
+    path('followers/remove/<int:follower_id>/', RemoveFollowerView.as_view()),
     path('follow-requests/pending/', PendingFollowRequestsView.as_view()),
     
     path('suggestions/', SuggestedUsersView.as_view()),
