@@ -1,0 +1,239 @@
+﻿CREATE OR REPLACE FUNCTION get_user_marketplace_stats(p_user_id INTEGER) RETURNS TABLE(
+        total_products BIGINT,
+        available_products BIGINT,
+        sold_products BIGINT,
+        total_revenue DECIMAL(10, 2),
+        avg_product_price DECIMAL(10, 2)
+    ) AS $$ BEGIN RETURN QUERY
+SELECT COUNT(*) as total_products,
+    COUNT(*) FILTER (
+        WHERE status = 'available'
+    ) as available_products,
+    COUNT(*) FILTER (
+        WHERE status = 'sold'
+    ) as sold_products,
+    COALESCE(
+        SUM(price) FILTER (
+            WHERE status = 'sold'
+        ),
+        0
+    ) as total_revenue,
+    COALESCE(AVG(price), 0) as avg_product_price
+FROM marketplace_products
+WHERE seller_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION get_similar_products(p_product_id INTEGER, p_limit INTEGER DEFAULT 5) RETURNS TABLE(
+        product_id INTEGER,
+        title VARCHAR(250),
+        price DECIMAL(10, 2),
+        category VARCHAR(100),
+        condition VARCHAR(50),
+        seller_name VARCHAR(50),
+        images VARCHAR(500)[],
+        created_at TIMESTAMP
+    ) AS $$
+DECLARE product_category VARCHAR(100);
+product_price DECIMAL(10, 2);
+BEGIN -- Get product details with explicit table qualification
+SELECT mp.category,
+    mp.price INTO product_category,
+    product_price
+FROM marketplace_products mp
+WHERE mp.id = p_product_id;
+RETURN QUERY
+SELECT p.id as product_id,
+    p.title,
+    p.price,
+    p.category,
+    p.condition,
+    u.name as seller_name,
+    ARRAY(
+        SELECT image_url
+        FROM marketplace_product_images mpi
+        WHERE mpi.product_id = p.id
+    ) as images,
+    p.created_at
+FROM marketplace_products p
+    INNER JOIN users u ON p.seller_id = u.id
+WHERE p.id != p_product_id
+    AND p.status = 'available'
+    AND p.category = product_category
+    AND p.price BETWEEN (product_price * 0.7) AND (product_price * 1.3)
+    AND u.is_active = TRUE
+ORDER BY ABS(p.price - product_price),
+    p.created_at DESC
+LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION get_trending_products(p_limit INTEGER DEFAULT 10) RETURNS TABLE(
+        product_id INTEGER,
+        title VARCHAR(250),
+        price DECIMAL(10, 2),
+        category VARCHAR(100),
+        condition VARCHAR(50),
+        location VARCHAR(250),
+        seller_id INTEGER,
+        seller_name VARCHAR(50),
+        seller_picture VARCHAR(500),
+        images TEXT [],
+        created_at TIMESTAMP
+    ) AS $$ BEGIN RETURN QUERY
+SELECT p.id as product_id,
+    p.title,
+    p.price,
+    p.category,
+    p.condition,
+    p.location,
+    u.id as seller_id,
+    u.name as seller_name,
+    u.profile_picture as seller_picture,
+    ARRAY(
+        SELECT image_url
+        FROM marketplace_product_images mpi
+        WHERE mpi.product_id = p.id
+    ) as images,
+    p.created_at
+FROM marketplace_products p
+    INNER JOIN users u ON p.seller_id = u.id
+WHERE p.status = 'available'
+    AND u.is_active = TRUE
+    AND p.created_at > CURRENT_DATE - INTERVAL '7 days'
+ORDER BY p.created_at DESC
+LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+-- Mark a product as sold (seller only)
+CREATE OR REPLACE FUNCTION mark_product_sold(
+        p_product_id INTEGER,
+        p_seller_id INTEGER
+    ) RETURNS TABLE(success BOOLEAN) AS $$ BEGIN
+UPDATE marketplace_products
+SET status = 'sold',
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = p_product_id
+    AND seller_id = p_seller_id
+    AND status != 'sold';
+RETURN QUERY
+SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+-- Reserve a product (set status to reserved)
+CREATE OR REPLACE FUNCTION reserve_product(
+        p_product_id INTEGER,
+        p_user_id INTEGER
+    ) RETURNS TABLE(success BOOLEAN) AS $$ BEGIN
+UPDATE marketplace_products
+SET status = 'reserved',
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = p_product_id
+    AND status = 'available';
+RETURN QUERY
+SELECT FOUND;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION get_price_range_stats() RETURNS TABLE(
+        price_range TEXT,
+        product_count BIGINT,
+        avg_price DECIMAL(10, 2)
+    ) AS $$ BEGIN RETURN QUERY
+SELECT CASE
+        WHEN price < 1000 THEN 'Under 1,000'
+        WHEN price BETWEEN 1000 AND 5000 THEN '1,000 - 5,000'
+        WHEN price BETWEEN 5000 AND 10000 THEN '5,000 - 10,000'
+        WHEN price BETWEEN 10000 AND 25000 THEN '10,000 - 25,000'
+        WHEN price BETWEEN 25000 AND 50000 THEN '25,000 - 50,000'
+        WHEN price BETWEEN 50000 AND 100000 THEN '50,000 - 100,000'
+        ELSE 'Over 100,000'
+    END as price_range,
+    COUNT(*) as product_count,
+    AVG(price) as avg_price
+FROM marketplace_products
+WHERE status = 'available'
+GROUP BY price_range
+ORDER BY MIN(price);
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION get_department_products(p_user_id INTEGER, p_limit INTEGER DEFAULT 20) RETURNS TABLE(
+        product_id INTEGER,
+        title VARCHAR(250),
+        price DECIMAL(10, 2),
+        category VARCHAR(100),
+        condition VARCHAR(50),
+        seller_id INTEGER,
+        seller_name VARCHAR(50),
+        seller_picture VARCHAR(500),
+        images TEXT [],
+        created_at TIMESTAMP
+    ) AS $$
+DECLARE user_dept VARCHAR(100);
+BEGIN
+SELECT department_name INTO user_dept
+FROM users
+WHERE id = p_user_id;
+RETURN QUERY
+SELECT p.id as product_id,
+    p.title,
+    p.price,
+    p.category,
+    p.condition,
+    u.id as seller_id,
+    u.name as seller_name,
+    u.profile_picture as seller_picture,
+    ARRAY(
+        SELECT image_url
+        FROM marketplace_product_images
+        WHERE product_id = p.id
+    ) as images,
+    p.created_at
+FROM marketplace_products p
+    INNER JOIN users u ON p.seller_id = u.id
+WHERE p.status = 'available'
+    AND u.department_name = user_dept
+    AND u.id != p_user_id
+    AND u.is_active = TRUE
+ORDER BY p.created_at DESC
+LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+--MARKETPLACE PRODUCTS
+CREATE OR REPLACE FUNCTION get_product_details(p_product_id INTEGER)
+RETURNS TABLE(
+    product_id INTEGER,
+    title VARCHAR(250),
+    description TEXT,
+    price DECIMAL(10,2),
+    category VARCHAR(100),
+    condition VARCHAR(50),
+    location VARCHAR(250),
+    status VARCHAR(20),
+    seller_id INTEGER,
+    seller_name VARCHAR(50),
+    seller_picture VARCHAR(500),
+    seller_department VARCHAR(100),
+    images TEXT[],
+    created_at TIMESTAMP
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id as product_id,
+        p.title,
+        p.description,
+        p.price,
+        p.category,
+        p.condition,
+        p.location,
+        p.status,
+        u.id as seller_id,
+        u.name as seller_name,
+        u.profile_picture as seller_picture,
+        u.department_name as seller_department,
+        ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
+        p.created_at
+    FROM marketplace_products p
+    INNER JOIN users u ON p.seller_id = u.id
+    WHERE p.id = p_product_id;
+END;
+$$ LANGUAGE plpgsql;

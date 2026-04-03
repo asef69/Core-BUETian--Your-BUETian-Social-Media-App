@@ -289,7 +289,6 @@ class CanSendMessageView(APIView):
             'can_user_message',
             (request.user.id, user_id)
         )
-
-        row = result[0] if result else {}
-        can_message = bool(_row_value(row, ['can_message', 'can_users_chat'], False))
+        
+        can_message = result[0]['can_message'] if result else False
         return Response({'can_message': can_message})

@@ -79,18 +79,21 @@ RETURNS TABLE(
 BEGIN
     RETURN QUERY
     SELECT
-        m.hashtag,
-        COUNT(*) AS post_count,
-        COALESCE(SUM(p.likes_count + p.comments_count), 0)::BIGINT AS total_engagement
-    FROM posts p
-    CROSS JOIN LATERAL (
-        SELECT DISTINCT lower(match[1]) AS hashtag
-        FROM regexp_matches(COALESCE(p.content, ''), '#([A-Za-z0-9_]+)', 'g') AS match
-    ) AS m
-    WHERE p.visibility = 'public'
-      AND p.group_id IS NULL
-      AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
-    GROUP BY m.hashtag
+        lower(regexp_replace(bpt.tag_name, '^#', '')) AS hashtag,
+        COUNT(DISTINCT b.id) AS post_count,
+        COALESCE(SUM(b.likes_count + b.views_count + COALESCE(bc.comments_count, 0)), 0)::BIGINT AS total_engagement
+    FROM blog_posts b
+    INNER JOIN blog_post_tags bpt ON bpt.blog_post_id = b.id
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*)::INTEGER AS comments_count
+        FROM blog_comments c
+        WHERE c.blog_id = b.id
+    ) AS bc ON TRUE
+    WHERE b.is_published = TRUE
+      AND (b.scheduled_publish_at IS NULL OR b.scheduled_publish_at <= NOW())
+      AND COALESCE(b.published_at, b.created_at) > CURRENT_TIMESTAMP - INTERVAL '30 days'
+      AND NULLIF(TRIM(regexp_replace(bpt.tag_name, '^#', '')), '') IS NOT NULL
+    GROUP BY lower(regexp_replace(bpt.tag_name, '^#', ''))
     ORDER BY total_engagement DESC, post_count DESC
     LIMIT p_limit;
 END;

@@ -94,6 +94,11 @@ const ProductDetail = () => {
   };
 
   const handleReserve = async () => {
+    if (!isOwnProduct) {
+      toast.info('Contact seller to reserve the product for you');
+      return;
+    }
+
     try {
       await marketplaceAPI.reserveProduct(productId);
       toast.success('Product reserved!');

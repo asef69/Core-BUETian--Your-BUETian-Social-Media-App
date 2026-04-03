@@ -834,38 +834,7 @@ class GroupPostsView(APIView):
         # ORDER BY p.created_at DESC
         # LIMIT %s OFFSET %s
         # """
-        try:
-            posts = DatabaseManager.execute_function('get_group_posts', (group_id, request.user.id, limit, offset))
-        except ProgrammingError:
-            # Fallback for databases where get_group_posts function is not created.
-            fallback_query = """
-            SELECT
-                p.id,
-                p.user_id,
-                u.name AS user_name,
-                u.profile_picture,
-                p.content,
-                p.visibility,
-                p.media_type,
-                p.likes_count,
-                p.comments_count,
-                p.created_at,
-                COALESCE(
-                    ARRAY(
-                        SELECT mu.media_url
-                        FROM media_urls mu
-                        WHERE mu.post_id = p.id
-                        ORDER BY mu.id ASC
-                    ),
-                    ARRAY[]::text[]
-                ) AS media_urls
-            FROM posts p
-            INNER JOIN users u ON p.user_id = u.id
-            WHERE p.group_id = %s
-            ORDER BY p.created_at DESC
-            LIMIT %s OFFSET %s
-            """
-            posts = DatabaseManager.execute_query(fallback_query, (group_id, limit, offset))
+        posts = DatabaseManager.execute_function('get_group_posts', (group_id, request.user.id, limit, offset))
         
         # Get total count
         count_query = "SELECT COUNT(*) as total FROM posts WHERE group_id = %s"

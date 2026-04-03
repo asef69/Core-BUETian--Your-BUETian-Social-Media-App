@@ -3,7 +3,6 @@ from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
 from utils.database import DatabaseManager
 from decimal import Decimal, InvalidOperation
-from rest_framework.permissions import IsAuthenticated
 
 
 def _validate_tuition_constraints(data):

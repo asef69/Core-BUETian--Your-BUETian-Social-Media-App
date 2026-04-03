@@ -348,14 +348,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'can_user_message',
             (sender_id, receiver_id)
         )
-        row = result[0] if result else {}
-        if not isinstance(row, dict):
-            return False
-        if 'can_message' in row:
-            return bool(row['can_message'])
-        if 'can_users_chat' in row:
-            return bool(row['can_users_chat'])
-        return bool(next(iter(row.values()))) if row else False
+        return result[0]['can_message'] if result else False
 
     @database_sync_to_async
     def save_message(self, sender_id, receiver_id, content, media_url):

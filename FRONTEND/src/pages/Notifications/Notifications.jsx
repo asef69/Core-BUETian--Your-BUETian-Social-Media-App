@@ -234,62 +234,6 @@ const Notifications = () => {
     return Number.isFinite(referenceId) && inviteGroupIds.has(referenceId);
   });
 
-  const normalizedSummary = useMemo(() => {
-    const toInt = (value, fallback = 0) => {
-      const n = Number.parseInt(value, 10);
-      return Number.isFinite(n) ? n : fallback;
-    };
-
-    const raw = Array.isArray(summary) ? summary : [];
-    const typedRows = raw
-      .map((item) => {
-        const type = item?.notification_type || item?.type;
-        if (!type || typeof type !== 'string') return null;
-        const total = toInt(item?.total_count, 0);
-        const unread = toInt(item?.unread_count, 0);
-        const read = Math.max(0, total - unread);
-        return { type, total, unread, read };
-      })
-      .filter(Boolean);
-
-    if (typedRows.length > 0) return typedRows;
-
-    const counts = new Map();
-    for (const notif of Array.isArray(notifications) ? notifications : []) {
-      const type = notif?.notification_type || notif?.type;
-      if (!type || typeof type !== 'string') continue;
-      if (!counts.has(type)) {
-        counts.set(type, { type, total: 0, unread: 0, read: 0 });
-      }
-      const row = counts.get(type);
-      row.total += 1;
-      if (notif?.is_read) {
-        row.read += 1;
-      } else {
-        row.unread += 1;
-      }
-    }
-
-    return Array.from(counts.values()).sort((a, b) => b.total - a.total);
-  }, [summary, notifications]);
-
-  const summaryTotals = useMemo(() => {
-    const totals = normalizedSummary.reduce(
-      (acc, row) => {
-        acc.total += row.total;
-        acc.unread += row.unread;
-        acc.read += row.read;
-        return acc;
-      },
-      { total: 0, unread: 0, read: 0 }
-    );
-
-    return {
-      ...totals,
-      types: normalizedSummary.length,
-    };
-  }, [normalizedSummary]);
-
   return (
     <div className="app-layout">
       <Navbar />
@@ -307,20 +251,12 @@ const Notifications = () => {
             </div>
           </div>
 
-          {normalizedSummary.length > 0 && (
-            <div className="notifications-filter">
-              <div style={{ marginBottom: '10px', fontWeight: 600 }}>
-                Overall: {summaryTotals.unread}/{summaryTotals.total}
-              </div>
-            </div>
-          )}
-
-          {normalizedSummary.length > 0 && (
+          {summary.length > 0 && (
             <div className="notifications-filter notifications-filter-row">
-              {normalizedSummary.map((item, index) => {
-                const type = item.type;
-                const unread = item.unread;
-                const total = item.total;
+              {summary.map((item, index) => {
+                const type = item.notification_type || item.type || `type-${index}`;
+                const unread = item.unread_count || 0;
+                const total = item.total_count || 0;
                 return (
                   <button key={`${type}-${index}`} className="filter-btn" onClick={() => handleMarkTypeRead(type)}>
                     {type}: {unread}/{total}
