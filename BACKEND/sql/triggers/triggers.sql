@@ -274,6 +274,27 @@ CREATE TRIGGER after_group_member_insert
     FOR EACH ROW
     EXECUTE FUNCTION create_group_join_request_notification();
 
+CREATE OR REPLACE FUNCTION create_group_invite_notification()
+RETURNS TRIGGER AS $$
+DECLARE 
+    group_name_text VARCHAR(100);
+    admin_id_val INTEGER;
+BEGIN
+    IF NEW.status='pending' THEN
+        SELECT name,admin_id INTO group_name_text,admin_id_val FROM groups WHERE id=NEW.group_id;
+        INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
+        VALUES(NEW.user_id,admin_id_val,'group_invite',NEW.id,'invited you to join the group "'||group_name_text||'"');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS after_group_member_invite_notification ON group_members;
+CREATE TRIGGER after_group_member_invite_notification
+    AFTER INSERT ON group_members
+    FOR EACH ROW
+    EXECUTE FUNCTION create_group_invite_notification();
+
 CREATE OR REPLACE FUNCTION create_blog_like_notification()
 RETURNS TRIGGER AS $$
 DECLARE 
@@ -385,62 +406,7 @@ CREATE TRIGGER before_post_delete_cleanup
     EXECUTE FUNCTION cleanup_post_data();
 
 
---analysis of an user
-CREATE TABLE IF NOT EXISTS user_analysis(
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    total_posts INTEGER DEFAULT 0,
-    total_comments INTEGER DEFAULT 0,
-    total_likes_given INTEGER DEFAULT 0,
-    total_likes_received INTEGER DEFAULT 0,
-    followers_count INTEGER DEFAULT 0,
-    following_count INTEGER DEFAULT 0,
-    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);    
-
-CREATE OR REPLACE FUNCTION update_post_statistics()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- user_statistics table does not exist, so skip statistics updates
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION decrease_post_statistics()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- user_statistics table does not exist, so skip statistics updates
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION update_comment_statistics()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- user_statistics table does not exist, so skip statistics updates
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS after_post_insert_statistics ON posts;
-CREATE TRIGGER after_post_insert_statistics
-    AFTER INSERT ON posts
-    FOR EACH ROW
-    EXECUTE FUNCTION update_post_statistics();/
-
-DROP TRIGGER IF EXISTS after_post_delete_statistics ON posts;
-CREATE TRIGGER after_post_delete_statistics
-    AFTER DELETE ON posts
-    FOR EACH ROW
-    EXECUTE FUNCTION decrease_post_statistics();    
-
-
-DROP TRIGGER IF EXISTS after_comment_insert_statistics ON comments;
-CREATE TRIGGER after_comment_insert_statistics
-    AFTER INSERT ON comments
-    FOR EACH ROW
-    EXECUTE FUNCTION update_comment_statistics();
+  
 
 
 
