@@ -1,8 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 
 class NotificationsListView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get list of all notifications for authenticated user.
     
@@ -42,6 +44,12 @@ class NotificationsListView(APIView):
         Display full notification history in notifications page
     """
     def get(self, request):
+        try:
+            limit = int(request.query_params.get('limit', 200))
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(1, min(limit, 500))
+
         query = """
         SELECT
             n.*,
@@ -59,15 +67,16 @@ class NotificationsListView(APIView):
         LEFT JOIN users u ON n.actor_id = u.id
         WHERE n.user_id = %s
         ORDER BY n.created_at DESC
-        LIMIT 50
+        LIMIT %s
         """
-        result = DatabaseManager.execute_query(query, (request.user.id,))
+        result = DatabaseManager.execute_query(query, (request.user.id, limit))
         for notification in result:
             if 'actor_profile_picture' not in notification and 'actor_picture' in notification:
                 notification['actor_profile_picture'] = notification['actor_picture']
         return Response(result)
 
 class UnreadNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get only unread notifications for authenticated user.
     
@@ -91,6 +100,12 @@ class UnreadNotificationsView(APIView):
         - Real-time notification updates
     """
     def get(self, request):
+        try:
+            limit = int(request.query_params.get('limit', 200))
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(1, min(limit, 500))
+
         query = """
         SELECT
             n.id,
@@ -116,15 +131,16 @@ class UnreadNotificationsView(APIView):
         WHERE n.user_id = %s
           AND n.is_read = FALSE
         ORDER BY n.created_at DESC
-        LIMIT 50
+        LIMIT %s
         """
-        result = DatabaseManager.execute_query(query, (request.user.id,))
+        result = DatabaseManager.execute_query(query, (request.user.id, limit))
         for notification in result:
             if 'actor_profile_picture' not in notification and 'actor_picture' in notification:
                 notification['actor_profile_picture'] = notification['actor_picture']
         return Response(result)
 
 class NotificationCountView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get count of unread notifications for authenticated user.
     
@@ -151,9 +167,10 @@ class NotificationCountView(APIView):
             'get_unread_notification_count',
             (request.user.id,)
         )
-        return Response({'count': result[0]['get_unread_notification_count']})
+        return Response({'count': result[0]['unread_count']})
 
 class MarkNotificationReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark a specific notification as read.
     
@@ -188,6 +205,7 @@ class MarkNotificationReadView(APIView):
         return Response({'message': 'Marked as read'})
 
 class MarkAllReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark all notifications as read for authenticated user.
     
@@ -218,4 +236,5 @@ class MarkAllReadView(APIView):
             'mark_all_notifications_read',
             (request.user.id,)
         )
-        return Response({'message': f'{count[0]["mark_all_notifications_read"]} notifications marked as read'})
+        marked = count[0].get('count', 0) if count else 0
+        return Response({'message': f'{marked} notifications marked as read'})

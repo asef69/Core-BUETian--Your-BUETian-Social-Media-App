@@ -5,6 +5,7 @@ import moment from "moment";
 import { FaEllipsisH } from "react-icons/fa";
 import { useAuth } from "../../context/AuthContext";
 import { FaHeart, FaRegHeart } from "react-icons/fa";
+import { confirmDialog } from "../../utils/confirmDialog";
 
 const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = false }) => {
   const { user } = useAuth();
@@ -158,26 +159,34 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       return;
     }
 
-    if (!window.confirm("Delete this comment?")) return;
+    await confirmDialog({
+      title: "Delete Comment",
+      message: "Are you sure you want to delete this comment?",
+      confirmText: "Delete",
+      confirmLoadingText: "Deleting...",
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          console.log("Deleting comment ID:", comment_id);
 
-    try {
-      console.log("Deleting comment ID:", comment_id);
+          // Call API
+          await postAPI.deleteComment(comment_id);
 
-      // Call API
-      await postAPI.deleteComment(comment_id);
+          // Remove from state
+          setComments((prev) => prev.filter((c) => c.comment_id !== comment_id));
+          await loadComments();
+          if (onCommentRemoved) {
+            onCommentRemoved();
+          }
 
-      // Remove from state
-      setComments((prev) => prev.filter((c) => c.comment_id !== comment_id));
-      await loadComments();
-      if (onCommentRemoved) {
-        onCommentRemoved();
-      }
-
-      toast.success("Comment deleted");
-    } catch (error) {
-      console.error("❌ Failed to delete comment:", error);
-      toast.error(error?.response?.data?.error || "Failed to delete comment");
-    }
+          toast.success("Comment deleted");
+        } catch (error) {
+          console.error("❌ Failed to delete comment:", error);
+          toast.error(error?.response?.data?.error || "Failed to delete comment");
+          throw error;
+        }
+      },
+    });
   };
 
   const handleEditComment = (comment) => {
@@ -221,6 +230,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
     if (readOnly) {
       return;
     }
+
     e.preventDefault();
     const content = replyContent[parentCommentId]?.trim();
     if (!content?.trim()) return;
@@ -277,15 +287,15 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
         prevComments.map((comment) =>
           comment.comment_id === commentId
             ? {
-              ...comment,
-              liked: response?.data?.liked ?? !comment.liked,
-              likes_count:
-                typeof response?.data?.likes_count === "number"
-                  ? response.data.likes_count
-                  : comment.liked
-                    ? comment.likes_count - 1
-                    : comment.likes_count + 1,
-            }
+                ...comment,
+                liked: response?.data?.liked ?? !comment.liked,
+                likes_count:
+                  typeof response?.data?.likes_count === "number"
+                    ? response.data.likes_count
+                    : comment.liked
+                      ? comment.likes_count - 1
+                      : comment.likes_count + 1,
+              }
             : comment,
         ),
       );
@@ -310,9 +320,9 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       } else {
         toast.error(
           error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "Failed to love comment",
+            error.response?.data?.error ||
+            error.message ||
+            "Failed to love comment",
         );
       }
     }
@@ -464,7 +474,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
                 disabled={readOnly}
               >
                 {comment.liked ? <FaHeart /> : <FaRegHeart />}
-                <span className="comment-action-label"></span>
+                <span className="comment-action-label">Love</span>
                 {comment.likes_count > 0 ? (
                   <span className="count-pill">{comment.likes_count}</span>
                 ) : null}

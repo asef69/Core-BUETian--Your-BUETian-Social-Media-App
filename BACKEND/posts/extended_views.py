@@ -14,13 +14,14 @@ def _normalize_media_url(url):
     return f"/{str(url).lstrip('/')}"
 
 class PostsByHashtagView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts containing a specific hashtag.
     
     API Endpoint: GET /api/posts/hashtag/<hashtag>/
     Authentication: Required (JWT)
     
-    URL Parameters:
+    Query Parameters:
         hashtag (str): Hashtag to search (without # symbol)
     
     Query Parameters:
@@ -44,7 +45,14 @@ class PostsByHashtagView(APIView):
     Database:
         Function: get_posts_by_hashtag(hashtag, limit)
     """
-    def get(self, request, hashtag):
+    def get(self, request):
+        hashtag = request.query_params.get('hashtag', '').strip()
+        if not hashtag:
+            return Response(
+                {'error': 'Hashtag query parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         limit = int(request.query_params.get('limit', 20))
         
         result = DatabaseManager.execute_function(
@@ -55,6 +63,7 @@ class PostsByHashtagView(APIView):
 
 
 class UserLikedPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts liked by a specific user.
     
@@ -87,6 +96,7 @@ class UserLikedPostsView(APIView):
 
 
 class PostEngagementStatsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get detailed engagement statistics for a specific post.
     
@@ -118,6 +128,7 @@ class PostEngagementStatsView(APIView):
 
 
 class TrendingHashtagsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get currently trending hashtags.
     
@@ -140,6 +151,7 @@ class TrendingHashtagsView(APIView):
     
     Database:
         Function: get_trending_hashtags(limit)
+        Window: last 30 days of public, non-group posts
     """
     def get(self, request):
         limit = int(request.query_params.get('limit', 10))
@@ -152,6 +164,7 @@ class TrendingHashtagsView(APIView):
 
 
 class PostsByMediaTypeView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get posts filtered by media type.
     
@@ -181,6 +194,7 @@ class PostsByMediaTypeView(APIView):
 
 
 class SearchPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Search posts by content.
     
@@ -274,6 +288,7 @@ class SearchPostsView(APIView):
 
 
 class DeleteCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Delete a comment.
     
@@ -340,6 +355,7 @@ class DeleteCommentView(APIView):
 
 
 class UpdateCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Update a comment's content.
     
@@ -423,6 +439,7 @@ class UpdateCommentView(APIView):
     
     
 class LikeCommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Like or unlike a comment (toggle functionality).
 
@@ -458,33 +475,25 @@ class LikeCommentView(APIView):
             if not comment_exists:
                 return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
 
-            # Check if user already liked the comment
-            query = "SELECT id FROM comment_likes WHERE user_id = %s AND comment_id = %s"
-            result = DatabaseManager.execute_query(query, (user_id, comment_id))
-
-            if result:
-                # Unlike
-                DatabaseManager.execute_update(
-                    "DELETE FROM comment_likes WHERE user_id = %s AND comment_id = %s",
-                    (user_id, comment_id)
-                )
-                liked = False
-            else:
-                # Add like
-                DatabaseManager.execute_insert(
-                    "INSERT INTO comment_likes (user_id, comment_id) VALUES (%s, %s)",
-                    (user_id, comment_id)
-                )
-                liked = True
-
-            # Get updated like count
-            count_query = "SELECT COUNT(*) AS count FROM comment_likes WHERE comment_id = %s"
-            count_result = DatabaseManager.execute_query(count_query, (comment_id,))
-            count = count_result[0]['count'] if count_result else 0
-
+            # Use procedure for comment like toggle with notification
+            params = (
+                int(user_id),
+                int(comment_id),
+                None,  # out_liked
+                None,  # out_likes_count
+                None,  # out_success
+                None   # out_message
+            )
+            result = DatabaseManager.execute_procedure('toggle_comment_like_with_notification', params)
+            
+            if not result or not result[0].get('out_success'):
+                error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            
             return Response({
-                "liked": liked,
-                "likes_count": count
+                'liked': result[0]['out_liked'],
+                'likes_count': result[0]['out_likes_count'],
+                'comment_id': comment_id,
             })
 
         except Exception as e:

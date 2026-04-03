@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 
 
@@ -48,6 +49,7 @@ def _can_view_post(viewer_id, author_id, visibility):
     return False
 
 class UserFollowersView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get list of users following the specified user.
     
@@ -102,6 +104,7 @@ class UserFollowersView(APIView):
 
 
 class UserFollowingView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get list of users that the specified user is following.
     
@@ -145,6 +148,7 @@ class UserFollowingView(APIView):
 
 
 class PendingFollowRequestsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get pending follow requests for authenticated user.
     
@@ -198,6 +202,7 @@ class PendingFollowRequestsView(APIView):
 
 
 class RejectFollowRequestView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Reject a pending follow request.
     
@@ -312,6 +317,7 @@ class UserSearchView(APIView):
 class UsersByDepartmentView(APIView):
     """
     Get users by department and optional batch.
+        permission_classes = [IsAuthenticated]
     
     API Endpoint: GET /api/users/department/<department_name>/
     Authentication: Required (JWT)
@@ -341,6 +347,7 @@ class UsersByDepartmentView(APIView):
 
 
 class UsersByBloodGroupView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get users by blood group.
     
@@ -375,6 +382,7 @@ class UsersByBloodGroupView(APIView):
 class UserEngagementMetricsView(APIView):
     """
     Get detailed engagement metrics for a user.
+        permission_classes = [IsAuthenticated]
     
     API Endpoint: GET /api/users/<user_id>/engagement/
     Authentication: Required (JWT)
@@ -411,6 +419,7 @@ class UserEngagementMetricsView(APIView):
 class UserPostsView(APIView):
     """
     Get posts created by a specific user.
+        permission_classes = [IsAuthenticated]
     
     API Endpoint: GET /api/users/<user_id>/posts/
     Authentication: Required (JWT)

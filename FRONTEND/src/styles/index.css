@@ -258,8 +258,13 @@ a {
   border: 1px solid var(--border-color);
   border-radius: 10px;
   font-size: 0.95rem;
-  color: var(--dark-color);
-  background: rgba(255, 255, 255, 0.08);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color-scheme: dark;
+  color: var(--light-color);
+  background-color: var(--surface-solid);
+  background: var(--surface-solid);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
@@ -275,6 +280,38 @@ a {
   border-color: var(--primary-color);
   box-shadow: var(--shadow-glow);
   background: rgba(255, 255, 255, 0.12);
+}
+
+.form-group select option {
+  background-color: var(--surface-solid);
+  color: var(--light-color);
+}
+
+/* Global dropdown theme consistency */
+body:not([data-theme='light']) select {
+  color-scheme: dark !important;
+  background-color: var(--surface-solid) !important;
+  color: var(--light-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+body:not([data-theme='light']) select option,
+body:not([data-theme='light']) select optgroup {
+  background-color: var(--surface-solid) !important;
+  color: var(--light-color) !important;
+}
+
+body[data-theme='light'] select {
+  color-scheme: light !important;
+  background-color: #ffffff !important;
+  color: #1a2432 !important;
+  border-color: rgba(64, 80, 106, 0.24) !important;
+}
+
+body[data-theme='light'] select option,
+body[data-theme='light'] select optgroup {
+  background-color: #ffffff !important;
+  color: #1a2432 !important;
 }
 
 .form-row {

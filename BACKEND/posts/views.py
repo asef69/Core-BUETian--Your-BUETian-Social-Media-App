@@ -1,9 +1,12 @@
+import json
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
+from rest_framework.permissions import IsAuthenticated
 
 
 def _is_group_member(group_id, user_id):
@@ -69,6 +72,7 @@ def _get_post_owner_and_visibility(post_id):
     return result[0]
 
 class CreatePostView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Create a new post with optional media URLs.
     
@@ -109,51 +113,109 @@ class CreatePostView(APIView):
         data=request.data
         user_id=request.user.id
 
-        query="""
-        INSERT INTO posts(user_id,content,media_type,visibility,group_id)
-        VALUES(%s,%s,%s,%s,%s)
-        RETURNING id
-        """
-
         raw_group_id = data.get('group_id')
         group_id = None if raw_group_id in (None, '', 0, '0', 'null', 'None') else raw_group_id
 
-        params=(
-            user_id,
-            data.get('content'),
-            data.get('media_type','text'),
-            data.get('visibility','public'),
-            group_id
-        )
+        visibility = data.get('visibility', 'public')
+        content = data.get('content')
 
-        post_id=DatabaseManager.execute_insert(query,params)
+        # Determine media_type first, before processing files
+        media_type = data.get('media_type', 'image')
+
+        collected_media_urls = []
 
         # Handle raw media files if provided
         media_files = request.FILES.getlist('media_files')
         if media_files:
-            media_type = data.get('media_type', 'image')
             for file in media_files:
                 try:
-                    FileUploadHandler.validate_file(file, file_type=media_type)
-                    folder = 'post_images' if media_type == 'image' else 'post_videos'
+                    # Auto-detect media type from file extension
+                    file_ext = file.name.lower().split('.')[-1]
+                    if file_ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'):
+                        detected_type = 'image'
+                    elif file_ext in ('mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'):
+                        detected_type = 'video'
+                    else:
+                        detected_type = media_type
+                    
+                    FileUploadHandler.validate_file(file, file_type=detected_type)
+                    folder = 'post_images' if detected_type == 'image' else 'post_videos'
                     file_path = FileUploadHandler.upload_file(file, folder=folder)
-                    DatabaseManager.execute_insert(
-                        "INSERT INTO media_urls (post_id, media_url, media_type) VALUES (%s, %s, %s)",
-                        (post_id, file_path, media_type)
-                    )
+                    collected_media_urls.append(file_path)
                 except Exception as e:
                     import logging
                     logger = logging.getLogger(__name__)
                     logger.error(f"Error uploading file: {str(e)}")
 
         # Handle pre-uploaded URLs if provided
-        media_urls=data.get('media_urls',[])
-        if media_urls and post_id:
-            for url in media_urls:
-                DatabaseManager.execute_insert(
-                    "INSERT INTO media_urls (post_id,media_url,media_type) VALUES (%s,%s,%s)",
-                    (post_id,url,data.get('media_type','image'))
+        media_urls = data.get('media_urls', [])
+        if isinstance(media_urls, str):
+            try:
+                import json
+                media_urls = json.loads(media_urls)
+            except Exception:
+                media_urls = []
+
+        if media_urls:
+            for media_item in media_urls:
+                if isinstance(media_item, dict):
+                    media_url = media_item.get('url')
+                    if media_url:
+                        collected_media_urls.append(media_url)
+                elif media_item:
+                    collected_media_urls.append(media_item)
+
+        # Update media_type based on what was actually collected
+        if collected_media_urls and media_type == 'image':
+            # Keep image as default if media was collected with image type
+            pass
+        elif collected_media_urls and not data.get('media_type'):
+            # Auto-detect as image if not explicitly set
+            media_type = 'image'
+        elif not collected_media_urls:
+            media_type = 'text'
+
+        procedure_result = []
+        procedure_media_urls = collected_media_urls if collected_media_urls else None
+        if group_id is not None:
+            procedure_result = DatabaseManager.execute_procedure(
+                'create_group_post_with_media',
+                (
+                    user_id,
+                    media_type,
+                    content,
+                    group_id,
+                    visibility,
+                    procedure_media_urls,
+                    None,
+                    None,
+                    None
                 )
+            )
+        else:
+            procedure_result = DatabaseManager.execute_procedure(
+                'create_post_with_media',
+                (
+                    user_id,
+                    media_type,
+                    content,
+                    visibility,
+                    procedure_media_urls,
+                    None,
+                    None,
+                    None
+                )
+            )
+
+        procedure_row = procedure_result[0] if procedure_result else {}
+        out_success = bool(procedure_row.get('out_success'))
+        post_id = procedure_row.get('post_id')
+        out_message = procedure_row.get('out_message') or 'Post creation failed'
+
+        if not out_success or not post_id:
+            if 'must be a member' in out_message.lower():
+                return Response({'error': out_message}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': out_message}, status=status.HTTP_400_BAD_REQUEST)
         
         # Fetch the complete post data using get_post_details function
         # This returns the same structure as the feed for consistency
@@ -218,6 +280,7 @@ class CreatePostView(APIView):
         },status=status.HTTP_201_CREATED)
 
 class UserFeedView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get personalized feed of posts for authenticated user.
     
@@ -286,6 +349,7 @@ class UserFeedView(APIView):
 
 
 class PublicFeedView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get recent public posts for discovery feed.
 
@@ -340,6 +404,7 @@ class PublicFeedView(APIView):
 
 
 class PostDetailView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Retrieve or delete a specific post.
     
@@ -349,7 +414,26 @@ class PostDetailView(APIView):
     
     Authentication: Required (JWT)
     """
-    def get(self,request,post_id):
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
+
+    @staticmethod
+    def _normalize_media_url(media_url):
+        if not media_url:
+            return media_url
+        from urllib.parse import urlparse
+        parsed = urlparse(str(media_url))
+        if parsed.scheme or parsed.netloc:
+            return parsed.path or str(media_url)
+        return str(media_url)
+
+    @staticmethod
+    def _infer_media_type(media_url):
+        value = (media_url or '').lower()
+        if any(value.endswith(ext) for ext in ('.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.m4v', '.ogg')):
+            return 'video'
+        return 'image'
+
+    def get(self, request, post_id):
         """
         Get detailed information about a specific post.
         
@@ -471,8 +555,23 @@ class PostDetailView(APIView):
             post_id (int): ID of the post to update
 
         Allowed fields:
-            content, visibility
+            - content: str - Post text
+            - visibility: str - "public"|"private"|"followers"
+            - media_urls: list - Add new media URLs
+            - media_files: list - Upload and attach new media files
+            - delete_media_urls: list - Remove specific media URLs from post
+
+        Example:
+            PATCH /api/posts/123/ with multipart form data:
+            {
+                "content": "Updated text",
+                "visibility": "private",
+                "media_files": [file1, file2],
+                "delete_media_urls": ["/media/post_images/old_image.jpg"]
+            }
         """
+        from utils.file_upload import FileUploadHandler
+        
         query = "SELECT user_id FROM posts WHERE id = %s"
         result = DatabaseManager.execute_query(query, (post_id,))
 
@@ -490,20 +589,118 @@ class PostDetailView(APIView):
             update_fields.append("visibility = %s")
             params.append(data['visibility'])
 
-        if not update_fields:
+        if not update_fields and not request.FILES and 'delete_media_urls' not in data and 'media_urls' not in data:
             return Response({'error': 'No fields to update'}, status=status.HTTP_400_BAD_REQUEST)
 
-        update_fields.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(post_id)
+        # Delete specified media URLs
+        deleted_urls = []
+        delete_media_urls = data.get('delete_media_urls', [])
+        if delete_media_urls:
+            if isinstance(delete_media_urls, str):
+                try:
+                    import json
+                    delete_media_urls = json.loads(delete_media_urls)
+                except:
+                    delete_media_urls = [delete_media_urls]
+            
+            for media_url in delete_media_urls:
+                try:
+                    normalized_media_url = self._normalize_media_url(media_url)
+                    DatabaseManager.execute_update(
+                        "DELETE FROM media_urls WHERE post_id = %s AND media_url = %s",
+                        (post_id, normalized_media_url)
+                    )
+                    deleted_urls.append(normalized_media_url)
+                except Exception as e:
+                    pass
 
-        update_query = f"UPDATE posts SET {', '.join(update_fields)} WHERE id = %s"
-        DatabaseManager.execute_update(update_query, tuple(params))
-        return Response({'message': 'Post updated successfully'})
+        # Add new media from files
+        new_media_entries = []
+        media_errors = []
+        media_files = request.FILES.getlist('media_files')
+        if media_files:
+            for file in media_files:
+                try:
+                    # Auto-detect media type from file extension
+                    file_ext = file.name.lower().split('.')[-1]
+                    if file_ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'):
+                        media_type = 'image'
+                        folder = 'post_images'
+                    elif file_ext in ('mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'):
+                        media_type = 'video'
+                        folder = 'post_videos'
+                    else:
+                        media_type = 'image'
+                        folder = 'post_images'
+                    
+                    file_path = FileUploadHandler.upload_file(file, folder=folder)
+                    normalized_path = self._normalize_media_url(file_path)
+                    new_media_entries.append((normalized_path, media_type))
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error uploading file: {str(e)}")
+                    media_errors.append({'file': file.name, 'error': str(e)})
+
+        # Add pre-uploaded media URLs
+        media_urls = data.get('media_urls', [])
+        if media_urls:
+            if isinstance(media_urls, str):
+                try:
+                    import json
+                    media_urls = json.loads(media_urls)
+                except:
+                    media_urls = []
+            
+            for media_item in media_urls:
+                if isinstance(media_item, dict):
+                    media_url = media_item.get('url')
+                    if media_url:
+                        normalized_path = self._normalize_media_url(media_url)
+                        media_type = media_item.get('media_type') or media_item.get('type') or self._infer_media_type(normalized_path)
+                        new_media_entries.append((normalized_path, media_type))
+                elif media_item:
+                    normalized_path = self._normalize_media_url(media_item)
+                    new_media_entries.append((normalized_path, self._infer_media_type(normalized_path)))
+
+        # Insert new media URLs into database
+        added_media = []
+        if new_media_entries:
+            for media_url, media_type in new_media_entries:
+                try:
+                    DatabaseManager.execute_insert(
+                        "INSERT INTO media_urls (post_id, media_url, media_type) VALUES (%s, %s, %s)",
+                        (post_id, media_url, media_type)
+                    )
+                    added_media.append({'media_url': media_url, 'media_type': media_type})
+                except Exception as e:
+                    media_errors.append({'media_url': media_url, 'error': str(e)})
+
+        # Update post text fields if any
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(post_id)
+            update_query = f"UPDATE posts SET {', '.join(update_fields)} WHERE id = %s"
+            DatabaseManager.execute_update(update_query, tuple(params))
+
+        updated_media_result = DatabaseManager.execute_query(
+            "SELECT media_url, media_type FROM media_urls WHERE post_id = %s ORDER BY id ASC",
+            (post_id,)
+        ) or []
+
+        return Response({
+            'message': 'Post updated successfully',
+            'deleted_media': deleted_urls,
+            'added_media': added_media,
+            'media_urls': updated_media_result,
+            'media_errors': media_errors
+        })
     
     
     
     
 class LikePostView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Like or unlike a post (toggle functionality).
     
@@ -582,6 +779,7 @@ class LikePostView(APIView):
 
 
 class CommentView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Retrieve comments or add a comment to a post.
     
@@ -646,8 +844,7 @@ class CommentView(APIView):
                 }
         
         Database:
-            Table: comments
-            Supports nested comments via parent_comment_id
+            Procedure: add_comment_with_notification (creates comment + notification)
         """
         data = request.data
 
@@ -668,28 +865,27 @@ class CommentView(APIView):
             )
         
         try:
-            query = """
-            INSERT INTO comments (post_id, user_id, content)
-            VALUES (%s, %s, %s)
-            RETURNING id
-            """
+            parent_comment_id = data.get('parent_comment_id')
+            if parent_comment_id in ('', None):
+                parent_comment_id = None
             
-            comment_id = DatabaseManager.execute_insert(
-                query,
-                (post_id, request.user.id, data['content'])
+            # Use procedure for comment creation with notification
+            params = (
+                int(request.user.id),
+                int(post_id),
+                data['content'],
+                int(parent_comment_id) if parent_comment_id is not None else None,
+                None,  # out_comment_id
+                None,  # out_success
+                None   # out_message
             )
+            result = DatabaseManager.execute_procedure('add_comment_with_notification', params)
             
-            # If parent_comment_id is provided, try to update it
-            parent_id = data.get('parent_comment_id')
-            if parent_id:
-                try:
-                    DatabaseManager.execute_update(
-                        "UPDATE comments SET comment_id = %s WHERE id = %s",
-                        (parent_id, comment_id)
-                    )
-                except:
-                    # Column doesn't exist, continue without it
-                    pass
+            if not result or not result[0].get('out_success'):
+                error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
+                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            
+            comment_id = result[0]['out_comment_id']
             
             return Response({
                 'message': 'Comment added',
@@ -706,6 +902,7 @@ class CommentView(APIView):
     
 
 class TrendingPostsView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get trending/popular posts.
     
@@ -717,9 +914,8 @@ class TrendingPostsView(APIView):
     
     Returns:
         List of trending posts, typically sorted by:
-        - Recent engagement (likes, comments)
-        - View count
-        - Recency
+        - Recent engagement (likes, comments, views)
+        - Recency within the last 30 days
     
     Database:
         Function: get_trending_posts(limit)
@@ -731,6 +927,7 @@ class TrendingPostsView(APIView):
 
 
 class UploadPostMediaView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Upload multiple media files (images or videos) for a post.
     
@@ -832,6 +1029,7 @@ class UploadPostMediaView(APIView):
 
 
 class CreatePostWithMediaView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Create a post with multiple media files.
     
@@ -889,49 +1087,72 @@ class CreatePostWithMediaView(APIView):
         data = request.data
         user_id = request.user.id
         
-        query = """
-        INSERT INTO posts(user_id, content, media_type, visibility, group_id)
-        VALUES(%s, %s, %s, %s, %s)
-        RETURNING id
-        """
-        
         raw_group_id = data.get('group_id')
         group_id = None if raw_group_id in (None, '', 0, '0', 'null', 'None') else raw_group_id
 
-        params = (
-            user_id,
-            data.get('content'),
-            data.get('media_type', 'text'),
-            data.get('visibility', 'public'),
-            group_id
-        )
-        
-        post_id = DatabaseManager.execute_insert(query, params)
+        visibility = data.get('visibility', 'public')
+        content = data.get('content')
         
         media_urls = data.get('media_urls', [])
         if isinstance(media_urls, str):
             try:
-                import json
                 media_urls = json.loads(media_urls)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 media_urls = []
-        if media_urls and post_id:
-            media_insert_query = """
-            INSERT INTO media_urls (post_id, media_url, media_type)
-            VALUES (%s, %s, %s)
-            """
+        normalized_media_urls = []
+        if media_urls:
             for media_item in media_urls:
                 if isinstance(media_item, dict):
                     media_url = media_item.get('url')
-                    media_type = media_item.get('type', data.get('media_type', 'image'))
-                else:
-                    media_url = media_item
-                    media_type = data.get('media_type', 'image')
+                    if media_url:
+                        normalized_media_urls.append(media_url)
+                elif media_item:
+                    normalized_media_urls.append(media_item)
 
-                DatabaseManager.execute_insert(
-                    media_insert_query,
-                    (post_id, media_url, media_type)
+        media_type = data.get('media_type')
+        if not media_type:
+            media_type = 'image' if normalized_media_urls else 'text'
+
+        procedure_media_urls = normalized_media_urls if normalized_media_urls else None
+        if group_id is not None:
+            procedure_result = DatabaseManager.execute_procedure(
+                'create_group_post_with_media',
+                (
+                    user_id,
+                    media_type,
+                    content,
+                    group_id,
+                    visibility,
+                    procedure_media_urls,
+                    None,
+                    None,
+                    None
                 )
+            )
+        else:
+            procedure_result = DatabaseManager.execute_procedure(
+                'create_post_with_media',
+                (
+                    user_id,
+                    media_type,
+                    content,
+                    visibility,
+                    procedure_media_urls,
+                    None,
+                    None,
+                    None
+                )
+            )
+
+        procedure_row = procedure_result[0] if procedure_result else {}
+        out_success = bool(procedure_row.get('out_success'))
+        post_id = procedure_row.get('post_id')
+        out_message = procedure_row.get('out_message') or 'Post creation failed'
+
+        if not out_success or not post_id:
+            if 'must be a member' in out_message.lower():
+                return Response({'error': out_message}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': out_message}, status=status.HTTP_400_BAD_REQUEST)
         
         # Fetch the complete post data using get_post_details function
         # This returns the same structure as the feed for consistency

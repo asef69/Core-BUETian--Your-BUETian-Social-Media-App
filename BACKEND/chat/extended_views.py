@@ -1,9 +1,23 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 
+
+def _row_value(row, keys, default=None):
+    if not isinstance(row, dict):
+        return default
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    if row:
+        first = next(iter(row.values()))
+        return first if first is not None else default
+    return default
+
 class UnreadMessagesCountView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get unread messages count per conversation.
     
@@ -34,6 +48,7 @@ class UnreadMessagesCountView(APIView):
 
 
 class TotalUnreadMessagesView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get total count of unread messages.
     
@@ -54,12 +69,14 @@ class TotalUnreadMessagesView(APIView):
             'get_total_unread_messages',
             (request.user.id,)
         )
-        
-        total = result[0]['get_total_unread_messages'] if result else 0
+
+        row = result[0] if result else {}
+        total = _row_value(row, ['total_unread', 'unread_count', 'count'], 0)
         return Response({'total_unread': total})
 
 
 class SearchMessagesView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Search messages by content.
     
@@ -106,6 +123,7 @@ class SearchMessagesView(APIView):
 
 
 class DeleteConversationView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Delete entire conversation with another user.
     
@@ -130,8 +148,9 @@ class DeleteConversationView(APIView):
             'delete_conversation',
             (request.user.id, user_id)
         )
-        
-        deleted_count = result[0]['delete_conversation'] if result else 0
+
+        row = result[0] if result else {}
+        deleted_count = _row_value(row, ['delete_conversation', 'deleted_count', 'count'], 0)
         return Response({
             'message': 'Conversation deleted successfully',
             'deleted_count': deleted_count
@@ -139,6 +158,7 @@ class DeleteConversationView(APIView):
 
 
 class MarkConversationReadView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Mark all messages in a conversation as read.
     
@@ -163,8 +183,9 @@ class MarkConversationReadView(APIView):
             'mark_conversation_read',
             (request.user.id, user_id)
         )
-        
-        marked_count = result[0]['mark_conversation_read'] if result else 0
+
+        row = result[0] if result else {}
+        marked_count = _row_value(row, ['mark_conversation_read', 'updated_count', 'count'], 0)
         return Response({
             'message': 'Conversation marked as read',
             'marked_count': marked_count
@@ -172,6 +193,7 @@ class MarkConversationReadView(APIView):
 
 
 class UserMessageStatsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get message statistics for authenticated user.
     
@@ -200,6 +222,7 @@ class UserMessageStatsView(APIView):
 
 
 class ConversationParticipantsView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Get participant details for a conversation.
     
@@ -238,6 +261,7 @@ class ConversationParticipantsView(APIView):
 
 
 class CanSendMessageView(APIView):
+    permission_classes = [IsAuthenticated]
     """
     Check if current user can send message to another user.
     
@@ -265,6 +289,7 @@ class CanSendMessageView(APIView):
             'can_user_message',
             (request.user.id, user_id)
         )
-        
-        can_message = result[0]['can_message'] if result else False
+
+        row = result[0] if result else {}
+        can_message = bool(_row_value(row, ['can_message', 'can_users_chat'], False))
         return Response({'can_message': can_message})

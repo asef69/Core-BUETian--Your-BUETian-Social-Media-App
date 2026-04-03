@@ -1,39 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationAPI, userAPI, groupAPI } from '../../services/apiService';
+import { notificationAPI, groupAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaBell, FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes } from 'react-icons/fa';
+import { FaBell, FaCheck, FaCheckDouble, FaTrash, FaUserCheck, FaUserTimes, FaHeart, FaComment, FaUserPlus, FaComments } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Notifications.css';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [summary, setSummary] = useState([]);
-  const [preferences, setPreferences] = useState({ email_notifications: true, push_notifications: true });
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
   const [groupInvites, setGroupInvites] = useState([]);
-
-  // Helper: Format notification type for display
-  const formatNotificationType = (type) => {
-    const typeMap = {
-      'like': 'Like',
-      'comment': 'Comment',
-      'reply': 'Reply',
-      'follow': 'Follow',
-      'follow_request': 'Follow Request',
-      'follow_accepted': 'Follow Accepted',
-      'message': 'Message',
-      'group_invite': 'Group Invite',
-      'group_join_request': 'Group Join Request',
-      'blog_like': 'Blog Like',
-      'blog_comment': 'Blog Comment',
-      'blog_reply': 'Blog Reply',
-      'blog_comment_like': 'Blog Comment Like',
-    };
-    return typeMap[type] || (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '));
-  };
 
   const loadGroupInvites = async () => {
     try {
@@ -52,19 +31,17 @@ const Notifications = () => {
   useEffect(() => {
     loadNotifications();
     loadGroupInvites();
-  }, [filter]);
+  }, []);
 
   const loadNotifications = async () => {
     try {
-      const [response, summaryRes, preferencesRes] = await Promise.all([
-        filter === 'unread' ? notificationAPI.getUnread() : notificationAPI.getAll(),
+      const [response, summaryRes] = await Promise.all([
+        notificationAPI.getAll(),
         notificationAPI.getSummary().catch(() => ({ data: [] })),
-        notificationAPI.getPreferences().catch(() => ({ data: { email_notifications: true, push_notifications: true } })),
       ]);
 
       setNotifications(response.data.results || response.data);
       setSummary(Array.isArray(summaryRes.data) ? summaryRes.data : summaryRes.data?.results || []);
-      setPreferences(preferencesRes.data || { email_notifications: true, push_notifications: true });
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -123,32 +100,26 @@ const Notifications = () => {
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm('Are you sure you want to clear all notifications?')) return;
-
-    try {
-      await notificationAPI.clearAll();
-      setNotifications([]);
-      toast.success('All notifications cleared');
-      emitCountsRefresh();
-    } catch (error) {
-      toast.error('Failed to clear notifications');
-    }
+    await confirmDialog({
+      title: 'Clear Read Notifications',
+      message: 'Are you sure you want to clear all read notifications?',
+      confirmText: 'Clear',
+      confirmLoadingText: 'Clearing...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await notificationAPI.clearAll();
+          setNotifications([]);
+          toast.success('All notifications cleared');
+          emitCountsRefresh();
+        } catch (error) {
+          toast.error('Failed to clear notifications');
+          throw error;
+        }
+      },
+    });
   };
 
-  const handlePreferenceToggle = async (key) => {
-    const updated = {
-      ...preferences,
-      [key]: !preferences[key],
-    };
-
-    try {
-      await notificationAPI.updatePreferences(updated);
-      setPreferences(updated);
-      toast.success('Notification preferences updated');
-    } catch (error) {
-      toast.error('Failed to update preferences');
-    }
-  };
   const handleAcceptInvite = async (groupId) => {
     try {
       await groupAPI.acceptInvite(groupId);
@@ -218,6 +189,35 @@ const Notifications = () => {
     }
   };
 
+  const getNotificationIcon = (notif) => {
+    const type = notif?.notification_type || notif?.type;
+    
+    const iconProps = { size: 18, className: 'notification-type-icon' };
+    
+    switch (type) {
+      case 'like':
+      case 'blog_like':
+        return <FaHeart {...iconProps} className="notification-type-icon notification-type-icon--like" />;
+      case 'comment':
+      case 'reply':
+      case 'blog_comment':
+      case 'blog_reply':
+      case 'blog_comment_like':
+        return <FaComment {...iconProps} className="notification-type-icon notification-type-icon--comment" />;
+      case 'follow':
+      case 'follow_request':
+      case 'follow_accepted':
+        return <FaUserPlus {...iconProps} className="notification-type-icon notification-type-icon--follow" />;
+      case 'message':
+        return <FaComments {...iconProps} className="notification-type-icon notification-type-icon--message" />;
+      case 'group_invite':
+      case 'group_join_request':
+        return <FaUserCheck {...iconProps} className="notification-type-icon notification-type-icon--group" />;
+      default:
+        return <FaBell {...iconProps} />;
+    }
+  };
+
   const inviteGroupIds = new Set(
     (Array.isArray(groupInvites) ? groupInvites : [])
       .map((invite) => Number.parseInt(invite?.group_id, 10))
@@ -233,6 +233,62 @@ const Notifications = () => {
     const referenceId = Number.parseInt(notif?.reference_id || notif?.target_id, 10);
     return Number.isFinite(referenceId) && inviteGroupIds.has(referenceId);
   });
+
+  const normalizedSummary = useMemo(() => {
+    const toInt = (value, fallback = 0) => {
+      const n = Number.parseInt(value, 10);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const raw = Array.isArray(summary) ? summary : [];
+    const typedRows = raw
+      .map((item) => {
+        const type = item?.notification_type || item?.type;
+        if (!type || typeof type !== 'string') return null;
+        const total = toInt(item?.total_count, 0);
+        const unread = toInt(item?.unread_count, 0);
+        const read = Math.max(0, total - unread);
+        return { type, total, unread, read };
+      })
+      .filter(Boolean);
+
+    if (typedRows.length > 0) return typedRows;
+
+    const counts = new Map();
+    for (const notif of Array.isArray(notifications) ? notifications : []) {
+      const type = notif?.notification_type || notif?.type;
+      if (!type || typeof type !== 'string') continue;
+      if (!counts.has(type)) {
+        counts.set(type, { type, total: 0, unread: 0, read: 0 });
+      }
+      const row = counts.get(type);
+      row.total += 1;
+      if (notif?.is_read) {
+        row.read += 1;
+      } else {
+        row.unread += 1;
+      }
+    }
+
+    return Array.from(counts.values()).sort((a, b) => b.total - a.total);
+  }, [summary, notifications]);
+
+  const summaryTotals = useMemo(() => {
+    const totals = normalizedSummary.reduce(
+      (acc, row) => {
+        acc.total += row.total;
+        acc.unread += row.unread;
+        acc.read += row.read;
+        return acc;
+      },
+      { total: 0, unread: 0, read: 0 }
+    );
+
+    return {
+      ...totals,
+      types: normalizedSummary.length,
+    };
+  }, [normalizedSummary]);
 
   return (
     <div className="app-layout">
@@ -251,46 +307,23 @@ const Notifications = () => {
             </div>
           </div>
 
-          <div className="notifications-filter">
-            <button
-              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-              onClick={() => setFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={`filter-btn ${filter === 'unread' ? 'active' : ''}`}
-              onClick={() => setFilter('unread')}
-            >
-              Unread
-            </button>
-          </div>
+          {normalizedSummary.length > 0 && (
+            <div className="notifications-filter">
+              <div style={{ marginBottom: '10px', fontWeight: 600 }}>
+                Overall: {summaryTotals.unread}/{summaryTotals.total}
+              </div>
+            </div>
+          )}
 
-          <div className="notifications-filter" style={{ marginTop: '10px', alignItems: 'center' }}>
-            <button
-              className={`filter-btn ${preferences.email_notifications ? 'active' : ''}`}
-              onClick={() => handlePreferenceToggle('email_notifications')}
-            >
-              Email Alerts {preferences.email_notifications ? 'On' : 'Off'}
-            </button>
-            <button
-              className={`filter-btn ${preferences.push_notifications ? 'active' : ''}`}
-              onClick={() => handlePreferenceToggle('push_notifications')}
-            >
-              Push Alerts {preferences.push_notifications ? 'On' : 'Off'}
-            </button>
-          </div>
-
-          {summary.length > 0 && (
-            <div className="notifications-filter" style={{ marginTop: '10px' }}>
-              {summary.map((item, index) => {
-                const type = item.notification_type || item.type || `type-${index}`;
-                const unread = item.unread_count || 0;
-                const total = item.total_count || 0;
-                const displayLabel = formatNotificationType(type);
+          {normalizedSummary.length > 0 && (
+            <div className="notifications-filter notifications-filter-row">
+              {normalizedSummary.map((item, index) => {
+                const type = item.type;
+                const unread = item.unread;
+                const total = item.total;
                 return (
                   <button key={`${type}-${index}`} className="filter-btn" onClick={() => handleMarkTypeRead(type)}>
-                    {displayLabel}: {unread}/{total}
+                    {type}: {unread}/{total}
                   </button>
                 );
               })}
@@ -365,6 +398,7 @@ const Notifications = () => {
                         />
                         <div className="notification-content">
                           <p>
+                            {getNotificationIcon(notif)}
                             <strong>{notif.actor_name}</strong> {notif.content}
                           </p>
                           <span className="notification-time">

@@ -1,8 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, Slide } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import './styles/Toast.css';
+import './styles/ToastContent.css';
+import { ErrorBoundary, NotFound } from './components/error';
+import ConnectionStatus from './components/ConnectionStatus';
 
 // Pages
 import Login from './pages/Auth/Login';
@@ -26,19 +30,22 @@ import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Router>
-          <ToastContainer
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <Router>            <ConnectionStatus />          <ToastContainer
             position="top-right"
-            autoClose={3000}
+            autoClose={2500}
             hideProgressBar={false}
-            newestOnTop
-            closeOnClick
+            newestOnTop={true}
+            closeOnClick={true}
             rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
+            pauseOnFocusLoss={false}
+            draggable={false}
+            pauseOnHover={false}
+            theme="dark"
+            transition={Slide}
+            limit={3}
           />
           <Routes>
             {/* Public Routes */}
@@ -62,12 +69,16 @@ function App() {
             <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
             <Route path="/posts/:postId" element={<ProtectedRoute><PostDetail /></ProtectedRoute>} />
 
-            {/* Redirect */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Error Pages */}
+            <Route path="/404" element={<NotFound />} />
+
+            {/* Catch-all route - 404 */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
       </AuthProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

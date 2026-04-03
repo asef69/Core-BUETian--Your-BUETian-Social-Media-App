@@ -130,20 +130,17 @@ class CreateGroupView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        query = """
-        INSERT INTO groups(name, description, admin_id, is_private, cover_image)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id
-        """
-
-        result=DatabaseManager.execute_query(
-            query,
+        result = DatabaseManager.execute_procedure(
+            'create_group_with_creator',
             (
+                request.user.id,
                 data['name'],
                 data.get('description'),
-                request.user.id,
                 data.get('is_private', False),
-                cover_image_url
+                cover_image_url,
+                None,
+                None,
+                None
             )
         )
         
@@ -153,20 +150,17 @@ class CreateGroupView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        group_id = result[0]['id']
-        
-        DatabaseManager.execute_insert(
-             """
-            INSERT INTO group_members (group_id, user_id, role, status)
-            VALUES (%s, %s, 'admin', 'accepted')
-            """,
-            (group_id, request.user.id)
-        )
+        proc_result = result[0]
+        if not proc_result.get('out_success') or not proc_result.get('group_id'):
+            return Response(
+                {'error': proc_result.get('out_message') or 'Group creation failed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        _create_group_cover_post(group_id, request.user.id, cover_image_url, 'Set the group cover photo.')
+        group_id = proc_result['group_id']
         
         return Response({
-            'message': 'Group created successfully',
+            'message': proc_result.get('out_message') or 'Group created successfully',
             'group_id': group_id
         }, status=status.HTTP_201_CREATED)
     
@@ -321,14 +315,14 @@ class JoinGroupView(APIView):
         )
         if not group_exists:
             return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        group_is_private=bool(group_exists[0].get('is_private', False))
 
+        group_is_private=bool(group_exists[0].get('is_private', False))
 
         existing_membership = DatabaseManager.execute_query(
             "SELECT status FROM group_members WHERE group_id = %s AND user_id = %s",
             (group_id, request.user.id)
         )
+
         if existing_membership:
             current_status = existing_membership[0]['status']
             if current_status == 'accepted':
@@ -805,8 +799,8 @@ class GroupPostsView(APIView):
             SELECT 1
             FROM group_members gm
             WHERE gm.group_id = %s
-            AND gm.user_id = %s
-            AND gm.status = 'accepted'
+              AND gm.user_id = %s
+              AND gm.status = 'accepted'
             """
             member_result = DatabaseManager.execute_query(member_query, (group_id, request.user.id))
             if not member_result:
@@ -820,7 +814,7 @@ class GroupPostsView(APIView):
         offset = (page - 1) * limit
         
         # Get posts with user info
-        # posts_query =""" 
+        # posts_query = """
         # SELECT 
         #     p.id,
         #     p.user_id,
@@ -840,7 +834,38 @@ class GroupPostsView(APIView):
         # ORDER BY p.created_at DESC
         # LIMIT %s OFFSET %s
         # """
-        posts = DatabaseManager.execute_function('get_group_posts', (group_id, request.user.id, limit, offset))
+        try:
+            posts = DatabaseManager.execute_function('get_group_posts', (group_id, request.user.id, limit, offset))
+        except ProgrammingError:
+            # Fallback for databases where get_group_posts function is not created.
+            fallback_query = """
+            SELECT
+                p.id,
+                p.user_id,
+                u.name AS user_name,
+                u.profile_picture,
+                p.content,
+                p.visibility,
+                p.media_type,
+                p.likes_count,
+                p.comments_count,
+                p.created_at,
+                COALESCE(
+                    ARRAY(
+                        SELECT mu.media_url
+                        FROM media_urls mu
+                        WHERE mu.post_id = p.id
+                        ORDER BY mu.id ASC
+                    ),
+                    ARRAY[]::text[]
+                ) AS media_urls
+            FROM posts p
+            INNER JOIN users u ON p.user_id = u.id
+            WHERE p.group_id = %s
+            ORDER BY p.created_at DESC
+            LIMIT %s OFFSET %s
+            """
+            posts = DatabaseManager.execute_query(fallback_query, (group_id, limit, offset))
         
         # Get total count
         count_query = "SELECT COUNT(*) as total FROM posts WHERE group_id = %s"
@@ -1098,6 +1123,44 @@ class SuggestedGroupsView(APIView):
     
     def get(self, request):
         limit = int(request.GET.get('limit', 10))
+
+        # query = """
+        # SELECT
+        #     g.id AS group_id,
+        #     g.name,
+        #     g.description,
+        #     g.cover_image,
+        #     (
+        #         SELECT COUNT(*)
+        #         FROM group_members gm
+        #         WHERE gm.group_id = g.id
+        #           AND gm.status = 'accepted'
+        #     ) AS members_count,
+        #     g.is_private,
+        #     (
+        #         SELECT COUNT(*)
+        #         FROM group_members gm
+        #         WHERE gm.group_id = g.id
+        #           AND gm.status = 'accepted'
+        #           AND gm.user_id IN (
+        #               SELECT f.following_id
+        #               FROM follows f
+        #               WHERE f.follower_id = %s
+        #           )
+        #     ) AS common_members_count
+        # FROM groups g
+        # WHERE g.is_private = FALSE
+        #   AND NOT EXISTS (
+        #       SELECT 1
+        #       FROM group_members gm
+        #       WHERE gm.group_id = g.id
+        #         AND gm.user_id = %s
+        #         AND gm.status = 'accepted'
+        #   )
+        # ORDER BY common_members_count DESC, g.created_at DESC
+        # LIMIT %s
+        # """
+
         result = DatabaseManager.execute_function('get_suggested_groups', (request.user.id, limit))
         return Response(result or [])
 
@@ -1337,7 +1400,6 @@ class DemoteModeratorView(APIView):
             return Response({'message': 'Moderator demoted to member'})
         return Response({'error': 'Demotion failed. You must be admin and target must be moderator.'}, 
                        status=status.HTTP_400_BAD_REQUEST)
-        
         
         
 class InvitedMembersView(APIView):

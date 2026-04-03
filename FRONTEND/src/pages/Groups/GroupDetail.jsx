@@ -6,6 +6,7 @@ import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
 import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const GroupDetail = () => {
   const { groupId } = useParams();
@@ -15,6 +16,7 @@ const GroupDetail = () => {
   const [posts, setPosts] = useState([]);
   const [members, setMembers] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
+  const [invitedMembers, setInvitedMembers] = useState([]);
   const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
@@ -32,19 +34,17 @@ const GroupDetail = () => {
   const [searchPageSize] = useState(5);
   const [activity, setActivity] = useState({});
   const [showEditForm, setShowEditForm] = useState(false);
-  const [invitedMembers, setInvitedMembers] = useState([]);
   const [editGroupData, setEditGroupData] = useState({
     name: '',
     description: '',
     is_private: false,
-    cover_image: null, // File object
+    cover_image: null,
   });
   const [updatingGroup, setUpdatingGroup] = useState(false);
 
   useEffect(() => {
     loadGroupData();
   }, [groupId]);
-
 
   const MEDIA_BASE_URL = 'http://localhost:8000';
 
@@ -162,8 +162,6 @@ const GroupDetail = () => {
       const pendingData = extractItems(pendingRes.data).map(normalizeMember);
       const invitedData = extractItems(invitedRes.data).map(normalizeMember);
 
-      console.log("Normalized posts:", postsData);
-
       setGroup(groupData);
       setPosts(postsData);
       setMembers(membersData);
@@ -176,9 +174,6 @@ const GroupDetail = () => {
 
       if (currentUser?.id) {
         try {
-          console.log('invitedRes:', invitedRes);
-          console.log('invitedData:', invitedData);
-
           const followersRes = await userAPI.getFollowers(currentUser.id);
           const followerItems = extractItems(followersRes.data).map(normalizeUser);
           const memberIds = new Set(membersData.map((member) => member.user_id));
@@ -197,7 +192,6 @@ const GroupDetail = () => {
       }
 
       const role = getCurrentUserRole(groupData, membersData);
-
       if (groupData && role === 'admin') {
         setEditGroupData({
           name: groupData.name || '',
@@ -207,7 +201,6 @@ const GroupDetail = () => {
         });
       }
     } catch (error) {
-      console.error(error);
       toast.error('Failed to load group');
     } finally {
       setLoading(false);
@@ -256,22 +249,31 @@ const GroupDetail = () => {
   };
 
   const handleLeaveGroup = async () => {
-    if (!window.confirm('Are you sure you want to leave this group?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Leave Group',
+      message: 'Are you sure you want to leave this group?',
+      confirmText: 'Leave',
+      danger: true,
+    });
+    if (!confirmed) return;
 
     try {
-      const response = await groupAPI.leaveGroup(groupId);
-      toast.success(response?.data?.message || 'Left group successfully');
+      await groupAPI.leaveGroup(groupId);
+      toast.success('Left group successfully');
       navigate('/groups');
     } catch (error) {
-      console.error(error);
-
-      const backendMessage = error?.response?.data?.error;
-      toast.error(backendMessage || 'Failed to leave group');
+      toast.error('Failed to leave group');
     }
   };
 
   const handleDeleteGroup = async () => {
-    if (!window.confirm('Delete this group permanently? This cannot be undone.')) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Group',
+      message: 'Delete this group permanently? This cannot be undone.',
+      confirmText: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
 
     try {
       await groupAPI.deleteGroup(groupId);
@@ -323,7 +325,12 @@ const GroupDetail = () => {
   };
 
   const handleTransferAdmin = async (userId) => {
-    if (!window.confirm('Transfer admin rights to this member?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Transfer Admin Rights',
+      message: 'Transfer admin rights to this member?',
+      confirmText: 'Transfer',
+    });
+    if (!confirmed) return;
 
     try {
       await groupAPI.transferAdmin(groupId, { new_admin_id: userId });
@@ -355,7 +362,13 @@ const GroupDetail = () => {
   };
 
   const handleKickMember = async (userId) => {
-    if (!window.confirm('Remove this member from the group?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Remove Member',
+      message: 'Remove this member from the group?',
+      confirmText: 'Remove',
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       const response = await groupAPI.removeMember(groupId, userId);
       toast.success(response?.data?.message || 'Member removed successfully');
@@ -394,7 +407,6 @@ const GroupDetail = () => {
     }
   };
 
-
   const pagedFollowers = followersToInvite.slice(
     (followersPage - 1) * followersPageSize,
     followersPage * followersPageSize
@@ -428,8 +440,8 @@ const GroupDetail = () => {
       if (editGroupData.name) formData.append('name', editGroupData.name);
       if (editGroupData.description) formData.append('description', editGroupData.description);
       formData.append('is_private', editGroupData.is_private);
-      if (editGroupData.cover_image) {
 
+      if (editGroupData.cover_image) {
         const uploadData = new FormData();
         uploadData.append('media', editGroupData.cover_image);
         uploadData.append('media_type', 'image');
@@ -442,10 +454,8 @@ const GroupDetail = () => {
 
       toast.success('Group updated successfully!');
       setShowEditForm(false);
-
       await loadGroupData();
       setActiveTab('posts');
-
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to update group');
     } finally {
@@ -923,7 +933,7 @@ const GroupDetail = () => {
 
             {activeTab === 'dashboard' && canManageMembers && (
               <div className="group-admin-dashboard">
-                <div className="dashboard-panel">
+                <div className="dashboard-panel dashboard-panel-compact">
                   <div className="dashboard-heading">
                     <h3>Edit Group</h3>
                     <p>Admins can update group name, description, privacy, and cover image.</p>
@@ -937,72 +947,119 @@ const GroupDetail = () => {
                       </button>
                     )}
                   </div>
-
-                  {showEditForm && (
-                    <form className="edit-group-form" onSubmit={handleUpdateGroup}>
-                      <div className="form-group">
-                        <label>Group Name</label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={editGroupData.name}
-                          onChange={handleEditChange}
-                          required
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Description</label>
-                        <textarea
-                          name="description"
-                          value={editGroupData.description}
-                          onChange={handleEditChange}
-                          rows="3"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>
-                          <input
-                            type="checkbox"
-                            name="is_private"
-                            checked={editGroupData.is_private}
-                            onChange={handleEditChange}
-                          />
-                          Private Group
-                        </label>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Cover Image</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          name="cover_image"
-                          onChange={handleEditChange}
-                        />
-                        {editGroupData.cover_image && <p>{editGroupData.cover_image.name}</p>}
-                      </div>
-
-                      <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
-                        {updatingGroup ? 'Updating...' : 'Update Group'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setShowEditForm(false)}
-                      >
-                        Cancel
-                      </button>
-                    </form>
-                  )}
                 </div>
+
+                {showEditForm && (
+                  <div className="modal-overlay group-edit-modal-overlay" onClick={() => setShowEditForm(false)}>
+                    <div
+                      className="modal-content large group-edit-modal"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="group-edit-modal-header">
+                        <div>
+                          <span className="group-edit-modal-kicker">Group Settings</span>
+                          <h2>Edit Group</h2>
+                          <p>Refine the group identity, privacy, and visual presence.</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="modal-close-btn group-edit-modal-close"
+                          aria-label="Close edit group dialog"
+                          onClick={() => setShowEditForm(false)}
+                        >
+                          <FaTimes />
+                        </button>
+                      </div>
+
+                      <form className="edit-group-form group-edit-form" onSubmit={handleUpdateGroup}>
+                        <div className="group-edit-grid">
+                          <div className="form-group">
+                            <label>Group Name</label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={editGroupData.name}
+                              onChange={handleEditChange}
+                              required
+                            />
+                          </div>
+
+                          <div className="form-group group-edit-privacy">
+                            <label>Visibility</label>
+                            <button
+                              type="button"
+                              className={`private-group-toggle ${editGroupData.is_private ? 'active' : ''}`}
+                              onClick={() =>
+                                setEditGroupData((prev) => ({
+                                  ...prev,
+                                  is_private: !prev.is_private,
+                                }))
+                              }
+                            >
+                              <span className={`toggle-knob ${editGroupData.is_private ? 'active' : ''}`} />
+                              <span className="private-group-toggle-text">
+                                {editGroupData.is_private ? 'Private group' : 'Public group'}
+                              </span>
+                            </button>
+                            <span className="private-group-helper">
+                              Private groups require approval before members can see posts.
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Description</label>
+                          <textarea
+                            name="description"
+                            value={editGroupData.description}
+                            onChange={handleEditChange}
+                            rows="4"
+                            placeholder="Describe the purpose of the group"
+                          />
+                        </div>
+
+                        <div className="group-edit-upload-card">
+                          <div className="group-edit-upload-copy">
+                            <label>Cover Image</label>
+                            <p>Upload a new cover to give the group a more polished header.</p>
+                          </div>
+                          <div className="group-edit-upload-controls">
+                            <label className="cover-picker-btn btn btn-secondary" htmlFor="group-cover-image">
+                              Choose Image
+                            </label>
+                            <input
+                              id="group-cover-image"
+                              type="file"
+                              accept="image/*"
+                              name="cover_image"
+                              className="group-cover-input-hidden"
+                              onChange={handleEditChange}
+                            />
+                            <span className="cover-file-name">
+                              {editGroupData.cover_image ? editGroupData.cover_image.name : 'No file selected'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="modal-actions group-edit-modal-actions">
+                          <button type="button" className="btn btn-secondary" onClick={() => setShowEditForm(false)}>
+                            Cancel
+                          </button>
+                          <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
+                            {updatingGroup ? 'Updating...' : 'Update Group'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
 
                 <div className="dashboard-panel">
                   <div className="dashboard-heading">
                     <h3>30-Day Group Activity</h3>
                     <p>Track how your group is growing and engaging this month.</p>
                   </div>
+
                   <div className="dashboard-stats-grid">
                     <div className="dashboard-stat-card">
                       <span className="stat-label">Posts</span>
@@ -1044,6 +1101,7 @@ const GroupDetail = () => {
                     </div>
                   </div>
                 </div>
+
                 <div className="dashboard-panel queue-panel">
                   <div className="dashboard-bottom">
                     <h3>Delete Group</h3>
@@ -1066,4 +1124,3 @@ const GroupDetail = () => {
 };
 
 export default GroupDetail;
-

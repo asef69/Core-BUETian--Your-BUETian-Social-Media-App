@@ -64,7 +64,12 @@ export const postAPI = {
   getPublicPosts: (limit = 30) => api.get(`/posts/public/?limit=${limit}`),
   getTrending: () => api.get('/posts/trending/'),
   getPost: (postId) => api.get(`/posts/${postId}/`),
-  updatePost: (postId, data) => api.patch(`/posts/${postId}/`, data),
+  updatePost: (postId, data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.patch(`/posts/${postId}/`, data, isFormData ? {
+      // Let the browser set the multipart boundary automatically.
+    } : undefined);
+  },
   deletePost: (postId) => api.delete(`/posts/${postId}/`),
   likePost: (postId) => api.post(`/posts/${postId}/like/`),
   getComments: (postId) => api.get(`/posts/${postId}/comments/`),
@@ -72,7 +77,7 @@ export const postAPI = {
   updateComment: (commentId, data) => api.patch(`/posts/comments/${commentId}/`, data),
   deleteComment: (commentId) => api.delete(`/posts/comments/${commentId}/delete/`),
   searchPosts: (query) => api.get(`/posts/search/?q=${query}`),
-  getPostsByHashtag: (hashtag) => api.get(`/posts/hashtag/${hashtag}/`),
+  getPostsByHashtag: (hashtag) => api.get('/posts/hashtag/', { params: { hashtag } }),
   getTrendingHashtags: (limit = 10) => api.get(`/posts/hashtags/trending/?limit=${limit}`),
   getPostsByMediaType: (mediaType, limit = 20) => api.get(`/posts/media/${mediaType}/?limit=${limit}`),
   getEngagement: (postId) => api.get(`/posts/${postId}/engagement/`),
@@ -209,13 +214,11 @@ export const forumAPI = {
 
 
 export const notificationAPI = {
-  getAll: () => api.get('/notifications/'),
-  getUnread: () => api.get('/notifications/unread/'),
+  getAll: (limit = 200) => api.get('/notifications/', { params: { limit } }),
+  getUnread: (limit = 200) => api.get('/notifications/unread/', { params: { limit } }),
   getCount: () => api.get('/notifications/count/'),
   getSummary: () => api.get('/notifications/summary/'),
   getActivity: (limit = 20) => api.get(`/notifications/activity/?limit=${limit}`),
-  getPreferences: () => api.get('/notifications/preferences/'),
-  updatePreferences: (data) => api.patch('/notifications/preferences/', data),
   markByType: (type) => api.post(`/notifications/mark-read/${type}/`),
   markAsRead: (notificationId) => api.post(`/notifications/${notificationId}/read/`),
   markAllRead: () => api.post('/notifications/read-all/'),
@@ -231,6 +234,7 @@ export const blogAPI = {
   getBlogDetail: (blogId) => api.get(`/blogs/${blogId}/`),
   trackView: (blogId) => api.post(`/blogs/${blogId}/view/`),
   createBlog: (data) => api.post('/blogs/create/', data),
+  updateBlog: (blogId, data) => api.patch(`/blogs/${blogId}/update/`, data),
   toggleLike: (blogId) => api.post(`/blogs/${blogId}/like/`),
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),

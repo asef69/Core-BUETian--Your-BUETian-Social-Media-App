@@ -48,7 +48,6 @@ const NonMemberGroupView = () => {
                 };
 
                 const groupRes = await groupAPI.getGroup(groupId);
-                setGroup(groupRes.data);
                 const groupData = groupRes.data;
                 const initialMembershipStatus = groupData?.member_status || 'none';
 
@@ -108,7 +107,6 @@ const NonMemberGroupView = () => {
                 const invited =
                     initialMembershipStatus === 'invited' ||
                     invites.some((inv) => String(inv.group_id) === String(groupId));
-
                 setIsInvited(invited);
 
             } catch (err) {
@@ -171,7 +169,6 @@ const NonMemberGroupView = () => {
     const canOpenGroup = membershipStatus === 'accepted' || group?.is_member === true;
     const isPending = membershipStatus === 'pending';
     const isInvitedState = isInvited || membershipStatus === 'invited';
-
 
     if (loading) return <div className="loading">Loading group...</div>;
     if (!group) return <div>Group not found</div>;

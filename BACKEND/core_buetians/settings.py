@@ -12,11 +12,48 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+import warnings
 from datetime import timedelta
 from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# drf_yasg still imports pkg_resources, which emits a deprecation warning.
+warnings.filterwarnings(
+    'ignore',
+    message='pkg_resources is deprecated as an API.*',
+    category=UserWarning,
+    module='drf_yasg.*',
+)
+
+
+def _force_env_values_from_file(env_path: Path, keys: set[str]) -> None:
+    """Load selected keys from .env and force them into os.environ."""
+    if not env_path.exists():
+        return
+
+    with env_path.open(encoding='utf-8') as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+
+            key, value = line.split('=', 1)
+            key = key.strip()
+            if key not in keys:
+                continue
+
+            value = value.strip()
+            if len(value) >= 2 and ((value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'")):
+                value = value[1:-1]
+            os.environ[key] = value
+
+
+_force_env_values_from_file(
+    BASE_DIR / '.env',
+    {'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT'},
+)
 
 
 # Quick-start development settings - unsuitable for production

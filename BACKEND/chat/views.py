@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
+from rest_framework.permissions import IsAuthenticated
 
 
 def _can_message(sender_id, receiver_id):
@@ -11,9 +12,17 @@ def _can_message(sender_id, receiver_id):
         'can_user_message',
         (sender_id, receiver_id)
     )
-    return result[0]['can_message'] if result else False
+    row = result[0] if result else {}
+    if not isinstance(row, dict):
+        return False
+    if 'can_message' in row:
+        return bool(row['can_message'])
+    if 'can_users_chat' in row:
+        return bool(row['can_users_chat'])
+    return bool(next(iter(row.values()))) if row else False
 
 class ConversationListView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get list of all conversations for the authenticated user.
     
@@ -79,6 +88,7 @@ class ConversationListView(APIView):
 
 
 class MessageListView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Retrieve messages between authenticated user and another user.
     
@@ -163,6 +173,7 @@ class MessageListView(APIView):
 
 
 class SendMessageView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Send a text message via REST API (fallback if WebSocket unavailable).
     
@@ -235,6 +246,7 @@ class SendMessageView(APIView):
 
 
 class UploadChatImageView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Upload an image file for use in chat messages.
     
@@ -308,6 +320,7 @@ class UploadChatImageView(APIView):
 
 
 class UploadChatVideoView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Upload a video file for use in chat messages.
 
@@ -365,6 +378,7 @@ class UploadChatVideoView(APIView):
 
 
 class SendMessageWithImageView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Send a message with an attached image.
     
@@ -453,6 +467,7 @@ class SendMessageWithImageView(APIView):
 
 
 class ProductMessageListView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Get messages between authenticated user and another user for a specific product.
     
@@ -501,6 +516,7 @@ class ProductMessageListView(APIView):
 
 
 class ContactSellerView(APIView):
+        permission_classes = [IsAuthenticated]
     """
     Initiate contact with seller about a specific product.
     

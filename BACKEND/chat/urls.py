@@ -40,3 +40,4 @@ urlpatterns = [
     path('can-message/<int:user_id>/', CanSendMessageView.as_view()),
 
 ]
+

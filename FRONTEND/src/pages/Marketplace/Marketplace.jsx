@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaMapMarkerAlt, FaTag, FaBox, FaChartLine } from 'react-icons/fa';
 import '../../styles/Marketplace.css';
 
 const HARD_CODED_CATEGORIES = [
@@ -150,7 +150,7 @@ const Marketplace = () => {
         <div className="container">
           <div className="marketplace-header">
             <h1>Marketplace</h1>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="marketplace-actions">
               <button
                 className={`btn ${activeTab === 'browse' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setActiveTab('browse')}
@@ -178,7 +178,7 @@ const Marketplace = () => {
             <>
               {activeTab === 'browse' && (
                 <>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <div className="marketplace-status-filters">
                     {['all', 'available', 'reserved', 'sold'].map((status) => (
                       <button
                         key={`browse-${status}`}
@@ -211,10 +211,14 @@ const Marketplace = () => {
                           <div className="product-info">
                             <h3>{product.title}</h3>
                             <p className="product-price">
-                              BDT {product.price}
+                              <FaTag size={14} /> BDT {product.price}
                             </p>
-                            <p className="product-condition">{product.condition}</p>
-                            <p className="product-location">{product.location}</p>
+                            <p className="product-condition">
+                              <FaBox size={12} /> {product.condition}
+                            </p>
+                            <p className="product-location">
+                              <FaMapMarkerAlt size={12} /> {product.location}
+                            </p>
                             <p className={`market-status status-${(product.status || 'available').toLowerCase()}`}>
                               {(product.status || 'available').toUpperCase()}
                             </p>
@@ -229,26 +233,26 @@ const Marketplace = () => {
 
               {activeTab === 'seller' && (
                 <div>
-                  <div className="products-grid" style={{ marginBottom: '14px' }}>
-                    <div className="product-card" style={{ padding: '12px' }}>
+                  <div className="products-grid marketplace-stats-grid">
+                    <div className="product-card marketplace-stat-card">
                       <h3>Total Listings</h3>
                       <p className="product-price">{myStats.total_products || 0}</p>
                     </div>
-                    <div className="product-card" style={{ padding: '12px' }}>
+                    <div className="product-card marketplace-stat-card">
                       <h3>Available</h3>
                       <p className="product-price">{myStats.available_products || 0}</p>
                     </div>
-                    <div className="product-card" style={{ padding: '12px' }}>
+                    <div className="product-card marketplace-stat-card">
                       <h3>Sold</h3>
                       <p className="product-price">{myStats.sold_products || 0}</p>
                     </div>
-                    <div className="product-card" style={{ padding: '12px' }}>
+                    <div className="product-card marketplace-stat-card">
                       <h3>Revenue</h3>
                       <p className="product-price">BDT {myStats.total_revenue || 0}</p>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <div className="marketplace-status-filters">
                     {['all', 'available', 'reserved', 'sold'].map((status) => (
                       <button
                         key={status}
@@ -297,11 +301,11 @@ const Marketplace = () => {
                   </div>
 
                   {priceRanges.length > 0 && (
-                    <div style={{ marginTop: '14px' }}>
-                      <h3 style={{ marginBottom: '8px' }}>Market Price Range Insights</h3>
-                      <div className="products-grid">
+                    <div className="marketplace-price-insights">
+                      <h3 className="marketplace-price-insights-title">Market Price Range Insights</h3>
+                      <div className="products-grid marketplace-price-insights-grid">
                         {priceRanges.slice(0, 4).map((item, index) => (
-                          <div key={`range-${index}`} className="product-card" style={{ padding: '12px' }}>
+                          <div key={`range-${index}`} className="product-card marketplace-insight-card">
                             <h3>{item.price_range || 'Range'}</h3>
                             <p className="product-condition">Products: {item.product_count || 0}</p>
                             <p className="product-condition">Avg: BDT {item.avg_price || 0}</p>

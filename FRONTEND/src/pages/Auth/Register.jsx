@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/Auth.css';
 
+const DEFAULT_PROFILE_PICTURE = '/media/profile_pictures/default_pfp.jpg';
+
 const Register = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
@@ -211,6 +213,13 @@ const Register = () => {
                 name="profile_picture"
                 accept="image/*"
                 onChange={handleChange}
+              />
+              <p className="default-avatar-note">If you skip upload, this default picture will be used.</p>
+              <img
+                src={DEFAULT_PROFILE_PICTURE}
+                alt="Default profile preview"
+                className="default-avatar-preview"
+                loading="lazy"
               />
             </div>
           </div>

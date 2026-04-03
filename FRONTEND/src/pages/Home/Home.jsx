@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FaBookOpen, FaComments, FaHome, FaPenFancy, FaStore, FaUsers } from 'react-icons/fa';
 import { postAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
@@ -11,6 +11,7 @@ import '../../styles/Home.css';
 
 const Home = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -191,9 +192,9 @@ const Home = () => {
   };
 
   const applyHashtag = (tag) => {
-    setActiveHashtag(tag);
-    setFeedMode('hashtag');
-    setMediaFilter('all');
+    const normalizedTag = String(tag || '').replace(/^#/, '').trim();
+    if (!normalizedTag) return;
+    navigate(`/blogs?tag=${encodeURIComponent(normalizedTag)}`);
   };
 
   return (

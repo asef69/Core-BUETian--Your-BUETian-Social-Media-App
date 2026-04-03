@@ -22,6 +22,117 @@
   max-width: 500px;
 }
 
+.group-edit-modal {
+  max-width: 760px;
+  width: min(760px, 94vw);
+  padding: 0;
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.group-edit-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 26px 28px 18px;
+  background: linear-gradient(145deg, rgba(35, 116, 225, 0.16), rgba(20, 26, 39, 0.98));
+  border-bottom: 1px solid rgba(126, 146, 185, 0.18);
+}
+
+.group-edit-modal-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(35, 116, 225, 0.14);
+  border: 1px solid rgba(35, 116, 225, 0.24);
+  color: #8fc0ff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.group-edit-modal-header h2 {
+  margin: 0 0 6px;
+  color: var(--light-color);
+  font-size: 1.45rem;
+}
+
+.group-edit-modal-header p {
+  margin: 0;
+  color: var(--muted-color);
+  font-size: 0.96rem;
+}
+
+.group-edit-modal-close {
+  flex-shrink: 0;
+}
+
+.group-edit-form {
+  padding: 24px 28px 28px;
+}
+
+.group-edit-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+}
+
+.group-edit-privacy {
+  justify-content: flex-start;
+}
+
+.group-edit-privacy .private-group-toggle {
+  margin-top: 2px;
+}
+
+.group-edit-upload-card {
+  margin-top: 2px;
+  border: 1px solid rgba(126, 146, 185, 0.18);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-edit-upload-copy label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.group-edit-upload-copy p {
+  margin: 0;
+  color: var(--muted-color);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.group-edit-upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.group-edit-upload-controls .cover-picker-btn {
+  margin: 0;
+  cursor: pointer;
+}
+
+.group-edit-modal-actions {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.group-edit-modal-actions .btn {
+  min-width: 140px;
+}
+
 .private-group-form-group {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(126, 146, 185, 0.24);
@@ -785,6 +896,29 @@
 
   .dashboard-panel {
     padding: 14px;
+  }
+
+  .group-edit-modal {
+    width: min(94vw, 760px);
+  }
+
+  .group-edit-modal-header,
+  .group-edit-form {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .group-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .group-edit-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .group-edit-modal-actions .btn {
+    width: 100%;
+    min-width: 0;
   }
 
   .dashboard-stats-grid,

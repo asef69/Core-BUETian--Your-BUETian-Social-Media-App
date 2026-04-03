@@ -1,0 +1,160 @@
+/* Empty State Styles */
+.empty-state-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  min-height: 400px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.empty-state-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-lg);
+  color: var(--muted-color);
+  opacity: 0.6;
+  animation: float 3s ease-in-out infinite;
+}
+
+.empty-state-icon svg {
+  width: 64px;
+  height: 64px;
+}
+
+.empty-state-title {
+  font-size: 1.5rem;
+  color: var(--dark-color);
+  margin-bottom: var(--space-md);
+  font-weight: 600;
+}
+
+.empty-state-description {
+  color: var(--muted-color);
+  font-size: 0.95rem;
+  margin-bottom: var(--space-lg);
+  line-height: 1.6;
+}
+
+.empty-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-md);
+}
+
+.btn-empty-action {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  font-size: 0.95rem;
+}
+
+.btn-empty-action:hover {
+  background: #1a5fbf;
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.btn-empty-action:active {
+  transform: translateY(0);
+}
+
+/* Inline Empty States for Lists */
+.empty-state-inline {
+  padding: var(--space-lg);
+  text-align: center;
+  color: var(--muted-color);
+}
+
+.empty-state-inline svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
+
+/* Search Specific */
+.empty-search-state {
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+.empty-search-suggestions {
+  margin-top: var(--space-lg);
+  text-align: left;
+}
+
+.empty-search-suggestions h4 {
+  color: var(--dark-color);
+  margin-bottom: var(--space-md);
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.suggestion-chip {
+  background: var(--bg-accent-1);
+  color: var(--primary-color);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border: 1px solid transparent;
+}
+
+.suggestion-chip:hover {
+  background: var(--primary-color);
+  color: white;
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .empty-state-container {
+    padding: var(--space-lg);
+    min-height: 300px;
+  }
+
+  .empty-state-title {
+    font-size: 1.25rem;
+  }
+
+  .empty-state-icon svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .empty-state-actions {
+    flex-wrap: wrap;
+  }
+
+  .btn-empty-action {
+    flex: 1;
+    min-width: 140px;
+  }
+}

@@ -7,6 +7,7 @@ import { FaTint, FaBook, FaPlus } from 'react-icons/fa';
 import moment from 'moment';
 import '../../styles/Forums.css';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDialog } from '../../utils/confirmDialog';
 
 const Forums = () => {
   const { user: currentUser } = useAuth();
@@ -44,16 +45,18 @@ const Forums = () => {
     description: '',
   });
   const [tuitionData, setTuitionData] = useState(initialTuitionData);
+  const [subjectInput, setSubjectInput] = useState("");
   const [tuitionFilters, setTuitionFilters] = useState({
     postType: '',
     subject: '',
     location: '',
     minSalary: '',
+    preferredGender: '',
   });
   const [bloodFilters, setBloodFilters] = useState({
     bloodGroup: '',
     urgency: '',
-    sortByDate: true, // true = descending (newest first), false = ascending
+    sortByDate: true,
   });
 
   useEffect(() => {
@@ -82,10 +85,11 @@ const Forums = () => {
         return Object.fromEntries(
           Object.entries(data).map(([key, value]) => [
             key,
-            value === "" ? null : value
+            value === '' ? null : value,
           ])
         );
       };
+
       if (editingBloodId) {
         await forumAPI.updateBloodRequest(editingBloodId, cleanData(bloodData));
         toast.success('Blood request updated!');
@@ -93,6 +97,7 @@ const Forums = () => {
         await forumAPI.createBloodRequest(cleanData(bloodData));
         toast.success('Blood request posted!');
       }
+
       setShowBloodModal(false);
       setEditingBloodId(null);
       setBloodData({
@@ -114,28 +119,56 @@ const Forums = () => {
   const handleCreateTuitionPost = async (e) => {
     e.preventDefault();
     try {
+      // Ensure correct data types and required fields
       const cleanData = (data) => {
-        return Object.fromEntries(
-          Object.entries(data).map(([key, value]) => [
-            key,
-            value === "" ? null : value
-          ])
-        );
+        const cleaned = { ...data };
+        // Required fields
+        if (!cleaned.post_type) throw new Error('Post type is required');
+        if (!cleaned.contact_number) throw new Error('Contact number is required');
+        // Subjects must be an array
+        if (!Array.isArray(cleaned.subjects)) cleaned.subjects = [];
+        // Convert empty strings to null for optional fields
+        [
+          'class_level',
+          'location',
+          'salary_min',
+          'salary_max',
+          'days_per_week',
+          'duration_hours',
+          'requirements',
+          'preferred_gender',
+        ].forEach((key) => {
+          if (cleaned[key] === '') cleaned[key] = null;
+        });
+        // Convert numeric fields to numbers or null
+        ['salary_min', 'salary_max', 'days_per_week', 'duration_hours'].forEach((key) => {
+          if (cleaned[key] !== null && cleaned[key] !== undefined && cleaned[key] !== '') {
+            const num = Number(cleaned[key]);
+            cleaned[key] = isNaN(num) ? null : num;
+          }
+        });
+        // Gender default
+        if (!cleaned.preferred_gender) cleaned.preferred_gender = 'any';
+        return cleaned;
       };
+
+      const payload = cleanData(tuitionData);
+
       if (editingTuitionId) {
-        await forumAPI.updateTuitionPost(editingTuitionId, cleanData(tuitionData));
+        await forumAPI.updateTuitionPost(editingTuitionId, payload);
         toast.success('Tuition post updated!');
       } else {
-        await forumAPI.createTuitionPost(cleanData(tuitionData));
+        await forumAPI.createTuitionPost(payload);
         toast.success('Tuition post created!');
       }
+
       setShowSeekTuitionModal(false);
       setShowOfferTuitionModal(false);
       setEditingTuitionId(null);
       setTuitionData(initialTuitionData);
       loadForums();
     } catch (error) {
-      toast.error('Failed to save tuition post');
+      toast.error(error.message || 'Failed to save tuition post');
     }
   };
 
@@ -169,14 +202,23 @@ const Forums = () => {
   };
 
   const handleDeleteBlood = async (requestId) => {
-    if (!window.confirm('Delete this blood request?')) return;
-    try {
-      await forumAPI.deleteBloodRequest(requestId);
-      toast.success('Blood request deleted');
-      loadForums();
-    } catch (error) {
-      toast.error('Failed to delete blood request');
-    }
+    await confirmDialog({
+      title: 'Delete Blood Request',
+      message: 'Are you sure you want to delete this blood request?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await forumAPI.deleteBloodRequest(requestId);
+          toast.success('Blood request deleted');
+          loadForums();
+        } catch (error) {
+          toast.error('Failed to delete blood request');
+          throw error;
+        }
+      },
+    });
   };
 
   const handleEditTuition = (post) => {
@@ -206,14 +248,23 @@ const Forums = () => {
   };
 
   const handleDeleteTuition = async (postId) => {
-    if (!window.confirm('Delete this tuition post?')) return;
-    try {
-      await forumAPI.deleteTuitionPost(postId);
-      toast.success('Tuition post deleted');
-      loadForums();
-    } catch (error) {
-      toast.error('Failed to delete tuition post');
-    }
+    await confirmDialog({
+      title: 'Delete Tuition Post',
+      message: 'Are you sure you want to delete this tuition post?',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          await forumAPI.deleteTuitionPost(postId);
+          toast.success('Tuition post deleted');
+          loadForums();
+        } catch (error) {
+          toast.error('Failed to delete tuition post');
+          throw error;
+        }
+      },
+    });
   };
 
   return (
@@ -252,27 +303,26 @@ const Forums = () => {
                       <FaPlus /> Create Request
                     </button>
                   </div>
-                  <div style={{ display: 'flex', gap: '20px' }}>
-                    <div className="forum-posts" style={{ flex: 1 }}>
+                  <div className="forum-layout">
+                    <div className="forum-posts forum-posts-main">
                       {(() => {
                         let filteredRequests = bloodRequests.filter((request) => {
-                          const bloodGroupMatch = bloodFilters.bloodGroup === '' || request.blood_group === bloodFilters.bloodGroup;
-                          const urgencyMatch = bloodFilters.urgency === '' || request.urgency === bloodFilters.urgency;
+                          const bloodGroupMatch =
+                            bloodFilters.bloodGroup === '' || request.blood_group === bloodFilters.bloodGroup;
+                          const urgencyMatch =
+                            bloodFilters.urgency === '' || request.urgency === bloodFilters.urgency;
                           return bloodGroupMatch && urgencyMatch;
                         });
 
-                        // Sort by needed_date (ascending - most urgent/nearest date first)
-                        // Secondary sort: if same needed_date, sort by created_at (earliest posted first)
                         if (bloodFilters.sortByDate) {
                           filteredRequests = filteredRequests.sort((a, b) => {
                             const dateA = new Date(a.needed_date).getTime();
                             const dateB = new Date(b.needed_date).getTime();
-                            
 
                             if (dateA !== dateB) {
                               return dateA - dateB;
                             }
-                            
+
                             const createdA = new Date(a.created_at).getTime();
                             const createdB = new Date(b.created_at).getTime();
                             return createdA - createdB;
@@ -283,45 +333,61 @@ const Forums = () => {
                           <p>No blood requests matching filters</p>
                         ) : (
                           filteredRequests.map((request) => (
-                        <div key={request.id || request.request_id} className="forum-post blood-request">
-                          <div className="post-header">
-                            <div className="blood-group-badge">{request.blood_group}</div>
-                            <div className={`urgency-badge urgency-${request.urgency}`}>
-                              {request.urgency}
+                            <div key={request.id || request.request_id} className="forum-post blood-request">
+                              <div className="post-header">
+                                <div className="blood-group-badge">{request.blood_group}</div>
+                                <div className={`urgency-badge urgency-${request.urgency}`}>
+                                  {request.urgency}
+                                </div>
+                              </div>
+                              <h3>{request.patient_name}</h3>
+                              <p>
+                                <strong>Hospital:</strong> {request.hospital_name}
+                              </p>
+                              <p>
+                                <strong>Address:</strong> {request.hospital_address}
+                              </p>
+                              <p>
+                                <strong>Needed Date:</strong>{' '}
+                                {moment(request.needed_date).format('MMM DD, YYYY')}
+                              </p>
+                              <p>
+                                <strong>Contact:</strong> {request.contact_number}
+                              </p>
+                              {request.description && <p>{request.description}</p>}
+                              <div className="post-meta">
+                                <span>Posted {moment.utc(request.created_at).local().fromNow()}</span>
+                                <span className="status-badge">{request.status}</span>
+                              </div>
+                              {currentUser?.id && Number(currentUser.id) === Number(request.requester_id) && (
+                                <div className="post-meta">
+                                  <button className="btn btn-secondary" onClick={() => handleEditBlood(request)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="btn btn-danger"
+                                    onClick={() => handleDeleteBlood(request.id || request.request_id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                              {currentUser?.id &&
+                                Number(currentUser.id) !== Number(request.requester_id) &&
+                                request.requester_id && (
+                                  <div className="post-meta">
+                                    <Link
+                                      to={`/chat/${request.requester_id}?message=${encodeURIComponent(
+                                        `Hi, I saw your blood request for ${request.blood_group} at ${request.hospital_name}. I want to help.`
+                                      )}`}
+                                      className="btn btn-primary"
+                                    >
+                                      Message Requester
+                                    </Link>
+                                  </div>
+                                )}
                             </div>
-                          </div>
-                          <h3>{request.patient_name}</h3>
-                          <p><strong>Hospital:</strong> {request.hospital_name}</p>
-                          <p><strong>Address:</strong> {request.hospital_address}</p>
-                          <p><strong>Needed Date:</strong> {moment(request.needed_date).format('MMM DD, YYYY')}</p>
-                          <p><strong>Contact:</strong> {request.contact_number}</p>
-                          {request.description && <p>{request.description}</p>}
-                          <div className="post-meta">
-                            <span>Posted {moment.utc(request.created_at).local().fromNow()}</span>
-                            <span className="status-badge">{request.status}</span>
-                          </div>
-                          {currentUser?.id && Number(currentUser.id) === Number(request.requester_id) && (
-                            <div className="post-meta">
-                              <button className="btn btn-secondary" onClick={() => handleEditBlood(request)}>
-                                Edit
-                              </button>
-                              <button className="btn btn-danger" onClick={() => handleDeleteBlood(request.id || request.request_id)}>
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                          {currentUser?.id && Number(currentUser.id) !== Number(request.requester_id) && request.requester_id && (
-                            <div className="post-meta">
-                              <Link
-                                to={`/chat/${request.requester_id}?message=${encodeURIComponent(`Hi, I saw your blood request for ${request.blood_group} at ${request.hospital_name}. I want to help.`)}`}
-                                className="btn btn-primary"
-                              >
-                                Message Requester
-                              </Link>
-                            </div>
-                          )}
-                        </div>
-                      ))
+                          ))
                         );
                       })()}
                     </div>
@@ -357,11 +423,13 @@ const Forums = () => {
                         </select>
                       </div>
                       <div className="filter-input-group">
-                        <label>
+                        <label className="filter-checkbox-label">
                           <input
                             type="checkbox"
                             checked={bloodFilters.sortByDate}
-                            onChange={(e) => setBloodFilters({ ...bloodFilters, sortByDate: e.target.checked })}
+                            onChange={(e) =>
+                              setBloodFilters({ ...bloodFilters, sortByDate: e.target.checked })
+                            }
                             style={{ marginRight: '8px' }}
                           />
                           Sort by Needed Date (Urgent First)
@@ -382,7 +450,7 @@ const Forums = () => {
                 <div className="forum-section">
                   <div className="section-header">
                     <h2>Tuition Posts</h2>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div className="section-actions">
                       <button className="btn btn-primary" onClick={openSeekTuitionModal}>
                         <FaPlus />Seek Tutor
                       </button>
@@ -391,71 +459,107 @@ const Forums = () => {
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '20px' }}>
-                    <div className="forum-posts" style={{ flex: 1 }}>
+                  <div className="forum-layout">
+                    <div className="forum-posts forum-posts-main">
                       {(() => {
                         const filteredPosts = tuitionPosts.filter((post) => {
-                          const typeMatch = tuitionFilters.postType === '' || post.post_type === tuitionFilters.postType;
-                          const subjectMatch = tuitionFilters.subject === '' || 
-                            (Array.isArray(post.subjects) && post.subjects.some(s => s.toLowerCase().includes(tuitionFilters.subject.toLowerCase())));
-                          const locationMatch = tuitionFilters.location === '' || 
+                          const typeMatch =
+                            tuitionFilters.postType === '' || post.post_type === tuitionFilters.postType;
+                          const subjectMatch =
+                            tuitionFilters.subject === '' ||
+                            (Array.isArray(post.subjects) &&
+                              post.subjects.some((s) =>
+                                s.toLowerCase().includes(tuitionFilters.subject.toLowerCase())
+                              ));
+                          const locationMatch =
+                            tuitionFilters.location === '' ||
                             post.location.toLowerCase().includes(tuitionFilters.location.toLowerCase());
-                          const salaryMatch = tuitionFilters.minSalary === '' || 
+                          const salaryMatch =
+                            tuitionFilters.minSalary === '' ||
                             (post.salary_min && Number(post.salary_min) >= Number(tuitionFilters.minSalary));
-                          return typeMatch && subjectMatch && locationMatch && salaryMatch;
+                          const genderMatch =
+                            tuitionFilters.preferredGender === '' ||
+                            (post.preferred_gender && post.preferred_gender.toLowerCase() === tuitionFilters.preferredGender.toLowerCase());
+                          return typeMatch && subjectMatch && locationMatch && salaryMatch && genderMatch;
                         });
 
                         return filteredPosts.length === 0 ? (
                           <p>No tuition posts available</p>
                         ) : (
                           filteredPosts.map((post) => (
-                        <div key={post.id || post.tuition_id} className="forum-post tuition-post">
-                          {(() => {
-                            const posterId = Number(post.poster_id || post.user_id || post.poster?.id || 0);
-                            const messageText = `Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`;
-                            return (
-                              <>
-                                <div className="post-type-badge">
-                                  {post.post_type === 'seeking_tutor' ? 'Seeking Tutor' : 'Offering Tuition'}
-                                </div>
-                                <h3>Grade : {post.class_level}</h3>
-                                <p><strong>Subject(s):</strong> {Array.isArray(post.subjects) && post.subjects.length > 0 ? post.subjects.join(', ') : 'N/A'}</p>
-                                <p><strong>Location:</strong> {post.location}</p>
-                                <p><strong>Salary Range:</strong> ${post.salary_min} - ${post.salary_max}</p>
-                                <p><strong>Days per Week:</strong> {post.days_per_week}</p>
-                                <p><strong>Duration:</strong> {post.duration_hours} hours</p>
-                                <p><strong>Preferred Gender:</strong> {post.preferred_gender}</p>
-                                {post.requirements && <p><strong>Requirements:</strong> {post.requirements}</p>}
-                                <p><strong>Contact:</strong> {post.contact_number}</p>
-                                <div className="post-meta">
-                                  <span>Posted {moment.utc(post.created_at).local().fromNow()}</span>
-                                  <span className="status-badge">{post.status}</span>
-                                </div>
-                                {currentUser?.id && Number(currentUser.id) === posterId && (
-                                  <div className="post-meta">
-                                    <button className="btn btn-secondary" onClick={() => handleEditTuition(post)}>
-                                      Edit
-                                    </button>
-                                    <button className="btn btn-danger" onClick={() => handleDeleteTuition(post.id || post.tuition_id)}>
-                                      Delete/Booked
-                                    </button>
-                                  </div>
-                                )}
-                                {currentUser?.id && Number(currentUser.id) !== posterId && posterId > 0 && (
-                                  <div className="post-meta">
-                                    <Link
-                                      to={`/chat/${posterId}?message=${encodeURIComponent(messageText)}`}
-                                      className="btn btn-primary"
-                                    >
-                                      Message Poster
-                                    </Link>
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      ))
+                            <div key={post.id || post.tuition_id} className="forum-post tuition-post">
+                              {(() => {
+                                const posterId = Number(post.poster_id || post.user_id || post.poster?.id || 0);
+                                const messageText = `Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`;
+                                return (
+                                  <>
+                                    <div className="post-type-badge">
+                                      {post.post_type === 'seeking_tutor'
+                                        ? 'Seeking Tutor'
+                                        : 'Offering Tuition'}
+                                    </div>
+                                    <h3>Grade : {post.class_level}</h3>
+                                    <p>
+                                      <strong>Subject(s):</strong>{' '}
+                                      {Array.isArray(post.subjects) && post.subjects.length > 0
+                                        ? post.subjects.join(', ')
+                                        : 'N/A'}
+                                    </p>
+                                    <p>
+                                      <strong>Location:</strong> {post.location}
+                                    </p>
+                                    <p>
+                                      <strong>Salary Range:</strong> ${post.salary_min} - ${post.salary_max}
+                                    </p>
+                                    <p>
+                                      <strong>Days per Week:</strong> {post.days_per_week}
+                                    </p>
+                                    <p>
+                                      <strong>Duration:</strong> {post.duration_hours} hours
+                                    </p>
+                                    <p>
+                                      <strong>{post.post_type === 'offering_tuition' ? 'Student Preferred Gender' : 'Tutor Preferred Gender'}:</strong> {post.preferred_gender}
+                                    </p>
+                                    {post.requirements && (
+                                      <p>
+                                        <strong>Requirements:</strong> {post.requirements}
+                                      </p>
+                                    )}
+                                    <p>
+                                      <strong>Contact:</strong> {post.contact_number}
+                                    </p>
+                                    <div className="post-meta">
+                                      <span>Posted {moment.utc(post.created_at).local().fromNow()}</span>
+                                      <span className="status-badge">{post.status}</span>
+                                    </div>
+                                    {currentUser?.id && Number(currentUser.id) === posterId && (
+                                      <div className="post-meta">
+                                        <button className="btn btn-secondary" onClick={() => handleEditTuition(post)}>
+                                          Edit
+                                        </button>
+                                        <button
+                                          className="btn btn-danger"
+                                          onClick={() => handleDeleteTuition(post.id || post.tuition_id)}
+                                        >
+                                          Delete/Booked
+                                        </button>
+                                      </div>
+                                    )}
+                                    {currentUser?.id && Number(currentUser.id) !== posterId && posterId > 0 && (
+                                      <div className="post-meta">
+                                        <Link
+                                          to={`/chat/${posterId}?message=${encodeURIComponent(messageText)}`}
+                                          className="btn btn-primary"
+                                        >
+                                          Message Poster
+                                        </Link>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))
                         );
                       })()}
                     </div>
@@ -464,19 +568,29 @@ const Forums = () => {
                       <div className="filter-type-buttons">
                         <button
                           onClick={() => setTuitionFilters({ ...tuitionFilters, postType: '' })}
-                          className={`filter-type-btn ${tuitionFilters.postType === '' ? 'active-all' : ''}`}
+                          className={`filter-type-btn ${
+                            tuitionFilters.postType === '' ? 'active-all' : ''
+                          }`}
                         >
                           All
                         </button>
                         <button
-                          onClick={() => setTuitionFilters({ ...tuitionFilters, postType: 'seeking_tutor' })}
-                          className={`filter-type-btn ${tuitionFilters.postType === 'seeking_tutor' ? 'active-seek' : ''}`}
+                          onClick={() =>
+                            setTuitionFilters({ ...tuitionFilters, postType: 'seeking_tutor' })
+                          }
+                          className={`filter-type-btn ${
+                            tuitionFilters.postType === 'seeking_tutor' ? 'active-seek' : ''
+                          }`}
                         >
                           Seek
                         </button>
                         <button
-                          onClick={() => setTuitionFilters({ ...tuitionFilters, postType: 'offering_tuition' })}
-                          className={`filter-type-btn ${tuitionFilters.postType === 'offering_tuition' ? 'active-offer' : ''}`}
+                          onClick={() =>
+                            setTuitionFilters({ ...tuitionFilters, postType: 'offering_tuition' })
+                          }
+                          className={`filter-type-btn ${
+                            tuitionFilters.postType === 'offering_tuition' ? 'active-offer' : ''
+                          }`}
                         >
                           Offer
                         </button>
@@ -505,11 +619,26 @@ const Forums = () => {
                           type="number"
                           placeholder="e.g., 5000"
                           value={tuitionFilters.minSalary}
-                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, minSalary: e.target.value })}
+                          onChange={(e) =>
+                            setTuitionFilters({ ...tuitionFilters, minSalary: e.target.value })
+                          }
                         />
                       </div>
+                      <div className="filter-input-group">
+                        <label>Preferred Gender (Optional)</label>
+                        <select
+                          value={tuitionFilters.preferredGender}
+                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, preferredGender: e.target.value })}
+                        >
+                          <option value="">All</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
+                      </div>
                       <button
-                        onClick={() => setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '' })}
+                        onClick={() =>
+                          setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '', preferredGender: '' })
+                        }
                         className="filter-clear-btn"
                       >
                         Clear Filters
@@ -518,13 +647,11 @@ const Forums = () => {
                   </div>
                 </div>
               )}
-
             </>
           )}
         </div>
       </div>
 
-      {/* Blood Request Modal */}
       {showBloodModal && (
         <div className="modal-overlay" onClick={() => setShowBloodModal(false)}>
           <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
@@ -628,7 +755,6 @@ const Forums = () => {
         </div>
       )}
 
-      {/* Tuition Post Modal */}
       {showSeekTuitionModal && (
         <div className="modal-overlay" onClick={() => setShowSeekTuitionModal(false)}>
           <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
@@ -637,28 +763,70 @@ const Forums = () => {
               <div className="form-group">
                 <label>Subject(s) *</label>
                 <input
-                  type="text"
-                  value={(tuitionData.subjects || []).join(', ')}
-                  onChange={(e) => setTuitionData({
-                    ...tuitionData,
-                    subjects: e.target.value
-                      .split(',')
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  })}
-                  placeholder="e.g., Math, Physics, Chemistry"
-                  required
+                  value={subjectInput}
+                  onChange={(e) => setSubjectInput(e.target.value)}
+                  list="general-subjects"
+                  placeholder="Add subject and press Enter"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = subjectInput.trim();
+                      if (val && !tuitionData.subjects.includes(val)) {
+                        setTuitionData({
+                          ...tuitionData,
+                          subjects: [...tuitionData.subjects, val],
+                        });
+                        setSubjectInput("");
+                      }
+                    }
+                  }}
                 />
+                <datalist id="general-subjects">
+                  <option value="Mathematics" />
+                  <option value="Physics" />
+                  <option value="Chemistry" />
+                  <option value="Biology" />
+                  <option value="English" />
+                  <option value="Bangla" />
+                  <option value="ICT" />
+                  <option value="General Science" />
+                  <option value="Social Science" />
+                  <option value="Economics" />
+                  <option value="Accounting" />
+                  <option value="Business Studies" />
+                  <option value="Higher Math" />
+                  <option value="Islamic Studies" />
+                  <option value="Geography" />
+                  <option value="Civics" />
+                </datalist>
+                <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {tuitionData.subjects && tuitionData.subjects.map((subj) => (
+                    <span key={subj} className="subject-chip">
+                      {subj}
+                      <button
+                        type="button"
+                        className="remove-btn"
+                        onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
+                      >&times;</button>
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="form-group">
                 <label>Class Level *</label>
-                <input
-                  type="text"
+                <select
                   value={tuitionData.class_level}
                   onChange={(e) => setTuitionData({ ...tuitionData, class_level: e.target.value })}
-                  placeholder="e.g., Grade 10, SSC, HSC"
                   required
-                />
+                >
+                  <option value="">Select class</option>
+                  {[...Array(12)].map((_, i) => (
+                    <option key={i+1} value={`Class ${i+1}`}>{`Class ${i+1}`}</option>
+                  ))}
+                  <option value="SSC">SSC</option>
+                  <option value="HSC">HSC</option>
+                  <option value="University">University</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Location *</label>
@@ -713,7 +881,7 @@ const Forums = () => {
                 </div>
               </div>
               <div className="form-group">
-                <label>Preferred Gender</label>
+                <label>Tutor Preferred Gender</label>
                 <select
                   value={tuitionData.preferred_gender}
                   onChange={(e) => setTuitionData({ ...tuitionData, preferred_gender: e.target.value })}
@@ -745,7 +913,11 @@ const Forums = () => {
                 <button type="submit" className="btn btn-primary">
                   {editingTuitionId ? 'Update Post' : 'Create Post'}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowSeekTuitionModal(false)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowSeekTuitionModal(false)}
+                >
                   Cancel
                 </button>
               </div>
@@ -753,6 +925,7 @@ const Forums = () => {
           </div>
         </div>
       )}
+
       {showOfferTuitionModal && (
         <div className="modal-overlay" onClick={() => setShowOfferTuitionModal(false)}>
           <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
@@ -761,28 +934,81 @@ const Forums = () => {
               <div className="form-group">
                 <label>Subject(s) *</label>
                 <input
-                  type="text"
-                  value={(tuitionData.subjects || []).join(', ')}
-                  onChange={(e) => setTuitionData({
-                    ...tuitionData,
-                    subjects: e.target.value
-                      .split(',')
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  })}
-                  placeholder="e.g., Math, ICT, English"
-                  required
+                  value={subjectInput}
+                  onChange={(e) => setSubjectInput(e.target.value)}
+                  list="general-subjects"
+                  placeholder="Add subject and press Enter"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = subjectInput.trim();
+                      if (val && !tuitionData.subjects.includes(val)) {
+                        setTuitionData({
+                          ...tuitionData,
+                          subjects: [...tuitionData.subjects, val],
+                        });
+                        setSubjectInput("");
+                      }
+                    }
+                  }}
                 />
+                <datalist id="general-subjects">
+                  <option value="Mathematics" />
+                  <option value="Physics" />
+                  <option value="Chemistry" />
+                  <option value="Biology" />
+                  <option value="English" />
+                  <option value="Bangla" />
+                  <option value="ICT" />
+                  <option value="General Science" />
+                  <option value="Social Science" />
+                  <option value="Economics" />
+                  <option value="Accounting" />
+                  <option value="Business Studies" />
+                  <option value="Higher Math" />
+                  <option value="Islamic Studies" />
+                  <option value="Geography" />
+                  <option value="Civics" />
+                </datalist>
+                <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {tuitionData.subjects && tuitionData.subjects.map((subj) => (
+                    <span key={subj} className="subject-chip">
+                      {subj}
+                      <button
+                        type="button"
+                        className="remove-btn"
+                        onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
+                      >&times;</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Student Preferred Gender</label>
+                <select
+                  value={tuitionData.preferred_gender}
+                  onChange={(e) => setTuitionData({ ...tuitionData, preferred_gender: e.target.value })}
+                >
+                  <option value="any">Any</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Class Level *</label>
-                <input
-                  type="text"
+                <select
                   value={tuitionData.class_level}
                   onChange={(e) => setTuitionData({ ...tuitionData, class_level: e.target.value })}
-                  placeholder="e.g., Grade 10, SSC, HSC"
                   required
-                />
+                >
+                  <option value="">Select class</option>
+                  {[...Array(12)].map((_, i) => (
+                    <option key={i+1} value={`Class ${i+1}`}>{`Class ${i+1}`}</option>
+                  ))}
+                  <option value="SSC">SSC</option>
+                  <option value="HSC">HSC</option>
+                  <option value="University">University</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>Location *</label>
@@ -853,14 +1079,17 @@ const Forums = () => {
                 <button type="submit" className="btn btn-primary">
                   {editingTuitionId ? 'Update Post' : 'Create Post'}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowOfferTuitionModal(false)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowOfferTuitionModal(false)}
+                >
                   Cancel
                 </button>
               </div>
             </form>
           </div>
         </div>
-
       )}
     </div>
   );
