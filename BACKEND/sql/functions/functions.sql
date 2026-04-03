@@ -618,6 +618,18 @@ SELECT (
           AND ccp.is_active = TRUE
           AND (ccp.expires_at IS NULL OR ccp.expires_at > CURRENT_TIMESTAMP)
     )
+        OR EXISTS(
+                SELECT 1
+                FROM blood_donation_posts bd
+                WHERE bd.status = 'active'
+                    AND bd.user_id IN (p_sender_id, p_receiver_id)
+        )
+        OR EXISTS(
+                SELECT 1
+                FROM tution_posts tp
+                WHERE tp.status = 'active'
+                    AND tp.user_id IN (p_sender_id, p_receiver_id)
+        )
     ) AS can_message;
 END;
 $$ LANGUAGE plpgsql;
