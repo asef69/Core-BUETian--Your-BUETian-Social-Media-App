@@ -1,6 +1,7 @@
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
+from rest_framework.permissions import IsAuthenticated # type: ignore
 from utils.database import DatabaseManager
 
 
@@ -24,6 +25,7 @@ def _ensure_blog_comment_extensions():
     )
 
 class CreateBlogPostView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         data = request.data
@@ -123,6 +125,45 @@ class PublishedBlogsView(APIView):
         mine = request.query_params.get('mine')
         drafts_tab = request.query_params.get('drafts_tab')
 
+        def _attach_edit_delete_flags(rows):
+            request_user_id = getattr(request.user, 'id', None)
+
+            if not request_user_id:
+                for blog in rows:
+                    blog['can_edit'] = False
+                    blog['can_delete'] = False
+                return rows
+
+            owner_by_blog_id = {}
+            unresolved_blog_ids = []
+
+            for blog in rows:
+                blog_id = blog.get('id') or blog.get('blog_id')
+                if not blog_id:
+                    continue
+
+                author_id = blog.get('author_id')
+                if author_id is not None:
+                    owner_by_blog_id[int(blog_id)] = int(author_id) == int(request_user_id)
+                else:
+                    unresolved_blog_ids.append(int(blog_id))
+
+            if unresolved_blog_ids:
+                ownership_rows = DatabaseManager.execute_query(
+                    "SELECT id, author_id FROM blog_posts WHERE id = ANY(%s)",
+                    (unresolved_blog_ids,)
+                )
+                for row in ownership_rows:
+                    owner_by_blog_id[int(row['id'])] = int(row['author_id']) == int(request_user_id)
+
+            for blog in rows:
+                blog_id = blog.get('id') or blog.get('blog_id')
+                can_manage = bool(blog_id) and owner_by_blog_id.get(int(blog_id), False)
+                blog['can_edit'] = can_manage
+                blog['can_delete'] = can_manage
+
+            return rows
+
         # Special logic for drafts tab: show both drafts and scheduled (future) posts for the user
         if mine == 'true' and drafts_tab == 'true':
             query = (
@@ -133,7 +174,7 @@ class PublishedBlogsView(APIView):
             )
             params = [request.user.id]
             result = DatabaseManager.execute_query(query, tuple(params))
-            return Response(result)
+            return Response(_attach_edit_delete_flags(result))
 
         # ...existing code...
         base_table = 'published_blogs'
@@ -187,8 +228,10 @@ class PublishedBlogsView(APIView):
             query += " ORDER BY published_at DESC LIMIT 50"
 
         result = DatabaseManager.execute_query(query, tuple(params))
-        return Response(result)
+        return Response(_attach_edit_delete_flags(result))
 class UpdateBlogPostView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def put(self, request, blog_id):
         data = request.data
         blog = DatabaseManager.execute_query("SELECT author_id FROM blog_posts WHERE id = %s", (blog_id,))
@@ -235,6 +278,8 @@ class UpdateBlogPostView(APIView):
         return self.put(request, blog_id)
 
 class DeleteBlogPostView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def delete(self, request, blog_id):
         blog = DatabaseManager.execute_query("SELECT author_id FROM blog_posts WHERE id = %s", (blog_id,))
         if not blog:

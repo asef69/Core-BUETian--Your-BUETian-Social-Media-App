@@ -173,6 +173,8 @@ class ProductDetailView(APIView):
             "status": "available",
             "seller_id": 5,
             "seller_name": "John Doe",
+                "buyer_id": 9,
+                "buyer_name": "Jane Smith",
             "seller_picture": "path/to/profile.jpg",
             "seller_department": "CSE",
             "images": ["path/to/image1.jpg"],
@@ -224,10 +226,14 @@ class ProductDetailView(APIView):
                     u.name as seller_name,
                     u.profile_picture as seller_picture,
                     u.department_name as seller_department,
+                    bu.id as buyer_id,
+                    bu.name as buyer_name,
+                    bu.profile_picture as buyer_picture,
                     ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
                     p.created_at
                 FROM marketplace_products p
                 INNER JOIN users u ON p.seller_id = u.id
+                LEFT JOIN users bu ON p.buyer_id = bu.id
                 WHERE p.id = %s
                 """,
                 (product_id,)
@@ -240,6 +246,7 @@ class ProductDetailView(APIView):
         images = product.get('images') or []
         product['images'] = [_normalize_media_url(image) for image in images if image]
         product['seller_picture'] = _normalize_media_url(product.get('seller_picture'))
+        product['buyer_picture'] = _normalize_media_url(product.get('buyer_picture'))
         return Response(product)
     
     def patch(self, request, product_id):
@@ -375,9 +382,13 @@ class ProductListView(APIView):
             u.name as seller_name,
             u.profile_picture as seller_picture,
             u.department_name as seller_department,
+            bu.id as buyer_id,
+            bu.name as buyer_name,
+            bu.profile_picture as buyer_picture,
             ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images
         FROM marketplace_products p
         INNER JOIN users u ON p.seller_id = u.id
+        LEFT JOIN users bu ON p.buyer_id = bu.id
         WHERE u.is_active = TRUE
         """
 
@@ -421,6 +432,8 @@ class ProductListView(APIView):
             normalized_images = [_normalize_media_url(image) for image in images if image]
             product['images'] = normalized_images
             product['image'] = normalized_images[0] if normalized_images else None
+            product['seller_picture'] = _normalize_media_url(product.get('seller_picture'))
+            product['buyer_picture'] = _normalize_media_url(product.get('buyer_picture'))
         return Response({
             'results': result,
             'products': result,
@@ -477,8 +490,12 @@ class UserProductsView(APIView):
             p.location,
             p.status,
             p.created_at,
+            bu.id as buyer_id,
+            bu.name as buyer_name,
+            bu.profile_picture as buyer_picture,
             ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images
         FROM marketplace_products p
+        LEFT JOIN users bu ON p.buyer_id = bu.id
         WHERE p.seller_id = %s
         """
         params = [user_id]
@@ -495,6 +512,10 @@ class UserProductsView(APIView):
         params.extend([limit, offset])
         
         result = DatabaseManager.execute_query(query, tuple(params))
+        for product in result:
+            images = product.get('images') or []
+            product['images'] = [_normalize_media_url(image) for image in images if image]
+            product['buyer_picture'] = _normalize_media_url(product.get('buyer_picture'))
         return Response({
             'products': result,
             'total': total,
@@ -551,8 +572,12 @@ class MyProductsView(APIView):
             p.status,
             p.created_at,
             p.updated_at,
+            bu.id as buyer_id,
+            bu.name as buyer_name,
+            bu.profile_picture as buyer_picture,
             ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images
         FROM marketplace_products p
+        LEFT JOIN users bu ON p.buyer_id = bu.id
         WHERE p.seller_id = %s
         """
         params = [request.user.id]
@@ -569,6 +594,10 @@ class MyProductsView(APIView):
         params.extend([limit, offset])
         
         result = DatabaseManager.execute_query(query, tuple(params))
+        for product in result:
+            images = product.get('images') or []
+            product['images'] = [_normalize_media_url(image) for image in images if image]
+            product['buyer_picture'] = _normalize_media_url(product.get('buyer_picture'))
         return Response({
             'products': result,
             'total': total,
@@ -723,9 +752,10 @@ class SearchProductsView(APIView):
         search_pattern = f"%{search_term}%"
         exact_pattern = search_term
 
-        base_where = (
+        base_from = (
             "FROM marketplace_products p "
             "INNER JOIN users u ON p.seller_id = u.id "
+            "LEFT JOIN users bu ON p.buyer_id = bu.id "
             "WHERE p.status = 'available' "
             "AND u.is_active = TRUE "
             "AND (p.title ILIKE %s OR p.description ILIKE %s)"
@@ -736,27 +766,27 @@ class SearchProductsView(APIView):
 
         # Optional filters extend the WHERE and params equally for both queries
         if category:
-            base_where += " AND p.category = %s"
+            base_from += " AND p.category = %s"
             where_params.append(category)
 
         if condition:
-            base_where += " AND p.condition = %s"
+            base_from += " AND p.condition = %s"
             where_params.append(condition)
 
         if min_price:
-            base_where += " AND p.price >= %s"
+            base_from += " AND p.price >= %s"
             where_params.append(float(min_price)) # type: ignore
 
         if max_price:
-            base_where += " AND p.price <= %s"
+            base_from += " AND p.price <= %s"
             where_params.append(float(max_price)) # type: ignore
 
         if location:
-            base_where += " AND p.location ILIKE %s"
+            base_from += " AND p.location ILIKE %s"
             where_params.append(f"%{location}%")
 
         # Count query uses only WHERE params
-        count_query = f"SELECT COUNT(*) as total {base_where}"
+        count_query = f"SELECT COUNT(*) as total {base_from}"
         count_result = DatabaseManager.execute_query(count_query, tuple(where_params))
         total = count_result[0]['total'] if count_result else 0
 
@@ -764,12 +794,13 @@ class SearchProductsView(APIView):
         select_prefix = (
             "SELECT p.id, p.title, p.description, p.price, p.category, p.condition, "
             "p.location, p.status, p.created_at, u.id as seller_id, u.name as seller_name, "
-            "u.profile_picture as seller_picture, "
+            "u.profile_picture as seller_picture, bu.id as buyer_id, bu.name as buyer_name, "
+            "bu.profile_picture as buyer_picture, "
             "ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images, "
             "CASE WHEN p.title ILIKE %s THEN 1 WHEN p.title ILIKE %s THEN 2 ELSE 3 END as relevance "
         )
 
-        data_query = f"{select_prefix}{base_where} ORDER BY relevance, p.created_at DESC LIMIT %s OFFSET %s"
+        data_query = f"{select_prefix}{base_from} ORDER BY relevance, p.created_at DESC LIMIT %s OFFSET %s"
 
         # params: CASE two params + WHERE params + pagination
         data_params = [exact_pattern, search_pattern] + where_params + [limit, offset]
@@ -1032,6 +1063,7 @@ class MarkProductSoldView(APIView):
         - Calls mark_product_sold() function
         - Verifies seller ownership
         - Updates status to 'sold'
+        - Stores an optional buyer_id for display
     
     Notes:
         - Only seller can mark as sold
@@ -1041,14 +1073,41 @@ class MarkProductSoldView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, product_id):
+        buyer_id = request.data.get('buyer_id')
+        if buyer_id not in (None, ''):
+            try:
+                buyer_id = int(buyer_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'buyer_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            buyer_id = None
+
+        product_result = DatabaseManager.execute_query(
+            "SELECT seller_id, status FROM marketplace_products WHERE id = %s",
+            (product_id,)
+        )
+        if not product_result:
+            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        product = product_result[0]
+        if int(product['seller_id']) != int(request.user.id):
+            return Response({'error': 'Only the seller can mark this product as sold'}, status=status.HTTP_403_FORBIDDEN)
+
+        current_status = str(product.get('status') or '').lower()
+        if current_status == 'sold':
+            return Response({'error': 'Product is already marked as sold'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if buyer_id is not None and int(buyer_id) == int(request.user.id):
+            return Response({'error': 'Seller cannot be set as buyer'}, status=status.HTTP_400_BAD_REQUEST)
+
         result = DatabaseManager.execute_function(
             'mark_product_sold',
-            (product_id, request.user.id)
+            (product_id, request.user.id, buyer_id)
         )
         
         if result and result[0].get('mark_product_sold'):
             return Response({'message': 'Product marked as sold'})
-        return Response({'error': 'Unauthorized or product not found'}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'error': 'Failed to mark product as sold'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ConfirmTransactionView(APIView):
@@ -1186,7 +1245,7 @@ class CreateReviewView(APIView):
     
     Validation:
         - Only create if transaction confirmed by both parties
-        - Only buyers can create reviews
+        - Only the recorded buyer can create reviews
         - One review per product per buyer
     """
     permission_classes = [IsAuthenticated]
@@ -1205,8 +1264,8 @@ class CreateReviewView(APIView):
         if not (1 <= rating <= 5):
             return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check product status
-        product_query = "SELECT status, seller_id FROM marketplace_products WHERE id = %s"
+        # Check product status and buyer ownership
+        product_query = "SELECT status, seller_id, buyer_id FROM marketplace_products WHERE id = %s"
         product_result = DatabaseManager.execute_query(product_query, (product_id,))
         
         if not product_result:
@@ -1214,11 +1273,24 @@ class CreateReviewView(APIView):
         
         product_status = product_result[0]['status']
         seller_id = product_result[0]['seller_id']
+        recorded_buyer_id = product_result[0].get('buyer_id')
         
         # Prevent seller from reviewing own product
         if buyer_id == seller_id:
             return Response(
                 {'error': 'You cannot review your own product'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not recorded_buyer_id:
+            return Response(
+                {'error': 'Product does not have a recorded buyer yet'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if int(recorded_buyer_id) != int(buyer_id):
+            return Response(
+                {'error': 'Only the recorded buyer can review this product'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -1420,6 +1492,7 @@ class ReserveProductView(APIView):
         - Calls reserve_product() function
         - Verifies seller ownership
         - Updates status to 'reserved'
+        - Stores an optional buyer_id for display
     
     Notes:
         - Only seller can reserve
@@ -1429,31 +1502,63 @@ class ReserveProductView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, product_id):
-        try:
-            result = DatabaseManager.execute_function(
-                'reserve_product',
-                (product_id, request.user.id)
+        buyer_id = request.data.get('buyer_id')
+        if buyer_id not in (None, ''):
+            try:
+                buyer_id = int(buyer_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'buyer_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            buyer_id = None
+        product_result = DatabaseManager.execute_query(
+            "SELECT seller_id, status, buyer_id FROM marketplace_products WHERE id = %s",
+            (product_id,)
+        )
+
+        if not product_result:
+            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        product = product_result[0]
+        if int(product['seller_id']) != int(request.user.id):
+            return Response({'error': 'Only the seller can reserve this product'}, status=status.HTTP_403_FORBIDDEN)
+
+        current_status = str(product.get('status') or '').lower()
+        current_buyer_id = product.get('buyer_id')
+
+        if current_status == 'sold':
+            return Response({'error': 'Product is already sold and cannot be reserved'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if current_status == 'reserved' and buyer_id is None:
+            if current_buyer_id:
+                return Response(
+                    {'error': f'Product is already reserved for buyer ID {current_buyer_id}. Select a buyer to change reservation.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(
+                {'error': 'Product is already reserved. Select a buyer to update reservation.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            if result and result[0].get('reserve_product'):
-                return Response({'message': 'Product reserved successfully'})
-        except ProgrammingError:
-            pass
+
+        if buyer_id is not None and int(buyer_id) == int(request.user.id):
+            return Response({'error': 'Seller cannot reserve product for themselves'}, status=status.HTTP_400_BAD_REQUEST)
 
         updated = DatabaseManager.execute_update(
             """
             UPDATE marketplace_products
-            SET status = 'reserved', updated_at = CURRENT_TIMESTAMP
+            SET status = 'reserved',
+                buyer_id = COALESCE(%s, buyer_id),
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
-              AND status = 'available'
-                            AND seller_id = %s
+              AND seller_id = %s
+              AND status IN ('available', 'reserved')
             """,
-            (product_id, request.user.id)
+            (buyer_id, product_id, request.user.id)
         )
 
-        if updated:
-            return Response({'message': 'Product reserved successfully'})
+        if not updated:
+            return Response({'error': 'Failed to reserve product. Please refresh and try again.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(
-            {'error': 'Product is not available for reservation'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        if current_status == 'reserved':
+            return Response({'message': 'Reservation updated successfully'})
+
+        return Response({'message': 'Product reserved successfully'})

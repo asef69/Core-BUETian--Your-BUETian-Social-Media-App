@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI, postAPI } from '../../services/apiService';
 import { showToast } from '../../utils/toast.jsx';
 import { confirmDialog } from '../../utils/confirmDialog';
-import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash } from 'react-icons/fa';
+import { useAuth } from '../../context/AuthContext';
+import { FaImage, FaPlus, FaSearch, FaTimes, FaTrash, FaRegCalendarAlt } from 'react-icons/fa';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
 
@@ -26,6 +27,8 @@ const BLOG_CATEGORIES = [
 
 const Blogs = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,13 +51,9 @@ const Blogs = () => {
   const [tab, setTab] = useState('all'); // 'all' or 'drafts'
   const [editingBlog, setEditingBlog] = useState(null);
   const [deletingBlogId, setDeletingBlogId] = useState(null);
+  const scheduleInputRef = useRef(null);
   const tagFilter = String(searchParams.get('tag') || '').replace(/^#/, '').trim();
-  // Helper: get current user id (assumes user info is in localStorage or context)
-  const getCurrentUserId = () => {
-    // Example: adjust as per your auth implementation
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return user.id;
-  };
+  const currentUserId = user?.id;
 
   const handleEditBlog = (blog) => {
     const categoryValue = blog.category || BLOG_CATEGORIES[0];
@@ -129,6 +128,18 @@ const Blogs = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tagFilter]);
 
+  useEffect(() => {
+    const editBlogFromState = location.state?.editBlog;
+    if (!editBlogFromState) return;
+
+    handleEditBlog(editBlogFromState);
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, location.pathname, location.search, navigate]);
+
   const getBlogId = (blog) => blog?.blog_id || blog?.id || blog?.pk;
 
   const filteredBlogs = useMemo(() => {
@@ -180,18 +191,26 @@ const Blogs = () => {
       .map((tag) => tag.trim())
       .filter(Boolean);
 
+    const scheduledInput = createData.scheduled_publish_at;
+    const parsedSchedule =
+      scheduledInput && !isNaN(new Date(scheduledInput).getTime())
+        ? new Date(scheduledInput).toISOString()
+        : null;
+
+    // Checkbox takes precedence. If publish-now is enabled, ignore any schedule value.
+    const publishImmediately = Boolean(createData.is_published);
+    const effectiveSchedule = publishImmediately ? null : parsedSchedule;
+    const effectiveIsPublished = publishImmediately || Boolean(effectiveSchedule);
+
     const payload = {
       title: createData.title,
       excerpt: createData.excerpt || null,
       content: createData.content,
       category: normalizedCategory || null,
       cover_image: uploadedCoverImage || (isEditing ? (editingBlog?.cover_image || null) : null),
-      // If scheduled_publish_at is set, always force is_published to true
-      is_published: createData.scheduled_publish_at ? true : createData.is_published,
+      is_published: effectiveIsPublished,
       tags,
-      scheduled_publish_at: (createData.scheduled_publish_at && !isNaN(new Date(createData.scheduled_publish_at).getTime()))
-        ? new Date(createData.scheduled_publish_at).toISOString()
-        : null,
+      scheduled_publish_at: effectiveSchedule,
     };
 
     try {
@@ -359,7 +378,8 @@ const Blogs = () => {
                 const blogId = getBlogId(blog);
                 if (!blogId) return null;
 
-                const isAuthor = String(blog.author_id) === String(getCurrentUserId());
+                const isAuthor = String(blog.author_id) === String(currentUserId);
+                const canDelete = Boolean(blog.can_delete ?? isAuthor);
                 // Determine if like/view should be disabled
                 const now = new Date();
                 const isDraft = !blog.is_published;
@@ -367,29 +387,18 @@ const Blogs = () => {
                 const disableActions = isDraft || isScheduledFuture;
                 return (
                   <div key={blogId} className="blog-card">
-                    <div className="blog-card-actions">
-                      {isAuthor && (
-                        <>
-                          <button
-                            className="blog-card-action"
-                            type="button"
-                            title="Edit blog"
-                            onClick={() => handleEditBlog(blog)}
-                          >
-                            <FaEdit />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            className="blog-card-action blog-card-action-danger"
-                            type="button"
-                            title="Delete blog"
-                            onClick={() => handleDeleteBlog(blogId)}
-                            disabled={deletingBlogId === blogId}
-                          >
-                            <FaTrash />
-                            <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
-                          </button>
-                        </>
+                    <div className={`blog-card-actions ${canDelete ? 'always-visible' : ''}`}>
+                      {canDelete && (
+                        <button
+                          className="blog-card-action blog-card-action-danger"
+                          type="button"
+                          title="Delete blog"
+                          onClick={() => handleDeleteBlog(blogId)}
+                          disabled={deletingBlogId === blogId}
+                        >
+                          <FaTrash />
+                          <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
+                        </button>
                       )}
                     </div>
                     <Link
@@ -590,27 +599,63 @@ const Blogs = () => {
                     placeholder="react, django, buet"
                   />
                 </div>
-                <div className="form-group form-checkbox">
-                  <label htmlFor="blog-publish">
-                    <input
-                      id="blog-publish"
-                      type="checkbox"
-                      checked={createData.is_published}
-                      onChange={(e) => setCreateData({ ...createData, is_published: e.target.checked })}
-                    />{' '}
-                    Publish immediately
-                  </label>
+                <div className="form-group form-toggle">
+                  <button
+                    id="blog-publish"
+                    type="button"
+                    className={`publish-toggle ${createData.is_published ? 'active' : ''}`}
+                    onClick={() => {
+                      const nextPublished = !createData.is_published;
+                      setCreateData({
+                        ...createData,
+                        is_published: nextPublished,
+                        scheduled_publish_at: nextPublished ? '' : createData.scheduled_publish_at,
+                      });
+                    }}
+                    aria-pressed={createData.is_published}
+                    aria-label="Toggle publish immediately"
+                  >
+                    <span className="toggle-knob" />
+                    <span className="toggle-label">
+                      {createData.is_published ? 'Publish immediately' : 'Save as draft'}
+                    </span>
+                  </button>
                 </div>
                 <div className="form-group">
                   <label htmlFor="blog-schedule">Schedule publish date <span className="optional">(Optional)</span></label>
-                  <input
-                    id="blog-schedule"
-                    type="datetime-local"
-                    className="input-md"
-                    value={createData.scheduled_publish_at}
-                    onChange={(e) => setCreateData({ ...createData, scheduled_publish_at: e.target.value })}
-                  />
-                  <small className="form-hint">Leave blank to not schedule. If set, the blog will be published at this date/time.</small>
+                  <div className="schedule-input-wrap">
+                    <input
+                      ref={scheduleInputRef}
+                      id="blog-schedule"
+                      type="datetime-local"
+                      className="input-md schedule-input"
+                      value={createData.scheduled_publish_at}
+                      disabled={createData.is_published}
+                      onChange={(e) => setCreateData({ ...createData, scheduled_publish_at: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="schedule-picker-btn"
+                      disabled={createData.is_published}
+                      aria-label="Open date and time picker"
+                      onClick={() => {
+                        const inputEl = scheduleInputRef.current;
+                        if (!inputEl) return;
+                        if (typeof inputEl.showPicker === 'function') {
+                          inputEl.showPicker();
+                          return;
+                        }
+                        inputEl.focus();
+                      }}
+                    >
+                      <FaRegCalendarAlt aria-hidden="true" />
+                    </button>
+                  </div>
+                  <small className="form-hint">
+                    {createData.is_published
+                      ? 'Scheduling is disabled while Publish immediately is enabled.'
+                      : 'Leave blank to keep it as draft. If set, the blog will be published at this date/time.'}
+                  </small>
                 </div>
                 <div className="modal-actions">
                   <button className="btn btn-primary btn-lg" type="submit" disabled={creating}>

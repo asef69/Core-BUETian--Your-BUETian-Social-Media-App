@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
 import moment from 'moment';
-import { FaHeart, FaRegHeart } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaEdit } from 'react-icons/fa';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/Blogs.css';
 
 const BlogDetail = () => {
   const { blogId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [blog, setBlog] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +20,10 @@ const BlogDetail = () => {
   const [liked, setLiked] = useState(false);
   const [replyingComments, setReplyingComments] = useState({});
   const [replyContent, setReplyContent] = useState({});
+
+  const currentUserId = user?.id;
+  const isAuthor = String(blog?.author_id || '') === String(currentUserId || '');
+  const canEdit = Boolean(blog?.can_edit ?? isAuthor);
 
   const normalizeComment = (comment) => ({
     ...comment,
@@ -263,6 +270,19 @@ const BlogDetail = () => {
     );
   };
 
+  const handleEditFromDetail = () => {
+    if (!blog) return;
+
+    const blogForEdit = {
+      ...blog,
+      blog_id: blog.blog_id || blog.id || Number(blogId),
+    };
+
+    navigate('/blogs', {
+      state: { editBlog: blogForEdit },
+    });
+  };
+
   if (loading) {
     return (
       <div className="app-layout">
@@ -320,6 +340,11 @@ const BlogDetail = () => {
               <button className="btn btn-primary" onClick={handleLike}>
                 {liked ? 'Unlike' : 'Like'} ({blog.likes_count || 0})
               </button>
+              {canEdit && (
+                <button className="btn btn-secondary" type="button" onClick={handleEditFromDetail}>
+                  <FaEdit /> Edit Post
+                </button>
+              )}
               <span className="blog-stat">{blog.views_count || 0} views</span>
               <span className="blog-stat">{blog.comments_count || comments.length || 0} comments</span>
             </div>

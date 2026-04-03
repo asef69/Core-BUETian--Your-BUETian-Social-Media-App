@@ -104,12 +104,15 @@ LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
 -- Mark a product as sold (seller only)
+DROP FUNCTION mark_product_sold;
 CREATE OR REPLACE FUNCTION mark_product_sold(
         p_product_id INTEGER,
-        p_seller_id INTEGER
+        p_seller_id INTEGER,
+        p_buyer_id INTEGER DEFAULT NULL
     ) RETURNS TABLE(success BOOLEAN) AS $$ BEGIN
 UPDATE marketplace_products
 SET status = 'sold',
+    buyer_id = COALESCE(p_buyer_id, buyer_id),
     updated_at = CURRENT_TIMESTAMP
 WHERE id = p_product_id
     AND seller_id = p_seller_id
@@ -119,12 +122,15 @@ SELECT FOUND;
 END;
 $$ LANGUAGE plpgsql;
 -- Reserve a product (set status to reserved)
+DROP FUNCTION reserve_product;
 CREATE OR REPLACE FUNCTION reserve_product(
         p_product_id INTEGER,
-        p_user_id INTEGER
+        p_user_id INTEGER,
+        p_buyer_id INTEGER DEFAULT NULL
     ) RETURNS TABLE(success BOOLEAN) AS $$ BEGIN
 UPDATE marketplace_products
 SET status = 'reserved',
+    buyer_id = COALESCE(p_buyer_id, buyer_id),
     updated_at = CURRENT_TIMESTAMP
 WHERE id = p_product_id
     AND status = 'available';
@@ -198,6 +204,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 --MARKETPLACE PRODUCTS
+DROP FUNCTION get_product_details;
 CREATE OR REPLACE FUNCTION get_product_details(p_product_id INTEGER)
 RETURNS TABLE(
     product_id INTEGER,
@@ -212,6 +219,9 @@ RETURNS TABLE(
     seller_name VARCHAR(50),
     seller_picture VARCHAR(500),
     seller_department VARCHAR(100),
+    buyer_id INTEGER,
+    buyer_name VARCHAR(50),
+    buyer_picture VARCHAR(500),
     images TEXT[],
     created_at TIMESTAMP
 ) AS $$
@@ -230,10 +240,14 @@ BEGIN
         u.name as seller_name,
         u.profile_picture as seller_picture,
         u.department_name as seller_department,
+        bu.id as buyer_id,
+        bu.name as buyer_name,
+        bu.profile_picture as buyer_picture,
         ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
         p.created_at
     FROM marketplace_products p
     INNER JOIN users u ON p.seller_id = u.id
+    LEFT JOIN users bu ON p.buyer_id = bu.id
     WHERE p.id = p_product_id;
 END;
 $$ LANGUAGE plpgsql;

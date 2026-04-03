@@ -5,6 +5,7 @@ import Navbar from '../../components/Navbar';
 import ReviewForm from '../../components/ReviewForm';
 import ReviewsList from '../../components/ReviewsList';
 import ReviewRequirements from '../../components/ReviewRequirements';
+import BuyerPickerModal from '../../components/BuyerPickerModal';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import { FaMapMarkerAlt, FaUser, FaStar } from 'react-icons/fa';
@@ -36,11 +37,18 @@ const ProductDetail = () => {
   const [customEditCategory, setCustomEditCategory] = useState('');
   const [similarProducts, setSimilarProducts] = useState([]);
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
+  const [buyerPickerState, setBuyerPickerState] = useState({ open: false, action: null });
 
   const isOwnProduct =
     !!user &&
     !!product &&
     Number(user.id) === Number(product.seller_id);
+
+  const isRecordedBuyer =
+    !!user &&
+    !!product &&
+    !!product.buyer_id &&
+    Number(user.id) === Number(product.buyer_id);
 
   useEffect(() => {
     loadProduct();
@@ -99,23 +107,36 @@ const ProductDetail = () => {
       return;
     }
 
+    setBuyerPickerState({ open: true, action: 'reserve' });
+  };
+
+  const handleBuyerSelected = async (buyer) => {
+    const buyerId = buyer?.id;
+    if (!buyerId) {
+      toast.error('Buyer selection is invalid');
+      return;
+    }
+
+    const action = buyerPickerState.action;
+    setBuyerPickerState({ open: false, action: null });
+
     try {
-      await marketplaceAPI.reserveProduct(productId);
-      toast.success('Product reserved!');
+      if (action === 'reserve') {
+        await marketplaceAPI.reserveProduct(productId, { buyer_id: buyerId });
+        toast.success(`Product reserved for ${buyer.name}`);
+      } else {
+        await marketplaceAPI.markSold(productId, { buyer_id: buyerId });
+        toast.success(`Product marked as sold to ${buyer.name}`);
+      }
       loadProduct();
     } catch (error) {
-      toast.error('Failed to reserve product');
+      const fallbackMessage = action === 'reserve' ? 'Failed to reserve product' : 'Failed to mark sold';
+      toast.error(error?.response?.data?.error || fallbackMessage);
     }
   };
 
   const handleMarkSold = async () => {
-    try {
-      await marketplaceAPI.markSold(productId);
-      toast.success('Product marked as sold');
-      loadProduct();
-    } catch (error) {
-      toast.error('Failed to mark sold');
-    }
+    setBuyerPickerState({ open: true, action: 'sold' });
   };
 
   const handleDelete = async () => {
@@ -187,6 +208,16 @@ const ProductDetail = () => {
   return (
     <div className="app-layout">
       <Navbar />
+      <BuyerPickerModal
+        open={buyerPickerState.open}
+        title={buyerPickerState.action === 'reserve' ? 'Reserve For Buyer' : 'Mark As Sold To Buyer'}
+        description={buyerPickerState.action === 'reserve'
+          ? 'Search for the buyer who should be linked to this reservation.'
+          : 'Search for the buyer who should be linked to the sale.'}
+        initialBuyer={product?.buyer_id || ''}
+        onClose={() => setBuyerPickerState({ open: false, action: null })}
+        onSelect={handleBuyerSelected}
+      />
       <div className="main-content">
         <div className="container">
           <div className="product-detail">
@@ -220,6 +251,11 @@ const ProductDetail = () => {
               <div className="product-meta">
                 <span className="condition-badge">{product.condition}</span>
                 <span className="status-badge">{product.status}</span>
+                {product.buyer_name && product.status !== 'available' && (
+                  <span className="status-badge">
+                    {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
+                  </span>
+                )}
               </div>
 
               <div className="product-info-section">
@@ -359,13 +395,21 @@ const ProductDetail = () => {
                   <FaUser />
                   <span>{product.seller_name}</span>
                 </Link>
+                {product.buyer_name && product.status !== 'available' && (
+                  <div className="info-item" style={{ marginTop: '8px' }}>
+                    <FaUser />
+                    <span>
+                      {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {!isOwnProduct && (
                 <div className="product-actions">
                   {product.status === 'available' && (
                     <button className="btn btn-primary" onClick={handleReserve}>
-                      Reserve Product
+                      Reserve for Buyer
                     </button>
                   )}
                   <button className="btn btn-secondary" onClick={handleContactSeller}>
@@ -387,6 +431,11 @@ const ProductDetail = () => {
                     </>
                   ) : (
                     <>
+                      {product.status === 'available' && (
+                        <button className="btn btn-secondary" onClick={handleReserve}>
+                          Reserve for Buyer
+                        </button>
+                      )}
                       {product.status !== 'sold' && (
                         <button className="btn btn-primary" onClick={handleMarkSold}>
                           Mark as Sold
@@ -438,7 +487,7 @@ const ProductDetail = () => {
                         isOwnProduct={isOwnProduct}
                       />
                       
-                      {product.status === 'sold' && !isOwnProduct && (
+                      {product.status === 'sold' && isRecordedBuyer && (
                         <ReviewForm 
                           productId={productId} 
                           sellerId={product.seller_id}

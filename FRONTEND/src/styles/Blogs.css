@@ -1,4 +1,6 @@
 .form-checkbox input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
   accent-color: var(--primary-color);
   width: 18px;
   height: 18px;
@@ -21,6 +23,159 @@
 .form-checkbox input[type="checkbox"]:focus {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
+}
+
+.input-md[type="datetime-local"]:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.form-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+  padding-top: 1px;
+}
+
+.publish-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 4px 12px 4px 6px;
+  min-height: 38px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted-color);
+  letter-spacing: 0.01em;
+  transition: background 0.25s, border-color 0.25s, color 0.25s, box-shadow 0.25s, transform 0.2s;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  width: fit-content;
+}
+
+.publish-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(123, 188, 255, 0.35);
+}
+
+.publish-toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.publish-toggle .toggle-knob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #cfd8e6, #8f9cb0);
+  transition: background 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.publish-toggle .toggle-label {
+  color: inherit;
+}
+
+.publish-toggle.active {
+  background: linear-gradient(180deg, rgba(35, 116, 225, 0.2), rgba(35, 116, 225, 0.12));
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  box-shadow: 0 8px 22px rgba(35, 116, 225, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.publish-toggle.active .toggle-knob {
+  background: linear-gradient(180deg, #5ba1ff, var(--primary-color));
+  transform: translateX(3px);
+  box-shadow: 0 3px 10px rgba(35, 116, 225, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+body[data-theme='light'] .publish-toggle {
+  background: linear-gradient(180deg, #f4f7fc, #e8edf6);
+  border-color: #cfd8e6;
+  color: #53627e;
+  box-shadow: 0 6px 16px rgba(31, 58, 107, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+body[data-theme='light'] .publish-toggle:hover {
+  border-color: #a9bbd9;
+}
+
+body[data-theme='light'] .publish-toggle .toggle-knob {
+  background: linear-gradient(180deg, #d9e2f0, #9fb0ca);
+}
+
+body[data-theme='light'] .publish-toggle.active {
+  background: linear-gradient(180deg, #e8f2ff, #d7e8ff);
+  border-color: #2f78e6;
+  color: #1f5fd2;
+}
+
+body[data-theme='light'] .publish-toggle.active .toggle-knob {
+  background: linear-gradient(180deg, #6ea8ff, #2f78e6);
+}
+
+.schedule-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.schedule-input {
+  width: 100%;
+  padding-right: 48px;
+}
+
+.schedule-picker-btn {
+  position: absolute;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.schedule-input-wrap:focus-within .schedule-picker-btn {
+  color: var(--primary-color);
+}
+
+.schedule-picker-btn:hover:not(:disabled) {
+  color: var(--primary-color);
+  background: rgba(35, 116, 225, 0.1);
+  border-color: rgba(35, 116, 225, 0.2);
+}
+
+.schedule-picker-btn:focus-visible {
+  outline: 2px solid rgba(35, 116, 225, 0.5);
+  outline-offset: 1px;
+}
+
+.schedule-picker-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.schedule-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
+
+.schedule-input:disabled::-webkit-calendar-picker-indicator {
+  cursor: not-allowed;
+  opacity: 0;
 }
 /* --- BLOGS MODAL & FORM STYLES --- */
 .blog-modal-header {
@@ -371,6 +526,12 @@
 
 .blog-card:hover .blog-card-actions,
 .blog-card:focus-within .blog-card-actions {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.blog-card-actions.always-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
@@ -966,4 +1127,21 @@ body[data-theme='light'] .blog-card-action-danger:hover:not(:disabled) {
   .blog-detail-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* Light mode calendar icon styling */
+body[data-theme='light'] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+body[data-theme='light'] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none !important;
+  cursor: pointer !important;
+}
+
+body[data-theme='light'] input[type="datetime-local"],
+body[data-theme='light'] input[type="date"] {
+  color-scheme: light;
+}
+
+body[data-theme='dark'] input[type="datetime-local"],
+body[data-theme='dark'] input[type="date"] {
+  color-scheme: dark;
 }
