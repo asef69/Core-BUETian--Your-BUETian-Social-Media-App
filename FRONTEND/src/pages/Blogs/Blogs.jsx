@@ -56,26 +56,34 @@ const Blogs = () => {
     return user.id;
   };
 
-  const handleEditBlog = (blog) => {
+  const handleEditBlog = async (blog) => {
     const categoryValue = blog.category || BLOG_CATEGORIES[0];
     const isPresetCategory = BLOG_CATEGORIES.includes(categoryValue);
+    const blogId = getBlogId(blog);
 
-    setEditingBlog(blog);
-    setShowCreateModal(true);
-    setCategoryMode(isPresetCategory ? 'preset' : 'custom');
-    setCustomCategory(isPresetCategory ? '' : categoryValue);
-    setCoverImageFile(null);
-    setCoverImagePreview(blog.cover_image || '');
+    try {
+      const response = await blogAPI.getBlogDetail(blogId);
+      const fullBlog = response.data;
 
-    setCreateData({
-      title: blog.title || '',
-      excerpt: blog.excerpt || '',
-      content: blog.content || '',
-      category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
-      tags: Array.isArray(blog.tags) ? blog.tags.join(', ') : String(blog.tags || ''),
-      is_published: blog.is_published,
-      scheduled_publish_at: blog.scheduled_publish_at ? blog.scheduled_publish_at.slice(0, 16) : '',
-    });
+      setEditingBlog(fullBlog);
+      setShowCreateModal(true);
+      setCategoryMode(isPresetCategory ? 'preset' : 'custom');
+      setCustomCategory(isPresetCategory ? '' : categoryValue);
+      setCoverImageFile(null);
+      setCoverImagePreview(fullBlog.cover_image || '');
+
+      setCreateData({
+        title: fullBlog.title || '',
+        excerpt: fullBlog.excerpt || '',
+        content: fullBlog.content || '',
+        category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
+        tags: Array.isArray(fullBlog.tags) ? fullBlog.tags.join(', ') : String(fullBlog.tags || ''),
+        is_published: fullBlog.is_published,
+        scheduled_publish_at: fullBlog.scheduled_publish_at ? fullBlog.scheduled_publish_at.slice(0, 16) : '',
+      });
+    } catch (error) {
+      showToast.error('Failed to load blog', 'Could not fetch blog details');
+    }
   };
 
   const handleDeleteBlog = async (blogId) => {
@@ -472,7 +480,7 @@ const Blogs = () => {
                   <FaTimes />
                 </button>
               </div>
-              <form onSubmit={handleCreateBlog} className="blog-create-form animate-fade-in">
+              <form onSubmit={handleCreateBlog} className="blog-create-form animate-fade-in" key={editingBlog ? 'edit-' + getBlogId(editingBlog) : 'create-new'}>
                 <div className="form-group">
                   <label htmlFor="blog-title">Title</label>
                   <input
@@ -503,7 +511,7 @@ const Blogs = () => {
                     id="blog-content"
                     rows="8"
                     className="input-md"
-                    value={createData.content}
+                    value={createData.content || ''}
                     onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
                     required
                     placeholder="Write your blog post here..."
@@ -590,16 +598,19 @@ const Blogs = () => {
                     placeholder="react, django, buet"
                   />
                 </div>
-                <div className="form-group form-checkbox">
-                  <label htmlFor="blog-publish">
-                    <input
-                      id="blog-publish"
-                      type="checkbox"
-                      checked={createData.is_published}
-                      onChange={(e) => setCreateData({ ...createData, is_published: e.target.checked })}
-                    />{' '}
-                    Publish immediately
-                  </label>
+                <div className="form-group form-toggle">
+                  <button
+                    id="blog-publish"
+                    type="button"
+                    className={`publish-toggle ${createData.is_published ? 'active' : ''}`}
+                    onClick={() => setCreateData({ ...createData, is_published: !createData.is_published })}
+                    aria-pressed={createData.is_published}
+                  >
+                    <span className="toggle-knob" />
+                    <span className="toggle-label">
+                      {createData.is_published ? 'Publish immediately' : 'Save as draft'}
+                    </span>
+                  </button>
                 </div>
                 <div className="form-group">
                   <label htmlFor="blog-schedule">Schedule publish date <span className="optional">(Optional)</span></label>

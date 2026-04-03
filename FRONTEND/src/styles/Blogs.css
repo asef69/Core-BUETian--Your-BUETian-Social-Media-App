@@ -1,3 +1,72 @@
+.form-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 0;
+}
+
+.publish-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--muted-color);
+  transition: background 0.3s, border-color 0.3s, color 0.3s;
+  position: relative;
+  width: fit-content;
+}
+
+.publish-toggle:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.publish-toggle .toggle-knob {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--muted-color);
+  transition: background 0.3s, transform 0.3s;
+}
+
+.publish-toggle.active {
+  background: rgba(35, 116, 225, 0.16);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.publish-toggle.active .toggle-knob {
+  background: var(--primary-color);
+  transform: translateX(4px);
+}
+
+body[data-theme='light'] .publish-toggle {
+  background: #f0f0f0;
+  border-color: #d0d0d0;
+  color: #666;
+}
+
+body[data-theme='light'] .publish-toggle .toggle-knob {
+  background: #999;
+}
+
+body[data-theme='light'] .publish-toggle.active {
+  background: #e3f2fd;
+  border-color: #2374e1;
+  color: #2374e1;
+}
+
+body[data-theme='light'] .publish-toggle.active .toggle-knob {
+  background: #2374e1;
+}
+
 .form-checkbox input[type="checkbox"] {
   accent-color: var(--primary-color);
   width: 18px;
@@ -7,8 +76,19 @@
   cursor: pointer;
   border-radius: 4px;
   border: 1px solid var(--border-color);
-  transition: box-shadow 0.15s, border-color 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, background-color 0.15s;
 }
+
+body[data-theme='light'] .form-checkbox input[type="checkbox"]:checked {
+  accent-color: #000 !important;
+  background-color: #fff !important;
+}
+
+body[data-theme='dark'] .form-checkbox input[type="checkbox"]:checked {
+  accent-color: #fff !important;
+  background-color: var(--primary-color) !important;
+}
+
 .form-checkbox label {
   display: flex;
   align-items: center;
@@ -966,4 +1046,11 @@ body[data-theme='light'] .blog-card-action-danger:hover:not(:disabled) {
   .blog-detail-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* Light mode calendar icon styling */
+body[data-theme='light'] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+body[data-theme='light'] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) !important;
+  cursor: pointer !important;
 }

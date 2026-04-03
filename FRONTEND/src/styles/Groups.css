@@ -462,6 +462,21 @@
   color: rgba(214, 225, 244, 0.55);
 }
 
+body[data-theme='light'] .group-posts .fancy-post-form {
+  background: linear-gradient(160deg, #ffffff, #f4f7ff);
+  border-color: rgba(111, 137, 176, 0.3);
+}
+
+body[data-theme='light'] .group-posts .fancy-post-form textarea {
+  background: #ffffff;
+  color: #243248;
+  border-color: rgba(111, 137, 176, 0.28);
+}
+
+body[data-theme='light'] .group-posts .fancy-post-form textarea::placeholder {
+  color: #6d7c92;
+}
+
 .fancy-post-actions {
   display: flex;
   align-items: center;
@@ -487,6 +502,17 @@
 .fancy-media-btn:hover {
   background: rgba(66, 77, 99, 0.9);
   transform: translateY(-1px);
+}
+
+body[data-theme='light'] .fancy-media-btn {
+  background: #ffffff;
+  color: #2f3f57;
+  border-color: rgba(111, 137, 176, 0.35);
+}
+
+body[data-theme='light'] .fancy-media-btn:hover {
+  background: #eef4ff;
+  color: #20304a;
 }
 
 .fancy-post-submit {
@@ -596,6 +622,49 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+body[data-theme='light'] .group-admin-dashboard h2,
+body[data-theme='light'] .group-admin-dashboard h3,
+body[data-theme='light'] .group-admin-dashboard p {
+  color: #26344a;
+}
+
+body[data-theme='light'] .group-admin-dashboard .group-posts .fancy-post-form,
+body[data-theme='light'] .group-admin-dashboard .dashboard-panel,
+body[data-theme='light'] .group-admin-dashboard .nonmember-actions-panel {
+  background: linear-gradient(160deg, #ffffff, #f4f7ff);
+  border-color: rgba(111, 137, 176, 0.24);
+}
+
+body[data-theme='light'] .group-admin-dashboard .dashboard-heading h3,
+body[data-theme='light'] .group-admin-dashboard .dashboard-stat-card strong,
+body[data-theme='light'] .group-admin-dashboard .group-posts .author-name,
+body[data-theme='light'] .group-admin-dashboard .group-posts h2,
+body[data-theme='light'] .group-admin-dashboard .group-members h2 {
+  color: #243248;
+}
+
+body[data-theme='light'] .group-admin-dashboard .dashboard-heading p,
+body[data-theme='light'] .group-admin-dashboard .stat-label,
+body[data-theme='light'] .group-admin-dashboard .group-posts .post-date,
+body[data-theme='light'] .group-admin-dashboard .group-posts .post-content p {
+  color: #596a84;
+}
+
+body[data-theme='light'] .group-admin-dashboard .dashboard-stat-card {
+  background: #ffffff;
+  border-color: rgba(111, 137, 176, 0.22);
+}
+
+body[data-theme='light'] .group-admin-dashboard .queue-panel {
+  background: linear-gradient(160deg, #f8fbff, #eef4ff);
+  border-color: rgba(111, 137, 176, 0.24);
+}
+
+body[data-theme='light'] .group-admin-dashboard .queue-item {
+  background: #ffffff;
+  border-color: rgba(111, 137, 176, 0.24);
 }
 
 .nonmember-badges {
