@@ -460,3 +460,74 @@ class UserPostsView(APIView):
                 post['post_id'] = post_id_value
             filtered_posts.append(post)
         return Response(filtered_posts)
+
+
+class RemoveFollowerView(APIView):
+    """
+    Remove a user from authenticated user's followers list.
+
+    API Endpoint: DELETE /api/users/followers/remove/<follower_id>/
+    Authentication: Required (JWT)
+
+    URL Parameters:
+        follower_id (int): ID of the follower user to remove
+
+    Authorization:
+        - Only authenticated user can remove followers from their own profile
+
+    Returns:
+        200 OK:
+            {
+                "message": "Follower removed",
+                "removed_user_id": 12,
+                "followers_count": 9
+            }
+
+        404 Not Found:
+            {
+                "error": "Follower not found"
+            }
+    """
+
+    def delete(self, request, follower_id):
+        if request.user.id == follower_id:
+            return Response(
+                {'error': 'You cannot remove yourself as follower'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        deleted = DatabaseManager.execute_update(
+            """
+            DELETE FROM follows
+            WHERE follower_id = %s
+              AND following_id = %s
+              AND status = 'accepted'
+            """,
+            (follower_id, request.user.id)
+        )
+
+        if not deleted:
+            return Response(
+                {'error': 'Follower not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        counts = DatabaseManager.execute_query(
+            """
+            SELECT COUNT(*)::int AS followers_count
+            FROM follows
+            WHERE following_id = %s
+              AND status = 'accepted'
+            """,
+            (request.user.id,)
+        )
+        followers_count = counts[0]['followers_count'] if counts else 0
+
+        return Response(
+            {
+                'message': 'Follower removed',
+                'removed_user_id': follower_id,
+                'followers_count': followers_count,
+            },
+            status=status.HTTP_200_OK,
+        )

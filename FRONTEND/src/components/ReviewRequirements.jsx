@@ -7,9 +7,7 @@ const ReviewRequirements = ({ product, user, isOwnProduct }) => {
 
   // Check if product is sold
   const isSold = product.status === 'sold';
-  
-  // Check if user is the buyer (not seller)
-  const isBuyer = !isOwnProduct;
+  const isBuyer = Boolean(product.buyer_id) && Number(user.id) === Number(product.buyer_id);
 
   // Determine status
   const canReview = isSold && isBuyer;
@@ -49,8 +47,10 @@ const ReviewRequirements = ({ product, user, isOwnProduct }) => {
             <span className="label">You must be the buyer</span>
             <span className="detail">
               {isBuyer 
-                ? 'You are not the seller' 
-                : 'Sellers cannot review their own products'}
+                ? 'You are the recorded buyer for this product' 
+                : product.buyer_id
+                  ? 'Only the recorded buyer can review this product'
+                  : 'A buyer must be recorded before a review can be left'}
             </span>
           </div>
         </div>
@@ -66,7 +66,7 @@ const ReviewRequirements = ({ product, user, isOwnProduct }) => {
         <div className="requirements-status waiting">
           <FaClock /> 
           {!isSold && ' Waiting for seller to mark product as sold...'}
-          {!isBuyer && ' Only buyers can leave reviews'}
+          {isSold && !isBuyer && ' Only the recorded buyer can leave reviews'}
         </div>
       )}
     </div>

@@ -1,10 +1,6 @@
 import React from 'react';
 import '../../styles/Skeleton.css';
 
-/**
- * SKELETON LOADER - Animated placeholder while content loads
- * Shows realistic skeleton of content structure
- */
 export const SkeletonLoader = ({ count = 1, type = 'post', style = {} }) => {
   const getSkeletonContent = () => {
     switch (type) {
@@ -89,10 +85,6 @@ export const SkeletonLoader = ({ count = 1, type = 'post', style = {} }) => {
   );
 };
 
-/**
- * LOADING SPINNER - Animated loading indicator
- * Used for overlays and async operations
- */
 export const LoadingSpinner = ({ size = 'md', fullScreen = false }) => {
   const sizeClass = `spinner-${size}`;
   const containerClass = fullScreen ? 'loading-container-fullscreen' : 'loading-container';

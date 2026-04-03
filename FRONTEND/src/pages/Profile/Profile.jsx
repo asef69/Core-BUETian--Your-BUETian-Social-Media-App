@@ -5,7 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
-import { FaEdit, FaUserPlus, FaUserCheck } from 'react-icons/fa';
+import { confirmDialog } from '../../utils/confirmDialog';
+import { FaEdit, FaTimes, FaUserPlus, FaUserCheck, FaUserMinus } from 'react-icons/fa';
 import '../../styles/Profile.css';
 
 const getRelationshipState = (data) => {
@@ -31,7 +32,6 @@ const Profile = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('posts');
-  const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [relationshipStatus, setRelationshipStatus] = useState('none');
   const [incomingFollowRequestId, setIncomingFollowRequestId] = useState(null);
@@ -40,7 +40,12 @@ const Profile = () => {
   const [isModalClosing, setIsModalClosing] = useState(false);
   const [editData, setEditData] = useState({});
   const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [followersList, setFollowersList] = useState([]);
+  const [followersLoading, setFollowersLoading] = useState(false);
+  const [removingFollowerId, setRemovingFollowerId] = useState(null);
   const modalCloseTimerRef = useRef(null);
+  const isOwnProfile = Boolean(currentUser?.id) && Number(currentUser.id) === Number(userId);
 
   useEffect(() => {
     loadProfile();
@@ -91,7 +96,6 @@ const Profile = () => {
       const nextRelationshipStatus = getRelationshipState(response.data);
 
       setProfile(response.data);
-      setIsOwnProfile(Boolean(currentUser?.id) && Number(currentUser.id) === Number(userId));
       setIsFollowing(Boolean(response.data.is_following));
       setRelationshipStatus(nextRelationshipStatus);
       setIncomingFollowRequestId(response.data.incoming_follow_request_id || null);
@@ -147,6 +151,74 @@ const Profile = () => {
     } catch (error) {
       console.error('❌ Error loading follow counts:', error);
     }
+  };
+
+  const normalizeFollowersList = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data?.followers)) return data.followers;
+    if (Array.isArray(data?.value)) return data.value;
+    return [];
+  };
+
+  const loadFollowersList = async () => {
+    if (!isOwnProfile) return;
+
+    try {
+      setFollowersLoading(true);
+      const response = await userAPI.getFollowers(userId);
+      setFollowersList(normalizeFollowersList(response.data));
+    } catch (error) {
+      toast.error('Failed to load followers list');
+      setFollowersList([]);
+    } finally {
+      setFollowersLoading(false);
+    }
+  };
+
+  const handleOpenFollowersModal = async () => {
+    if (!isOwnProfile) {
+      toast.info('You can manage followers only from your own profile');
+      return;
+    }
+
+    setShowFollowersModal(true);
+    await loadFollowersList();
+  };
+
+  const handleCloseFollowersModal = () => {
+    if (removingFollowerId) return;
+    setShowFollowersModal(false);
+  };
+
+  const handleRemoveFollower = async (follower) => {
+    const followerId = follower?.user_id;
+    if (!followerId || removingFollowerId) return;
+
+    await confirmDialog({
+      title: 'Remove Follower',
+      message: `Are you sure you want to remove ${follower?.name || 'this follower'}? They will need to follow you again.`,
+      confirmText: 'Remove',
+      confirmLoadingText: 'Removing...',
+      danger: true,
+      onConfirmAction: async () => {
+        try {
+          setRemovingFollowerId(followerId);
+          const response = await userAPI.removeFollower(followerId);
+          setFollowersList((prev) => prev.filter((f) => Number(f.user_id) !== Number(followerId)));
+          setProfile((prev) => ({
+            ...prev,
+            followers_count: response?.data?.followers_count ?? Math.max(0, (prev?.followers_count || 1) - 1),
+          }));
+          toast.success(response?.data?.message || 'Follower removed');
+        } catch (error) {
+          toast.error(error?.response?.data?.error || 'Failed to remove follower');
+          throw error;
+        } finally {
+          setRemovingFollowerId(null);
+        }
+      },
+    });
   };
 
   const loadUserPosts = async () => {
@@ -409,6 +481,15 @@ const Profile = () => {
                       <div className="stat">
                         <strong>{profile.followers_count || 0}</strong>
                         <span>Followers</span>
+                        {isOwnProfile && (
+                          <button
+                            type="button"
+                            className="followers-manage-btn"
+                            onClick={handleOpenFollowersModal}
+                          >
+                            Manage
+                          </button>
+                        )}
                       </div>
                       <div className="stat">
                         <strong>{profile.following_count || 0}</strong>
@@ -547,6 +628,59 @@ const Profile = () => {
                         Cancel
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isOwnProfile && showFollowersModal && (
+              <div className="followers-modal-overlay" onClick={handleCloseFollowersModal}>
+                <div className="followers-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="followers-modal-header">
+                    <h2>Manage Followers</h2>
+                    <button
+                      type="button"
+                      className="followers-modal-close"
+                      onClick={handleCloseFollowersModal}
+                      disabled={Boolean(removingFollowerId)}
+                      aria-label="Close followers modal"
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                  <div className="followers-modal-body">
+                    {followersLoading ? (
+                      <p>Loading followers...</p>
+                    ) : followersList.length === 0 ? (
+                      <p>No followers yet.</p>
+                    ) : (
+                      followersList.map((follower) => (
+                        <div className="follower-row" key={follower.user_id}>
+                          <div className="follower-info">
+                            <img
+                              src={follower.profile_picture || '/default-avatar.png'}
+                              alt={follower.name || 'Follower'}
+                              className="follower-avatar"
+                            />
+                            <div className="follower-meta">
+                              <strong>{follower.name || 'Unknown'}</strong>
+                              <span>
+                                {follower.department_name || 'Unknown dept'}
+                                {follower.batch ? ` • Batch ${follower.batch}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary follower-remove-btn"
+                            onClick={() => handleRemoveFollower(follower)}
+                            disabled={removingFollowerId === follower.user_id}
+                          >
+                            <FaUserMinus /> {removingFollowerId === follower.user_id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

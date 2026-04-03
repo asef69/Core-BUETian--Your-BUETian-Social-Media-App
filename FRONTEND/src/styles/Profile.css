@@ -116,6 +116,134 @@
   color: var(--muted-color);
 }
 
+.followers-manage-btn {
+  margin-top: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-soft);
+  color: var(--muted-color);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.followers-manage-btn:hover {
+  color: var(--light-color);
+  border-color: rgba(35, 116, 225, 0.4);
+}
+
+.followers-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 10, 18, 0.72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1001;
+}
+
+.followers-modal {
+  width: min(620px, 100%);
+  max-height: min(78vh, 680px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-hover);
+  display: flex;
+  flex-direction: column;
+}
+
+.followers-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.followers-modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--light-color);
+}
+
+.followers-modal-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-color);
+  cursor: pointer;
+}
+
+.followers-modal-close:hover:enabled {
+  background: var(--surface-soft);
+  color: var(--light-color);
+}
+
+.followers-modal-body {
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.follower-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.follower-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.follower-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--surface-solid);
+}
+
+.follower-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.follower-meta strong {
+  color: var(--light-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.follower-meta span {
+  color: var(--muted-color);
+  font-size: 0.84rem;
+}
+
+.follower-remove-btn {
+  flex-shrink: 0;
+}
+
 .profile-edit-overlay {
   position: fixed;
   inset: 0;
@@ -434,6 +562,16 @@ body[data-theme='light'] .profile-edit-field select optgroup {
 
   .profile-edit-actions .btn {
     flex: 1;
+  }
+
+  .follower-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .follower-remove-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 

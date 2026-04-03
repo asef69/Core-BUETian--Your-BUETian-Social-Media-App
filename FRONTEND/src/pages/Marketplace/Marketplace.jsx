@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
+import BuyerPickerModal from '../../components/BuyerPickerModal';
 import { toast } from 'react-toastify';
 import { FaPlus, FaMapMarkerAlt, FaTag, FaBox, FaChartLine } from 'react-icons/fa';
 import '../../styles/Marketplace.css';
@@ -40,6 +41,7 @@ const Marketplace = () => {
   const [categoryMode, setCategoryMode] = useState('existing');
   const [customCategory, setCustomCategory] = useState('');
   const [imageFiles, setImageFiles] = useState([]);
+  const [buyerPickerState, setBuyerPickerState] = useState({ open: false, productId: null, action: null });
 
   useEffect(() => {
     loadProducts(browseStatusFilter);
@@ -85,9 +87,9 @@ const Marketplace = () => {
     }
   };
 
-  const handleMarkSold = async (productId) => {
+  const handleMarkSold = async (productId, buyerId = null) => {
     try {
-      await marketplaceAPI.markSold(productId);
+      await marketplaceAPI.markSold(productId, buyerId ? { buyer_id: buyerId } : {});
       toast.success('Marked as sold');
       loadProducts(browseStatusFilter);
       loadSellerData();
@@ -143,9 +145,44 @@ const Marketplace = () => {
     }
   };
 
+  const handleBuyerPicked = async (buyer) => {
+    const { productId, action } = buyerPickerState;
+    const buyerId = buyer?.id;
+
+    setBuyerPickerState({ open: false, productId: null, action: null });
+
+    if (!productId || !buyerId) {
+      toast.error('Buyer selection is invalid');
+      return;
+    }
+
+    try {
+      if (action === 'sold') {
+        await marketplaceAPI.markSold(productId, { buyer_id: buyerId });
+        toast.success(`Marked as sold to ${buyer.name}`);
+      } else if (action === 'reserve') {
+        await marketplaceAPI.reserveProduct(productId, { buyer_id: buyerId });
+        toast.success(`Reserved for ${buyer.name}`);
+      }
+      loadProducts(browseStatusFilter);
+      loadSellerData();
+    } catch (error) {
+      const fallbackMessage = action === 'reserve' ? 'Failed to reserve product' : 'Failed to mark sold';
+      toast.error(error?.response?.data?.error || fallbackMessage);
+    }
+  };
+
   return (
     <div className="app-layout">
       <Navbar />
+      <BuyerPickerModal
+        open={buyerPickerState.open}
+        title={buyerPickerState.action === 'reserve' ? 'Reserve Product For Buyer' : 'Mark Product Sold To Buyer'}
+        description="Search for the buyer to attach to this product status."
+        initialBuyer={''}
+        onClose={() => setBuyerPickerState({ open: false, productId: null, action: null })}
+        onSelect={handleBuyerPicked}
+      />
       <div className="main-content">
         <div className="container">
           <div className="marketplace-header">
@@ -219,6 +256,11 @@ const Marketplace = () => {
                             <p className="product-location">
                               <FaMapMarkerAlt size={12} /> {product.location}
                             </p>
+                            {product.buyer_name && product.status !== 'available' && (
+                              <span className={`buyer-badge ${product.status === 'sold' ? 'sold' : 'reserved'}`}>
+                                {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
+                              </span>
+                            )}
                             <p className={`market-status status-${(product.status || 'available').toLowerCase()}`}>
                               {(product.status || 'available').toUpperCase()}
                             </p>
@@ -285,11 +327,21 @@ const Marketplace = () => {
                               <h3>{product.title}</h3>
                               <p className="product-price">BDT {product.price}</p>
                               <p className="product-condition">Status: {product.status || 'available'}</p>
+                              {product.buyer_name && product.status !== 'available' && (
+                                <span className={`buyer-badge ${product.status === 'sold' ? 'sold' : 'reserved'}`}>
+                                  {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
+                                </span>
+                              )}
                               <div className="product-actions">
                                 <Link to={`/marketplace/${productId}`} className="btn btn-secondary">Open</Link>
                                 {(product.status || '').toLowerCase() !== 'sold' && (
-                                  <button className="btn btn-primary" onClick={() => handleMarkSold(productId)}>
+                                  <button className="btn btn-primary" onClick={() => setBuyerPickerState({ open: true, productId, action: 'sold' })}>
                                     Mark Sold
+                                  </button>
+                                )}
+                                {(product.status || '').toLowerCase() === 'available' && (
+                                  <button className="btn btn-secondary" onClick={() => setBuyerPickerState({ open: true, productId, action: 'reserve' })}>
+                                    Reserve
                                   </button>
                                 )}
                               </div>

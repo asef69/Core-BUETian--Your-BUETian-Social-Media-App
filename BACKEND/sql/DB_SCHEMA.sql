@@ -91,15 +91,17 @@ CREATE TABLE group_members(
     group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     role VARCHAR(20) CHECK (role IN ('member', 'admin','moderator')) DEFAULT 'member',
-    status VARCHAR(20) CHECK (status IN ('pending','accepted','rejected', 'invited')) DEFAULT 'pending',
+    status VARCHAR(20) CHECK (status IN ('pending','accepted','rejected','invited')) DEFAULT 'pending',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(group_id, user_id)
 );
 
 --table for marketplace sells
+
 CREATE TABLE marketplace_products(
     id SERIAL PRIMARY KEY,
     seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     title VARCHAR(250) NOT NULL,
     description TEXT,
     price DECIMAL(10,2) NOT NULL,
@@ -110,6 +112,7 @@ CREATE TABLE marketplace_products(
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE marketplace_products ADD COLUMN buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
 
 --table for marketplace product images
@@ -321,4 +324,3 @@ CREATE TABLE contextual_chat_permission(
     CHECK (user1_id <> user2_id),
     UNIQUE(user1_id, user2_id, context_type, context_id)
 );
-

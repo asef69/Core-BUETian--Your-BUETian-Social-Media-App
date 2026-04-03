@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI, postAPI } from '../../services/apiService';
 import { showToast } from '../../utils/toast.jsx';
 import { confirmDialog } from '../../utils/confirmDialog';
-import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash } from 'react-icons/fa';
+import { useAuth } from '../../context/AuthContext';
+import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash, FaRegCalendarAlt } from 'react-icons/fa';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
 
@@ -26,6 +27,8 @@ const BLOG_CATEGORIES = [
 
 const Blogs = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,42 +51,30 @@ const Blogs = () => {
   const [tab, setTab] = useState('all'); // 'all' or 'drafts'
   const [editingBlog, setEditingBlog] = useState(null);
   const [deletingBlogId, setDeletingBlogId] = useState(null);
+  const scheduleInputRef = useRef(null);
   const tagFilter = String(searchParams.get('tag') || '').replace(/^#/, '').trim();
-  // Helper: get current user id (assumes user info is in localStorage or context)
-  const getCurrentUserId = () => {
-    // Example: adjust as per your auth implementation
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return user.id;
-  };
+  const currentUserId = user?.id;
 
-  const handleEditBlog = async (blog) => {
+  const handleEditBlog = (blog) => {
     const categoryValue = blog.category || BLOG_CATEGORIES[0];
     const isPresetCategory = BLOG_CATEGORIES.includes(categoryValue);
-    const blogId = getBlogId(blog);
 
-    try {
-      const response = await blogAPI.getBlogDetail(blogId);
-      const fullBlog = response.data;
+    setEditingBlog(blog);
+    setShowCreateModal(true);
+    setCategoryMode(isPresetCategory ? 'preset' : 'custom');
+    setCustomCategory(isPresetCategory ? '' : categoryValue);
+    setCoverImageFile(null);
+    setCoverImagePreview(blog.cover_image || '');
 
-      setEditingBlog(fullBlog);
-      setShowCreateModal(true);
-      setCategoryMode(isPresetCategory ? 'preset' : 'custom');
-      setCustomCategory(isPresetCategory ? '' : categoryValue);
-      setCoverImageFile(null);
-      setCoverImagePreview(fullBlog.cover_image || '');
-
-      setCreateData({
-        title: fullBlog.title || '',
-        excerpt: fullBlog.excerpt || '',
-        content: fullBlog.content || '',
-        category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
-        tags: Array.isArray(fullBlog.tags) ? fullBlog.tags.join(', ') : String(fullBlog.tags || ''),
-        is_published: fullBlog.is_published,
-        scheduled_publish_at: fullBlog.scheduled_publish_at ? fullBlog.scheduled_publish_at.slice(0, 16) : '',
-      });
-    } catch (error) {
-      showToast.error('Failed to load blog', 'Could not fetch blog details');
-    }
+    setCreateData({
+      title: blog.title || '',
+      excerpt: blog.excerpt || '',
+      content: blog.content || '',
+      category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
+      tags: Array.isArray(blog.tags) ? blog.tags.join(', ') : String(blog.tags || ''),
+      is_published: blog.is_published,
+      scheduled_publish_at: blog.scheduled_publish_at ? blog.scheduled_publish_at.slice(0, 16) : '',
+    });
   };
 
   const handleDeleteBlog = async (blogId) => {
@@ -137,6 +128,18 @@ const Blogs = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tagFilter]);
 
+  useEffect(() => {
+    const editBlogFromState = location.state?.editBlog;
+    if (!editBlogFromState) return;
+
+    handleEditBlog(editBlogFromState);
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, location.pathname, location.search, navigate]);
+
   const getBlogId = (blog) => blog?.blog_id || blog?.id || blog?.pk;
 
   const filteredBlogs = useMemo(() => {
@@ -188,18 +191,26 @@ const Blogs = () => {
       .map((tag) => tag.trim())
       .filter(Boolean);
 
+    const scheduledInput = createData.scheduled_publish_at;
+    const parsedSchedule =
+      scheduledInput && !isNaN(new Date(scheduledInput).getTime())
+        ? new Date(scheduledInput).toISOString()
+        : null;
+
+    // Checkbox takes precedence. If publish-now is enabled, ignore any schedule value.
+    const publishImmediately = Boolean(createData.is_published);
+    const effectiveSchedule = publishImmediately ? null : parsedSchedule;
+    const effectiveIsPublished = publishImmediately || Boolean(effectiveSchedule);
+
     const payload = {
       title: createData.title,
       excerpt: createData.excerpt || null,
       content: createData.content,
       category: normalizedCategory || null,
       cover_image: uploadedCoverImage || (isEditing ? (editingBlog?.cover_image || null) : null),
-      // If scheduled_publish_at is set, always force is_published to true
-      is_published: createData.scheduled_publish_at ? true : createData.is_published,
+      is_published: effectiveIsPublished,
       tags,
-      scheduled_publish_at: (createData.scheduled_publish_at && !isNaN(new Date(createData.scheduled_publish_at).getTime()))
-        ? new Date(createData.scheduled_publish_at).toISOString()
-        : null,
+      scheduled_publish_at: effectiveSchedule,
     };
 
     try {
@@ -264,16 +275,20 @@ const Blogs = () => {
 
     event.preventDefault();
 
-    setBlogs((currentBlogs) => currentBlogs.map((blog) => {
-      if (getBlogId(blog) !== blogId) return blog;
-      return {
-        ...blog,
-        views_count: (Number(blog.views_count) || 0) + 1,
-      };
-    }));
-
     try {
-      await blogAPI.trackView(blogId);
+      const response = await blogAPI.trackView(blogId);
+      const nextViews = response?.data?.views_count;
+
+      if (typeof nextViews === 'number') {
+        setBlogs((currentBlogs) => currentBlogs.map((blog) => {
+          if (getBlogId(blog) !== blogId) return blog;
+          return {
+            ...blog,
+            views_count: nextViews,
+          };
+        }));
+      }
+
       navigate(`/blogs/${blogId}`, { state: { viewTracked: true } });
     } catch (error) {
       navigate(`/blogs/${blogId}`);
@@ -367,7 +382,10 @@ const Blogs = () => {
                 const blogId = getBlogId(blog);
                 if (!blogId) return null;
 
-                const isAuthor = String(blog.author_id) === String(getCurrentUserId());
+                const isAuthor = String(blog.author_id) === String(currentUserId);
+                const canEdit = Boolean(blog.can_edit ?? isAuthor);
+                const canDelete = Boolean(blog.can_delete ?? isAuthor);
+                const canEditDraft = tab === 'drafts' && canEdit;
                 // Determine if like/view should be disabled
                 const now = new Date();
                 const isDraft = !blog.is_published;
@@ -375,35 +393,87 @@ const Blogs = () => {
                 const disableActions = isDraft || isScheduledFuture;
                 return (
                   <div key={blogId} className="blog-card">
-                    <div className="blog-card-actions">
-                      {isAuthor && (
-                        <>
-                          <button
-                            className="blog-card-action"
-                            type="button"
-                            title="Edit blog"
-                            onClick={() => handleEditBlog(blog)}
-                          >
-                            <FaEdit />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            className="blog-card-action blog-card-action-danger"
-                            type="button"
-                            title="Delete blog"
-                            onClick={() => handleDeleteBlog(blogId)}
-                            disabled={deletingBlogId === blogId}
-                          >
-                            <FaTrash />
-                            <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
-                          </button>
-                        </>
+                    <div className={`blog-card-actions ${(canEditDraft || canDelete) ? 'always-visible' : ''}`}>
+                      {canEditDraft && (
+                        <button
+                          className="blog-card-action"
+                          type="button"
+                          title="Edit draft"
+                          onClick={() => handleEditBlog(blog)}
+                        >
+                          <FaEdit />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="blog-card-action blog-card-action-danger"
+                          type="button"
+                          title="Delete blog"
+                          onClick={() => handleDeleteBlog(blogId)}
+                          disabled={deletingBlogId === blogId}
+                        >
+                          <FaTrash />
+                          <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
+                        </button>
                       )}
                     </div>
+                    {disableActions ? (
+                      <div
+                        style={{ textDecoration: 'none', color: '#aaa' }}
+                        aria-disabled="true"
+                      >
+                        {blog.cover_image ? (
+                          <div className="blog-cover-wrap">
+                            <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
+                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                          </div>
+                        ) : (
+                          <div className="blog-cover-placeholder">
+                            <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
+                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                          </div>
+                        )}
+                        <div className="blog-card-content">
+                          <h3>{blog.title}</h3>
+                          <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
+                          <div className="blog-card-footer">
+                            <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
+                            <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
+                            <span style={{ color: '#dc3545', marginLeft: 8, fontSize: 12 }}>(Draft/Scheduled: Like/View disabled)</span>
+                          </div>
+                          {tab === 'drafts' && (
+                            <div className="blog-card-draft-meta">
+                              <span className="blog-card-draft-author">Author: {blog.author_name || 'Unknown'}</span>
+                              {blog.scheduled_publish_at && (
+                                <span className="blog-card-draft-schedule">
+                                  Scheduled: {(() => {
+                                    let dt;
+                                    if (typeof blog.scheduled_publish_at === 'string' && !blog.scheduled_publish_at.endsWith('Z')) {
+                                      dt = new Date(blog.scheduled_publish_at + 'Z');
+                                    } else {
+                                      dt = new Date(blog.scheduled_publish_at);
+                                    }
+                                    return dt.toLocaleString(undefined, {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    });
+                                  })()}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
                     <Link
-                      to={disableActions ? undefined : `/blogs/${blogId}`}
-                      onClick={disableActions ? (e) => e.preventDefault() : (event) => handleBlogCardClick(event, blogId)}
-                      style={{ textDecoration: 'none', color: disableActions ? '#aaa' : 'inherit', pointerEvents: disableActions ? 'none' : 'auto' }}
+                      to={`/blogs/${blogId}`}
+                      onClick={(event) => handleBlogCardClick(event, blogId)}
+                      style={{ textDecoration: 'none', color: 'inherit' }}
                     >
                       {blog.cover_image ? (
                         <div className="blog-cover-wrap">
@@ -452,6 +522,7 @@ const Blogs = () => {
                         )}
                       </div>
                     </Link>
+                    )}
                   </div>
                 );
               })}
@@ -480,7 +551,7 @@ const Blogs = () => {
                   <FaTimes />
                 </button>
               </div>
-              <form onSubmit={handleCreateBlog} className="blog-create-form animate-fade-in" key={editingBlog ? 'edit-' + getBlogId(editingBlog) : 'create-new'}>
+              <form onSubmit={handleCreateBlog} className="blog-create-form animate-fade-in">
                 <div className="form-group">
                   <label htmlFor="blog-title">Title</label>
                   <input
@@ -511,7 +582,7 @@ const Blogs = () => {
                     id="blog-content"
                     rows="8"
                     className="input-md"
-                    value={createData.content || ''}
+                    value={createData.content}
                     onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
                     required
                     placeholder="Write your blog post here..."
@@ -603,8 +674,16 @@ const Blogs = () => {
                     id="blog-publish"
                     type="button"
                     className={`publish-toggle ${createData.is_published ? 'active' : ''}`}
-                    onClick={() => setCreateData({ ...createData, is_published: !createData.is_published })}
+                    onClick={() => {
+                      const nextPublished = !createData.is_published;
+                      setCreateData({
+                        ...createData,
+                        is_published: nextPublished,
+                        scheduled_publish_at: nextPublished ? '' : createData.scheduled_publish_at,
+                      });
+                    }}
                     aria-pressed={createData.is_published}
+                    aria-label="Toggle publish immediately"
                   >
                     <span className="toggle-knob" />
                     <span className="toggle-label">
@@ -614,14 +693,39 @@ const Blogs = () => {
                 </div>
                 <div className="form-group">
                   <label htmlFor="blog-schedule">Schedule publish date <span className="optional">(Optional)</span></label>
-                  <input
-                    id="blog-schedule"
-                    type="datetime-local"
-                    className="input-md"
-                    value={createData.scheduled_publish_at}
-                    onChange={(e) => setCreateData({ ...createData, scheduled_publish_at: e.target.value })}
-                  />
-                  <small className="form-hint">Leave blank to not schedule. If set, the blog will be published at this date/time.</small>
+                  <div className="schedule-input-wrap">
+                    <input
+                      ref={scheduleInputRef}
+                      id="blog-schedule"
+                      type="datetime-local"
+                      className="input-md schedule-input"
+                      value={createData.scheduled_publish_at}
+                      disabled={createData.is_published}
+                      onChange={(e) => setCreateData({ ...createData, scheduled_publish_at: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="schedule-picker-btn"
+                      disabled={createData.is_published}
+                      aria-label="Open date and time picker"
+                      onClick={() => {
+                        const inputEl = scheduleInputRef.current;
+                        if (!inputEl) return;
+                        if (typeof inputEl.showPicker === 'function') {
+                          inputEl.showPicker();
+                          return;
+                        }
+                        inputEl.focus();
+                      }}
+                    >
+                      <FaRegCalendarAlt aria-hidden="true" />
+                    </button>
+                  </div>
+                  <small className="form-hint">
+                    {createData.is_published
+                      ? 'Scheduling is disabled while Publish immediately is enabled.'
+                      : 'Leave blank to keep it as draft. If set, the blog will be published at this date/time.'}
+                  </small>
                 </div>
                 <div className="modal-actions">
                   <button className="btn btn-primary btn-lg" type="submit" disabled={creating}>
