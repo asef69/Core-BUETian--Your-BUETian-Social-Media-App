@@ -59,7 +59,7 @@ const Register = () => {
         
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="student_id">Student ID</label>
+            <label htmlFor="student_id">Student ID *</label>
             <input
               type="number"
               id="student_id"
@@ -72,7 +72,7 @@ const Register = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="name">Full Name</label>
+            <label htmlFor="name">Full Name *</label>
             <input
               type="text"
               id="name"
@@ -85,7 +85,7 @@ const Register = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">Email *</label>
             <input
               type="email"
               id="email"
@@ -98,7 +98,7 @@ const Register = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">Password *</label>
             <input
               type="password"
               id="password"
@@ -111,7 +111,7 @@ const Register = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password</label>
+            <label htmlFor="confirmPassword">Confirm Password *</label>
             <input
               type="password"
               id="confirmPassword"

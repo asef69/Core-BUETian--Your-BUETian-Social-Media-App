@@ -26,6 +26,10 @@ const Login = () => {
     setLoading(false);
     if (result.success) {
       navigate('/');
+    } else {
+      if (result.error) {
+        alert(result.error);
+      }
     }
   };
 

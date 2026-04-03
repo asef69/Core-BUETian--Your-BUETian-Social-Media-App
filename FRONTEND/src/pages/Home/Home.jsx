@@ -28,6 +28,8 @@ const Home = () => {
 
   const normalizePost = (post) => {
     const userFromObject = post.user || post.author || {};
+    const nestedAuthor = post.author || {};
+    const nestedUser = post.user || {};
     const normalizedHasLiked =
       post.has_liked ?? post.is_liked ?? post.liked ?? post.user_has_liked ?? false;
     const normalizedLikesCount = Number(post.likes_count) || 0;
@@ -43,6 +45,8 @@ const Home = () => {
         post.owner_id ||
         post.created_by ||
         post.created_by_id ||
+        nestedUser.id ||
+        nestedAuthor.id ||
         userFromObject.id,
       user_name:
         post.user_name ||
@@ -51,6 +55,8 @@ const Home = () => {
         post.created_by_name ||
         post.username ||
         post.name ||
+        nestedUser.name ||
+        nestedAuthor.name ||
         userFromObject.name,
       profile_picture:
         post.profile_picture ||
@@ -58,7 +64,11 @@ const Home = () => {
         post.author_picture ||
         post.owner_picture ||
         post.created_by_picture ||
+        nestedUser.profile_picture ||
+        nestedAuthor.profile_picture ||
         userFromObject.profile_picture,
+      author: nestedAuthor,
+      user: nestedUser,
       has_liked: Boolean(normalizedHasLiked),
       likes_count: normalizedLikesCount,
       comments_count: normalizedCommentsCount,
@@ -302,7 +312,7 @@ const Home = () => {
               <div className="sidebar-label">People you may know</div>
               <SuggestedUsers />
               <div className="sidebar-card" style={{ marginTop: '12px' }}>
-                <h3>Trending Hashtags</h3>
+                <h3>Trending Blog Hashtags</h3>
                 {trendingHashtags.length === 0 ? (
                   <p className="text-muted">No hashtag trends yet</p>
                 ) : (

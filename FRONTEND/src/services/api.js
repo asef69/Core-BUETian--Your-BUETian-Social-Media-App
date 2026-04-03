@@ -38,11 +38,26 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url || '';
+    const isAuthRequest = [
+      '/users/login/',
+      '/users/register/',
+      '/users/token/refresh/',
+    ].some((path) => requestUrl.includes(path));
 
     // Handle Network Errors
     if (!error.response) {
       console.error('❌ Network error:', error.message);
       error.displayMessage = 'Network error. Please check your connection and try again.';
+      return Promise.reject(error);
+    }
+
+    // Do not auto-refresh or redirect for auth endpoints.
+    if (error.response?.status === 401 && isAuthRequest) {
+      error.displayMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        'Invalid credentials. Please try again.';
       return Promise.reject(error);
     }
 

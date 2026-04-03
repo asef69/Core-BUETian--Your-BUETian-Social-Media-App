@@ -345,6 +345,8 @@ const GroupDetail = () => {
     try {
       const response = await groupAPI.inviteMember(groupId, userId);
       toast.success(response?.data?.message || 'User invited successfully');
+      setFollowersToInvite((prev) => prev.filter((person) => person.user_id !== userId));
+      setSearchCandidates((prev) => prev.filter((person) => person.user_id !== userId));
       loadGroupData();
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to invite user');

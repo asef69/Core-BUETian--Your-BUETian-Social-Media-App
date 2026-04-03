@@ -546,3 +546,55 @@ ORDER BY (p.likes_count * 2 + p.comments_count) DESC
 LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
+
+
+DROP FUNCTION IF EXISTS get_group_posts;
+CREATE OR REPLACE FUNCTION get_group_posts(
+    p_group_id INTEGER,
+    p_user_id INTEGER,
+    p_limit INTEGER DEFAULT 20,
+    p_offset INTEGER DEFAULT 0
+) RETURNS TABLE(
+    post_id INTEGER,
+    user_id INTEGER,
+    user_name VARCHAR(50),
+    profile_picture VARCHAR(500),
+    content TEXT,
+    media_urls JSON,
+    likes_count INTEGER,
+    comments_count INTEGER,
+    created_at TIMESTAMP,
+    is_liked BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id AS post_id,
+        p.user_id,
+        u.name AS user_name,
+        u.profile_picture,
+        p.content,
+        COALESCE(
+            (
+                SELECT json_agg(m.media_url)
+                FROM media_urls m
+                WHERE m.post_id = p.id
+            ),
+            '[]'::JSON
+        ) AS media_urls,
+        p.likes_count,
+        p.comments_count,
+        p.created_at,
+        EXISTS (
+            SELECT 1
+            FROM likes pl
+            WHERE pl.post_id = p.id
+              AND pl.user_id = p_user_id
+        ) AS is_liked
+    FROM posts p
+    INNER JOIN users u ON u.id = p.user_id
+    WHERE p.group_id = p_group_id
+    ORDER BY p.created_at DESC
+    LIMIT p_limit OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;

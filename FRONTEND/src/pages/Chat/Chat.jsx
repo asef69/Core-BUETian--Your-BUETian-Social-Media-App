@@ -32,6 +32,8 @@ const Chat = () => {
   const peerTypingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
   const shouldReconnectRef = useRef(true);
+  const wsDisabledRef = useRef(false);
+  const wsWarnedRef = useRef(false);
   const messagesCacheRef = useRef({});
   const loadRequestIdRef = useRef(0);
 
@@ -194,6 +196,8 @@ const Chat = () => {
   };
 
   const connectWebSocket = () => {
+    if (wsDisabledRef.current) return null;
+
     const token = localStorage.getItem('accessToken');
     if (!token) return null;
 
@@ -264,12 +268,23 @@ const Chat = () => {
     };
 
     websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      if (!wsWarnedRef.current) {
+        console.warn('WebSocket unavailable, using HTTP chat only.');
+        wsWarnedRef.current = true;
+      }
+      wsDisabledRef.current = true;
+      shouldReconnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (websocket.readyState < WebSocket.CLOSING) {
+        websocket.close();
+      }
     };
 
     websocket.onclose = () => {
       console.log('WebSocket disconnected');
-      if (!shouldReconnectRef.current || wsRef.current !== websocket) {
+      if (!shouldReconnectRef.current || wsRef.current !== websocket || wsDisabledRef.current) {
         return;
       }
       if (reconnectTimeoutRef.current) {

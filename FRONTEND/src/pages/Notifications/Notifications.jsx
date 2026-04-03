@@ -79,7 +79,11 @@ const Notifications = () => {
 
   const handleMarkTypeRead = async (type) => {
     try {
-      await notificationAPI.markByType(type);
+      if (type === 'all') {
+        await notificationAPI.markAllRead();
+      } else {
+        await notificationAPI.markByType(type);
+      }
       toast.success(`${type} notifications marked as read`);
       emitCountsRefresh();
       loadNotifications();
@@ -234,6 +238,24 @@ const Notifications = () => {
     return Number.isFinite(referenceId) && inviteGroupIds.has(referenceId);
   });
 
+  const handleNotificationOpen = async (notif) => {
+    if (notif?.is_read) {
+      return;
+    }
+
+    try {
+      await notificationAPI.markAsRead(notif.id);
+      setNotifications((prev) => prev.map((item) => (
+        item.id === notif.id ? { ...item, is_read: true } : item
+      )));
+      emitCountsRefresh();
+      loadNotifications();
+    } catch (error) {
+      // Keep navigation behavior even if marking as read fails.
+      console.error('Failed to mark notification as read on open');
+    }
+  };
+
   return (
     <div className="app-layout">
       <Navbar />
@@ -326,7 +348,11 @@ const Notifications = () => {
                       key={notif.id}
                       className={`notification-item ${!notif.is_read ? 'unread' : ''}`}
                     >
-                      <Link to={getNotificationLink(notif)} className="notification-link">
+                      <Link
+                        to={getNotificationLink(notif)}
+                        className="notification-link"
+                        onClick={() => handleNotificationOpen(notif)}
+                      >
                         <img
                           src={notif.actor_profile_picture || '/default-avatar.png'}
                           alt={notif.actor_name}

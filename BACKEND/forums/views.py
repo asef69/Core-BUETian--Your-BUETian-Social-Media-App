@@ -1,6 +1,7 @@
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
+from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 from decimal import Decimal, InvalidOperation
 
@@ -36,7 +37,7 @@ def _validate_tuition_constraints(data):
     return None
 
 class CreateBloodRequestView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Create a new blood donation request.
     
@@ -93,7 +94,7 @@ class CreateBloodRequestView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 class BloodRequestDetailView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Retrieve detailed information about a specific blood donation request.
     
@@ -181,7 +182,7 @@ class BloodRequestDetailView(APIView):
         return Response({'message': 'Blood request deleted successfully'})
 
 class ActiveBloodRequestsView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Get list of active blood donation requests with optional filters.
     
@@ -273,7 +274,7 @@ class ActiveBloodRequestsView(APIView):
 
 # Tuition Views
 class CreateTuitionPostView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Create a new tuition/tutoring post (available or wanted).
     
@@ -362,7 +363,7 @@ class CreateTuitionPostView(APIView):
             return Response({'error': f'Failed to create tuition post: {str(ex)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 class TuitionPostDetailView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Retrieve detailed information about a specific tuition post.
     
@@ -458,7 +459,7 @@ class TuitionPostDetailView(APIView):
         return Response({'message': 'Tuition post deleted successfully'})
 
 class ActiveTuitionPostsView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Get list of active tuition posts with optional filters.
     

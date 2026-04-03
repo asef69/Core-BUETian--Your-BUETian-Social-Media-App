@@ -72,7 +72,7 @@ def _get_post_owner_and_visibility(post_id):
     return result[0]
 
 class CreatePostView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Create a new post with optional media URLs.
     
@@ -280,7 +280,7 @@ class CreatePostView(APIView):
         },status=status.HTTP_201_CREATED)
 
 class UserFeedView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Get personalized feed of posts for authenticated user.
     
@@ -349,7 +349,7 @@ class UserFeedView(APIView):
 
 
 class PublicFeedView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Get recent public posts for discovery feed.
 
@@ -404,7 +404,7 @@ class PublicFeedView(APIView):
 
 
 class PostDetailView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Retrieve or delete a specific post.
     
@@ -700,7 +700,7 @@ class PostDetailView(APIView):
     
     
 class LikePostView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Like or unlike a post (toggle functionality).
     
@@ -779,7 +779,7 @@ class LikePostView(APIView):
 
 
 class CommentView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Retrieve comments or add a comment to a post.
     
@@ -902,7 +902,7 @@ class CommentView(APIView):
     
 
 class TrendingPostsView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Get trending/popular posts.
     
@@ -927,7 +927,7 @@ class TrendingPostsView(APIView):
 
 
 class UploadPostMediaView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Upload multiple media files (images or videos) for a post.
     
@@ -1029,7 +1029,7 @@ class UploadPostMediaView(APIView):
 
 
 class CreatePostWithMediaView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     """
     Create a post with multiple media files.
     

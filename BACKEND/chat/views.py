@@ -8,11 +8,21 @@ from rest_framework.permissions import IsAuthenticated
 
 
 def _can_message(sender_id, receiver_id):
-    result = DatabaseManager.execute_function(
-        'can_user_message',
-        (sender_id, receiver_id)
-    )
-    return result[0]['can_message'] if result else False
+    try:
+        result = DatabaseManager.execute_function(
+            'can_user_message',
+            (sender_id, receiver_id)
+        )
+        if not result:
+            return False
+        row = result[0] if isinstance(result[0], dict) else {}
+        return bool(
+            row.get('can_message')
+            or row.get('can_user_message')
+            or row.get('can__user_message')
+        )
+    except Exception:
+        return False
 
 class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]

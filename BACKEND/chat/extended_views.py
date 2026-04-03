@@ -274,11 +274,11 @@ class CanSendMessageView(APIView):
     Returns:
         200 OK:
             {
-                "can_message": true
+                "can_user_message": true
             }
         or
             {
-                "can_message": false
+                "can_user_message": false
             }
     
     Database:
@@ -289,6 +289,11 @@ class CanSendMessageView(APIView):
             'can_user_message',
             (request.user.id, user_id)
         )
-        
-        can_message = result[0]['can_message'] if result else False
-        return Response({'can_message': can_message})
+
+        row = result[0] if result else {}
+        can_message = bool(
+            row.get('can_message')
+            or row.get('can_user_message')
+            or row.get('can__user_message')
+        )
+        return Response({'can_user_message': can_message})
