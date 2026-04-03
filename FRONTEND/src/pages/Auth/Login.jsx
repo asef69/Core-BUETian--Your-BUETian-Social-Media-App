@@ -11,6 +11,7 @@ const Login = () => {
     password: '',
   });
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -24,9 +25,13 @@ const Login = () => {
     setLoading(true);
     const result = await login(formData.email, formData.password);
     setLoading(false);
+
     if (result.success) {
       navigate('/');
+      return;
     }
+
+    setLoginError(result?.error || 'Login failed. Please try again.');
   };
 
   return (
@@ -75,6 +80,24 @@ const Login = () => {
           </p>
         </div>
       </div>
+
+      {loginError && (
+        <div className="auth-error-modal-overlay" role="alertdialog" aria-live="assertive" aria-modal="true">
+          <div className="auth-error-modal-card">
+            <div className="auth-error-title">Sign in failed</div>
+            <p className="auth-error-message">{loginError}</p>
+            <div className="auth-error-actions">
+              <button
+                type="button"
+                className="btn btn-secondary auth-error-retry"
+                onClick={() => setLoginError('')}
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -37,10 +37,78 @@
   font-size: 0.9rem;
 }
 
+.auth-required-note {
+  margin: -6px 0 12px;
+  font-size: 0.8rem;
+  color: var(--muted-color);
+}
+
+.required-asterisk {
+  color: #ff8a8a;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.auth-error-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 8, 18, 0.58);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.auth-error-modal-card {
+  width: min(440px, 94vw);
+  border: 1px solid rgba(255, 99, 99, 0.45);
+  background: linear-gradient(170deg, rgba(17, 25, 41, 0.96), rgba(11, 18, 32, 0.96));
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(2, 6, 18, 0.45);
+  animation: authErrorIn 180ms ease-out;
+}
+
+.auth-error-title {
+  font-weight: 700;
+  font-size: 1.12rem;
+  color: #ffb3b3;
+  margin-bottom: 0.7rem;
+}
+
+.auth-error-message {
+  color: var(--gray-color);
+  font-size: 0.95rem;
+  margin: 0 0 1rem;
+  line-height: 1.6;
+}
+
+.auth-error-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-error-retry {
+  min-width: 120px;
+}
+
+@keyframes authErrorIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .auth-form .form-group {
@@ -79,6 +147,23 @@
 
 .auth-footer a:hover {
   text-decoration: underline;
+}
+
+[data-theme='light'] .auth-error-modal-overlay {
+  background: rgba(15, 23, 42, 0.3);
+}
+
+[data-theme='light'] .auth-error-modal-card {
+  border-color: rgba(214, 67, 67, 0.35);
+  background: linear-gradient(170deg, #ffffff, #f8fbff);
+}
+
+[data-theme='light'] .auth-error-title {
+  color: #b42318;
+}
+
+[data-theme='light'] .required-asterisk {
+  color: #d92d20;
 }
 
 /* Hall Attachment pill toggle */
