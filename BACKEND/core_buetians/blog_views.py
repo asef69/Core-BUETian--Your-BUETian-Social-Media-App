@@ -66,6 +66,8 @@ class CreateBlogPostView(APIView):
 
 class BlogPostDetailView(APIView):
     def get(self, request, blog_id):
+        from datetime import datetime, timezone
+
         query = """
         SELECT b.*, u.name as author_name, u.profile_picture as author_picture,
                ARRAY(SELECT tag_name FROM blog_post_tags WHERE blog_post_id = b.id) as tags,
@@ -83,35 +85,54 @@ class BlogPostDetailView(APIView):
         
         if not result:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(result[0])
+
+        blog = result[0]
+        viewer_id = getattr(request.user, 'id', None)
+        author_id = blog.get('author_id')
+        is_author = viewer_id is not None and author_id is not None and str(viewer_id) == str(author_id)
+        is_published = bool(blog.get('is_published'))
+        scheduled_publish_at = blog.get('scheduled_publish_at')
+
+        # Drafts and future-scheduled posts are only visible to their author.
+        if not is_author:
+            if not is_published:
+                return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            if scheduled_publish_at:
+                scheduled = scheduled_publish_at
+                if getattr(scheduled, 'tzinfo', None) is None:
+                    scheduled = scheduled.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if scheduled > now:
+                    return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(blog)
 
 class BlogPostViewTrackView(APIView):
     def post(self, request, blog_id):
-        # Only increment views if published and not scheduled for the future
-        blog = DatabaseManager.execute_query(
-            "SELECT is_published, scheduled_publish_at FROM blog_posts WHERE id = %s",
+        # SQL-level guard avoids timezone parsing mismatches in Python.
+        exists = DatabaseManager.execute_query(
+            "SELECT 1 FROM blog_posts WHERE id = %s",
             (blog_id,)
         )
-        if not blog:
+        if not exists:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
-        is_published = blog[0]['is_published']
-        scheduled = blog[0]['scheduled_publish_at']
-        from django.utils import timezone
-        now = timezone.now()
-        # Ensure scheduled is timezone-aware for comparison
-        if scheduled is not None and timezone.is_naive(scheduled):
-            scheduled = timezone.make_aware(scheduled, timezone.get_default_timezone())
-        if not is_published or (scheduled and scheduled > now):
-            return Response({'error': 'Views not allowed for drafts or future scheduled posts'}, status=status.HTTP_403_FORBIDDEN)
+
         result = DatabaseManager.execute_query(
             """
             UPDATE blog_posts
             SET views_count = views_count + 1
             WHERE id = %s
+              AND is_published = TRUE
+              AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP)
             RETURNING views_count
             """,
             (blog_id,)
         )
+
+        if not result:
+            return Response({'error': 'Views not allowed for drafts or future scheduled posts'}, status=status.HTTP_403_FORBIDDEN)
+
         return Response({
             'message': 'Blog view tracked',
             'views_count': result[0].get('views_count', 0),
@@ -311,19 +332,28 @@ class LikeBlogView(APIView):
                 return int(val)
             return val
 
-        # Only allow likes if published and not scheduled for the future
-        blog = DatabaseManager.execute_query(
-            "SELECT is_published, scheduled_publish_at FROM blog_posts WHERE id = %s",
+        blog_exists = DatabaseManager.execute_query(
+            "SELECT 1 FROM blog_posts WHERE id = %s",
             (blog_id,)
         )
-        if not blog:
+        if not blog_exists:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
-        is_published = blog[0]['is_published']
-        scheduled = blog[0]['scheduled_publish_at']
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        if not is_published or (scheduled and scheduled > now):
-            return Response({'error': 'Likes not allowed for drafts or future scheduled posts'}, status=status.HTTP_403_FORBIDDEN)
+
+        like_allowed = DatabaseManager.execute_query(
+            """
+            SELECT 1
+            FROM blog_posts
+            WHERE id = %s
+              AND is_published = TRUE
+              AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP)
+            """,
+            (blog_id,)
+        )
+        if not like_allowed:
+            return Response(
+                {'error': 'You have no access to like in draft mode'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         params = (
             cast_or_none(request.user.id, 'int'),
             cast_or_none(blog_id, 'int'),

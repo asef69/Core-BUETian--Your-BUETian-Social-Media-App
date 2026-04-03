@@ -24,6 +24,20 @@ const BlogDetail = () => {
   const currentUserId = user?.id;
   const isAuthor = String(blog?.author_id || '') === String(currentUserId || '');
   const canEdit = Boolean(blog?.can_edit ?? isAuthor);
+  const isDraftOrScheduled = useMemo(() => {
+    if (!blog) return false;
+
+    if (!blog.is_published) return true;
+
+    if (blog.scheduled_publish_at) {
+      const scheduledAt = new Date(blog.scheduled_publish_at);
+      if (Number.isNaN(scheduledAt.getTime()) || scheduledAt > new Date()) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [blog]);
 
   const normalizeComment = (comment) => ({
     ...comment,
@@ -45,9 +59,6 @@ const BlogDetail = () => {
   const loadBlog = async () => {
     try {
       setLoading(true);
-      if (!location.state?.viewTracked) {
-        await blogAPI.trackView(blogId);
-      }
       const [blogRes, commentsRes] = await Promise.all([
         blogAPI.getBlogDetail(blogId),
         blogAPI.getComments(blogId),
@@ -57,6 +68,24 @@ const BlogDetail = () => {
       setLiked(Boolean(blogData?.is_liked));
       const rawComments = Array.isArray(commentsRes.data) ? commentsRes.data : commentsRes.data?.results || [];
       setComments(rawComments.map(normalizeComment));
+
+      const scheduledAt = blogData?.scheduled_publish_at ? new Date(blogData.scheduled_publish_at) : null;
+      const isFutureScheduled = Boolean(
+        scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt > new Date()),
+      );
+      const canTrackView = Boolean(blogData?.is_published) && !isFutureScheduled;
+
+      if (canTrackView && !location.state?.viewTracked) {
+        try {
+          const trackRes = await blogAPI.trackView(blogId);
+          const nextViews = trackRes?.data?.views_count;
+          if (typeof nextViews === 'number') {
+            setBlog((prev) => (prev ? { ...prev, views_count: nextViews } : prev));
+          }
+        } catch (error) {
+          // Keep page usable even if view tracking fails.
+        }
+      }
     } catch (error) {
       toast.error('Failed to load blog post');
       setBlog(null);
@@ -71,6 +100,11 @@ const BlogDetail = () => {
   }, [blogId, location.state]);
 
   const handleLike = async () => {
+    if (isDraftOrScheduled) {
+      toast.info('You have no access to like in draft mode');
+      return;
+    }
+
     try {
       const response = await blogAPI.toggleLike(blogId);
       const nextLiked = response?.data?.liked ?? !liked;
@@ -89,7 +123,7 @@ const BlogDetail = () => {
         };
       });
     } catch (error) {
-      toast.error('Failed to update like');
+      toast.error(error?.response?.data?.error || 'Failed to update like');
     }
   };
 
@@ -337,7 +371,7 @@ const BlogDetail = () => {
               </div>
             )}
             <div className="blog-actions-row">
-              <button className="btn btn-primary" onClick={handleLike}>
+              <button className="btn btn-primary" onClick={handleLike} disabled={isDraftOrScheduled}>
                 {liked ? 'Unlike' : 'Like'} ({blog.likes_count || 0})
               </button>
               {canEdit && (

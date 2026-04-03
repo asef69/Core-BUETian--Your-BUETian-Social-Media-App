@@ -5,7 +5,7 @@ import { blogAPI, postAPI } from '../../services/apiService';
 import { showToast } from '../../utils/toast.jsx';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { useAuth } from '../../context/AuthContext';
-import { FaImage, FaPlus, FaSearch, FaTimes, FaTrash, FaRegCalendarAlt } from 'react-icons/fa';
+import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash, FaRegCalendarAlt } from 'react-icons/fa';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
 
@@ -275,16 +275,20 @@ const Blogs = () => {
 
     event.preventDefault();
 
-    setBlogs((currentBlogs) => currentBlogs.map((blog) => {
-      if (getBlogId(blog) !== blogId) return blog;
-      return {
-        ...blog,
-        views_count: (Number(blog.views_count) || 0) + 1,
-      };
-    }));
-
     try {
-      await blogAPI.trackView(blogId);
+      const response = await blogAPI.trackView(blogId);
+      const nextViews = response?.data?.views_count;
+
+      if (typeof nextViews === 'number') {
+        setBlogs((currentBlogs) => currentBlogs.map((blog) => {
+          if (getBlogId(blog) !== blogId) return blog;
+          return {
+            ...blog,
+            views_count: nextViews,
+          };
+        }));
+      }
+
       navigate(`/blogs/${blogId}`, { state: { viewTracked: true } });
     } catch (error) {
       navigate(`/blogs/${blogId}`);
@@ -379,7 +383,9 @@ const Blogs = () => {
                 if (!blogId) return null;
 
                 const isAuthor = String(blog.author_id) === String(currentUserId);
+                const canEdit = Boolean(blog.can_edit ?? isAuthor);
                 const canDelete = Boolean(blog.can_delete ?? isAuthor);
+                const canEditDraft = tab === 'drafts' && canEdit;
                 // Determine if like/view should be disabled
                 const now = new Date();
                 const isDraft = !blog.is_published;
@@ -387,7 +393,18 @@ const Blogs = () => {
                 const disableActions = isDraft || isScheduledFuture;
                 return (
                   <div key={blogId} className="blog-card">
-                    <div className={`blog-card-actions ${canDelete ? 'always-visible' : ''}`}>
+                    <div className={`blog-card-actions ${(canEditDraft || canDelete) ? 'always-visible' : ''}`}>
+                      {canEditDraft && (
+                        <button
+                          className="blog-card-action"
+                          type="button"
+                          title="Edit draft"
+                          onClick={() => handleEditBlog(blog)}
+                        >
+                          <FaEdit />
+                          <span>Edit</span>
+                        </button>
+                      )}
                       {canDelete && (
                         <button
                           className="blog-card-action blog-card-action-danger"
@@ -401,10 +418,62 @@ const Blogs = () => {
                         </button>
                       )}
                     </div>
+                    {disableActions ? (
+                      <div
+                        style={{ textDecoration: 'none', color: '#aaa' }}
+                        aria-disabled="true"
+                      >
+                        {blog.cover_image ? (
+                          <div className="blog-cover-wrap">
+                            <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
+                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                          </div>
+                        ) : (
+                          <div className="blog-cover-placeholder">
+                            <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
+                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
+                          </div>
+                        )}
+                        <div className="blog-card-content">
+                          <h3>{blog.title}</h3>
+                          <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
+                          <div className="blog-card-footer">
+                            <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
+                            <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
+                            <span style={{ color: '#dc3545', marginLeft: 8, fontSize: 12 }}>(Draft/Scheduled: Like/View disabled)</span>
+                          </div>
+                          {tab === 'drafts' && (
+                            <div className="blog-card-draft-meta">
+                              <span className="blog-card-draft-author">Author: {blog.author_name || 'Unknown'}</span>
+                              {blog.scheduled_publish_at && (
+                                <span className="blog-card-draft-schedule">
+                                  Scheduled: {(() => {
+                                    let dt;
+                                    if (typeof blog.scheduled_publish_at === 'string' && !blog.scheduled_publish_at.endsWith('Z')) {
+                                      dt = new Date(blog.scheduled_publish_at + 'Z');
+                                    } else {
+                                      dt = new Date(blog.scheduled_publish_at);
+                                    }
+                                    return dt.toLocaleString(undefined, {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    });
+                                  })()}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
                     <Link
-                      to={disableActions ? undefined : `/blogs/${blogId}`}
-                      onClick={disableActions ? (e) => e.preventDefault() : (event) => handleBlogCardClick(event, blogId)}
-                      style={{ textDecoration: 'none', color: disableActions ? '#aaa' : 'inherit', pointerEvents: disableActions ? 'none' : 'auto' }}
+                      to={`/blogs/${blogId}`}
+                      onClick={(event) => handleBlogCardClick(event, blogId)}
+                      style={{ textDecoration: 'none', color: 'inherit' }}
                     >
                       {blog.cover_image ? (
                         <div className="blog-cover-wrap">
@@ -453,6 +522,7 @@ const Blogs = () => {
                         )}
                       </div>
                     </Link>
+                    )}
                   </div>
                 );
               })}
