@@ -57,14 +57,22 @@ const Blogs = () => {
   };
 
   const handleEditBlog = (blog) => {
+    const categoryValue = blog.category || BLOG_CATEGORIES[0];
+    const isPresetCategory = BLOG_CATEGORIES.includes(categoryValue);
+
     setEditingBlog(blog);
     setShowCreateModal(true);
+    setCategoryMode(isPresetCategory ? 'preset' : 'custom');
+    setCustomCategory(isPresetCategory ? '' : categoryValue);
+    setCoverImageFile(null);
+    setCoverImagePreview(blog.cover_image || '');
+
     setCreateData({
       title: blog.title || '',
       excerpt: blog.excerpt || '',
       content: blog.content || '',
-      category: blog.category || BLOG_CATEGORIES[0],
-      tags: (blog.tags || []).join(', '),
+      category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
+      tags: Array.isArray(blog.tags) ? blog.tags.join(', ') : String(blog.tags || ''),
       is_published: blog.is_published,
       scheduled_publish_at: blog.scheduled_publish_at ? blog.scheduled_publish_at.slice(0, 16) : '',
     });
@@ -139,6 +147,9 @@ const Blogs = () => {
     e.preventDefault();
     setCreating(true);
 
+    const editingBlogId = getBlogId(editingBlog);
+    const isEditing = Boolean(editingBlogId);
+
     const normalizedCategory = categoryMode === 'custom'
       ? customCategory.trim()
       : createData.category;
@@ -174,7 +185,7 @@ const Blogs = () => {
       excerpt: createData.excerpt || null,
       content: createData.content,
       category: normalizedCategory || null,
-      cover_image: uploadedCoverImage,
+      cover_image: uploadedCoverImage || (isEditing ? (editingBlog?.cover_image || null) : null),
       // If scheduled_publish_at is set, always force is_published to true
       is_published: createData.scheduled_publish_at ? true : createData.is_published,
       tags,
@@ -184,9 +195,16 @@ const Blogs = () => {
     };
 
     try {
-      await blogAPI.createBlog(payload);
-      showToast.success('Post created', 'Your blog post is now live');
+      if (isEditing) {
+        await blogAPI.updateBlog(editingBlogId, payload);
+        showToast.success('Post updated', 'Your blog post has been updated');
+      } else {
+        await blogAPI.createBlog(payload);
+        showToast.success('Post created', 'Your blog post is now live');
+      }
+
       setShowCreateModal(false);
+      setEditingBlog(null);
       setCreateData({
         title: '',
         excerpt: '',
@@ -202,7 +220,10 @@ const Blogs = () => {
       setCoverImagePreview('');
       loadBlogs();
     } catch (error) {
-      showToast.error('Creation failed', error?.response?.data?.error || 'Failed to create blog post');
+      showToast.error(
+        isEditing ? 'Update failed' : 'Creation failed',
+        error?.response?.data?.error || (isEditing ? 'Failed to update blog post' : 'Failed to create blog post')
+      );
     } finally {
       setCreating(false);
     }
@@ -277,14 +298,20 @@ const Blogs = () => {
             <button
               className="btn btn-primary"
               onClick={() => {
+                setEditingBlog(null);
                 setCategoryMode('preset');
                 setCustomCategory('');
                 setCoverImageFile(null);
                 setCoverImagePreview('');
-                setCreateData((prev) => ({
-                  ...prev,
-                  category: prev.category || BLOG_CATEGORIES[0],
-                }));
+                setCreateData({
+                  title: '',
+                  excerpt: '',
+                  content: '',
+                  category: BLOG_CATEGORIES[0],
+                  tags: '',
+                  is_published: true,
+                  scheduled_publish_at: '',
+                });
                 setShowCreateModal(true);
               }}
             >
@@ -293,18 +320,20 @@ const Blogs = () => {
           </div>
 
           {/* Tab navigation */}
-          <div className="blogs-tabs" style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+          <div className="blogs-tabs">
             <button
               className={tab === 'all' ? 'blogs-tab active' : 'blogs-tab'}
+              type="button"
               onClick={() => setTab('all')}
-              style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: tab === 'all' ? 'var(--primary-color)' : 'var(--surface-soft)', color: tab === 'all' ? '#fff' : 'var(--muted-color)', fontWeight: 600, cursor: 'pointer' }}
+              aria-pressed={tab === 'all'}
             >
               All Blogs
             </button>
             <button
               className={tab === 'drafts' ? 'blogs-tab active' : 'blogs-tab'}
+              type="button"
               onClick={() => setTab('drafts')}
-              style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: tab === 'drafts' ? 'var(--primary-color)' : 'var(--surface-soft)', color: tab === 'drafts' ? '#fff' : 'var(--muted-color)', fontWeight: 600, cursor: 'pointer' }}
+              aria-pressed={tab === 'drafts'}
             >
               My Drafts
             </button>
@@ -424,15 +453,22 @@ const Blogs = () => {
       </div>
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}>
           <div className="modal-content blog-modal" onClick={(e) => e.stopPropagation()}>
             <div className="blog-modal-header">
               <div className="blog-modal-header-flex">
                 <div>
-                  <h2 className="blog-modal-title">Create Blog Post</h2>
-                  <p className="blog-modal-subtitle">Share your ideas with the BUET community</p>
+                  <h2 className="blog-modal-title">{editingBlog ? 'Edit Blog Post' : 'Create Blog Post'}</h2>
+                  <p className="blog-modal-subtitle">
+                    {editingBlog ? 'Update your post details' : 'Share your ideas with the BUET community'}
+                  </p>
                 </div>
-                <button type="button" className="modal-close-btn" aria-label="Close" onClick={() => setShowCreateModal(false)}>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  aria-label="Close"
+                  onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}
+                >
                   <FaTimes />
                 </button>
               </div>
@@ -578,9 +614,15 @@ const Blogs = () => {
                 </div>
                 <div className="modal-actions">
                   <button className="btn btn-primary btn-lg" type="submit" disabled={creating}>
-                    {creating ? 'Publishing...' : 'Publish Blog'}
+                    {creating ? (editingBlog ? 'Updating...' : 'Publishing...') : (editingBlog ? 'Update Blog' : 'Publish Blog')}
                   </button>
-                  <button className="btn btn-secondary btn-lg" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                  <button
+                    className="btn btn-secondary btn-lg"
+                    type="button"
+                    onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}
+                  >
+                    Cancel
+                  </button>
                 </div>
               </form>
             </div>

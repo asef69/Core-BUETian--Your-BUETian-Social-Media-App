@@ -31,6 +31,34 @@
   padding-bottom: 4px;
 }
 
+.notifications-filter-row {
+  margin-top: 10px;
+}
+
+.notification-type-icon {
+  margin-right: 4px;
+}
+
+.notification-type-icon--like {
+  color: #ff5252;
+}
+
+.notification-type-icon--comment {
+  color: #7bbcff;
+}
+
+.notification-type-icon--follow {
+  color: #42b883;
+}
+
+.notification-type-icon--message {
+  color: #ffa500;
+}
+
+.notification-type-icon--group {
+  color: #9c27b0;
+}
+
 .filter-btn {
   padding: 9px 16px;
   background: rgba(255, 255, 255, 0.05);
@@ -326,13 +354,16 @@
   background: rgba(35, 116, 225, 0.2);
   transform: scale(1.08);
 }
-}
 
 .notification-actions .action-btn.delete:hover {
   color: var(--danger-color);
 }
 
 @media (max-width: 768px) {
+  .notifications-filter-row {
+    margin-top: 8px;
+  }
+
   .notifications-actions {
     width: 100%;
   }

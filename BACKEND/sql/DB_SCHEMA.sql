@@ -299,7 +299,7 @@ CREATE TABLE comment_likes (
     comment_id INT NOT NULL,
     user_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT fk_comment FOREIGN KEY (comment_id) REFERENCES comments(comment_id) ON DELETE CASCADE,
+    CONSTRAINT fk_comment FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT unique_comment_user UNIQUE(comment_id, user_id)
 );

@@ -146,13 +146,9 @@ const Groups = () => {
         .map((group) => Number(getGroupId(group)))
         .filter(Boolean);
 
-      if (pendingFromApi.length > 0) {
-        setPendingGroupIds((prev) => {
-          const next = new Set([...prev, ...pendingFromApi]);
-          persistPendingGroups(next);
-          return next;
-        });
-      }
+      const nextPendingIds = new Set(pendingFromApi);
+      setPendingGroupIds(nextPendingIds);
+      persistPendingGroups(nextPendingIds);
     } catch (error) {
       console.error("Error loading groups:", error);
     } finally {
@@ -192,14 +188,23 @@ const Groups = () => {
 
   const handleJoinGroup = async (groupId) => {
     try {
-      await groupAPI.joinGroup(groupId);
+      const response = await groupAPI.joinGroup(groupId);
+      const message = String(response?.data?.message || '').toLowerCase();
+      const isPendingJoin = message.includes('join request sent') || message.includes('already pending');
+
       setPendingGroupIds((prev) => {
         const next = new Set(prev);
-        next.add(Number(groupId));
+        if (isPendingJoin) {
+          next.add(Number(groupId));
+        } else {
+          next.delete(Number(groupId));
+        }
         persistPendingGroups(next);
         return next;
       });
-      toast.success("Join request sent!");
+
+      toast.success(isPendingJoin ? "Join request sent!" : "Joined group successfully!");
+      loadGroups();
     } catch (error) {
       const message =
         error?.response?.data?.message || error?.response?.data?.error || "";

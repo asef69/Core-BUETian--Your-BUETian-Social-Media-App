@@ -1445,7 +1445,7 @@ class ReserveProductView(APIView):
             SET status = 'reserved', updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
               AND status = 'available'
-              AND seller_id <> %s
+                            AND seller_id = %s
             """,
             (product_id, request.user.id)
         )

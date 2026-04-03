@@ -238,7 +238,7 @@ MEDIA_FOLDERS = {
 # File size limits (in bytes)
 FILE_SIZE_LIMITS = {
     'image': 5 * 1024 * 1024,      # 5MB
-    'video': 50 * 1024 * 1024,     # 50MB
+    'video': 250 * 1024 * 1024,     # 250MB
     'document': 10 * 1024 * 1024,  # 10MB
 }
 

@@ -22,6 +22,43 @@
   align-items: center;
 }
 
+.marketplace-actions,
+.marketplace-status-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.marketplace-actions {
+  justify-content: flex-end;
+}
+
+.marketplace-status-filters {
+  margin-bottom: 12px;
+}
+
+.marketplace-stats-grid {
+  margin-bottom: 14px;
+}
+
+.marketplace-stat-card,
+.marketplace-insight-card {
+  padding: 12px;
+}
+
+.marketplace-price-insights {
+  margin-top: 14px;
+}
+
+.marketplace-price-insights-title {
+  margin-bottom: 8px;
+}
+
+.marketplace-price-insights-grid {
+  margin-top: 0;
+}
+
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -470,5 +507,15 @@ body[data-theme='light'] .product-edit-cancel-btn {
 
   .product-actions {
     flex-direction: column;
+  }
+
+  .marketplace-actions,
+  .marketplace-status-filters {
+    width: 100%;
+  }
+
+  .marketplace-actions .btn,
+  .marketplace-status-filters .btn {
+    flex: 1;
   }
 }

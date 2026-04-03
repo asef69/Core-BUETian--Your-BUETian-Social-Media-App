@@ -933,7 +933,7 @@ const GroupDetail = () => {
 
             {activeTab === 'dashboard' && canManageMembers && (
               <div className="group-admin-dashboard">
-                <div className="dashboard-panel">
+                <div className="dashboard-panel dashboard-panel-compact">
                   <div className="dashboard-heading">
                     <h3>Edit Group</h3>
                     <p>Admins can update group name, description, privacy, and cover image.</p>
@@ -947,66 +947,112 @@ const GroupDetail = () => {
                       </button>
                     )}
                   </div>
-
-                  {showEditForm && (
-                    <form className="edit-group-form" onSubmit={handleUpdateGroup}>
-                      <div className="form-group">
-                        <label>Group Name</label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={editGroupData.name}
-                          onChange={handleEditChange}
-                          required
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>Description</label>
-                        <textarea
-                          name="description"
-                          value={editGroupData.description}
-                          onChange={handleEditChange}
-                          rows="3"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label>
-                          <input
-                            type="checkbox"
-                            name="is_private"
-                            checked={editGroupData.is_private}
-                            onChange={handleEditChange}
-                          />
-                          Private Group
-                        </label>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Cover Image</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          name="cover_image"
-                          onChange={handleEditChange}
-                        />
-                        {editGroupData.cover_image && <p>{editGroupData.cover_image.name}</p>}
-                      </div>
-
-                      <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
-                        {updatingGroup ? 'Updating...' : 'Update Group'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setShowEditForm(false)}
-                      >
-                        Cancel
-                      </button>
-                    </form>
-                  )}
                 </div>
+
+                {showEditForm && (
+                  <div className="modal-overlay group-edit-modal-overlay" onClick={() => setShowEditForm(false)}>
+                    <div
+                      className="modal-content large group-edit-modal"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="group-edit-modal-header">
+                        <div>
+                          <span className="group-edit-modal-kicker">Group Settings</span>
+                          <h2>Edit Group</h2>
+                          <p>Refine the group identity, privacy, and visual presence.</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="modal-close-btn group-edit-modal-close"
+                          aria-label="Close edit group dialog"
+                          onClick={() => setShowEditForm(false)}
+                        >
+                          <FaTimes />
+                        </button>
+                      </div>
+
+                      <form className="edit-group-form group-edit-form" onSubmit={handleUpdateGroup}>
+                        <div className="group-edit-grid">
+                          <div className="form-group">
+                            <label>Group Name</label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={editGroupData.name}
+                              onChange={handleEditChange}
+                              required
+                            />
+                          </div>
+
+                          <div className="form-group group-edit-privacy">
+                            <label>Visibility</label>
+                            <button
+                              type="button"
+                              className={`private-group-toggle ${editGroupData.is_private ? 'active' : ''}`}
+                              onClick={() =>
+                                setEditGroupData((prev) => ({
+                                  ...prev,
+                                  is_private: !prev.is_private,
+                                }))
+                              }
+                            >
+                              <span className={`toggle-knob ${editGroupData.is_private ? 'active' : ''}`} />
+                              <span className="private-group-toggle-text">
+                                {editGroupData.is_private ? 'Private group' : 'Public group'}
+                              </span>
+                            </button>
+                            <span className="private-group-helper">
+                              Private groups require approval before members can see posts.
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Description</label>
+                          <textarea
+                            name="description"
+                            value={editGroupData.description}
+                            onChange={handleEditChange}
+                            rows="4"
+                            placeholder="Describe the purpose of the group"
+                          />
+                        </div>
+
+                        <div className="group-edit-upload-card">
+                          <div className="group-edit-upload-copy">
+                            <label>Cover Image</label>
+                            <p>Upload a new cover to give the group a more polished header.</p>
+                          </div>
+                          <div className="group-edit-upload-controls">
+                            <label className="cover-picker-btn btn btn-secondary" htmlFor="group-cover-image">
+                              Choose Image
+                            </label>
+                            <input
+                              id="group-cover-image"
+                              type="file"
+                              accept="image/*"
+                              name="cover_image"
+                              className="group-cover-input-hidden"
+                              onChange={handleEditChange}
+                            />
+                            <span className="cover-file-name">
+                              {editGroupData.cover_image ? editGroupData.cover_image.name : 'No file selected'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="modal-actions group-edit-modal-actions">
+                          <button type="button" className="btn btn-secondary" onClick={() => setShowEditForm(false)}>
+                            Cancel
+                          </button>
+                          <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
+                            {updatingGroup ? 'Updating...' : 'Update Group'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
 
                 <div className="dashboard-panel">
                   <div className="dashboard-heading">

@@ -234,6 +234,7 @@ export const blogAPI = {
   getBlogDetail: (blogId) => api.get(`/blogs/${blogId}/`),
   trackView: (blogId) => api.post(`/blogs/${blogId}/view/`),
   createBlog: (data) => api.post('/blogs/create/', data),
+  updateBlog: (blogId, data) => api.patch(`/blogs/${blogId}/update/`, data),
   toggleLike: (blogId) => api.post(`/blogs/${blogId}/like/`),
   getComments: (blogId) => api.get(`/blogs/${blogId}/comments/`),
   addComment: (blogId, data) => api.post(`/blogs/${blogId}/comments/`, data),

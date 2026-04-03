@@ -231,8 +231,8 @@ class UpdateBlogPostView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        def patch(self, request, blog_id):
-            return self.put(request, blog_id)
+    def patch(self, request, blog_id):
+        return self.put(request, blog_id)
 
 class DeleteBlogPostView(APIView):
     def delete(self, request, blog_id):

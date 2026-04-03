@@ -168,6 +168,12 @@
   box-shadow: 0 10px 24px rgba(35, 116, 225, 0.12);
 }
 
+.nav-link:focus-visible,
+.theme-toggle-btn:focus-visible {
+  outline: 2px solid rgba(35, 116, 225, 0.58);
+  outline-offset: 2px;
+}
+
 .nav-link:hover {
   transform: translateY(-2px);
 }
@@ -332,16 +338,24 @@ body[data-theme='light'] .logout-btn:hover {
   }
 
   .nav-link {
-    min-width: 44px;
-    padding: 8px 9px;
+    min-width: 58px;
+    padding: 8px 10px 7px;
   }
 
   .nav-link span {
-    display: none;
+    display: block;
+    font-size: 0.58rem;
+    line-height: 1.05;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .nav-link svg {
+    font-size: 0.92rem;
   }
 
   .logout-btn {
-    min-width: 44px;
-    padding-inline: 9px;
+    min-width: 58px;
+    padding-inline: 10px;
   }
 }

@@ -328,11 +328,11 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
       const response = await postAPI.updatePost(postId, formData);
       const mediaErrors = Array.isArray(response?.data?.media_errors) ? response.data.media_errors : [];
 
-      const updatedMedia = normalizeMediaResponse(response?.data?.media_urls || []);
+      const refreshResponse = await postAPI.getPost(postId);
+      const refreshedPost = refreshResponse?.data || {};
+      const updatedMedia = normalizeMediaItems(refreshedPost);
 
-      if (updatedMedia.length > 0) {
-        setDisplayMediaItems(updatedMedia);
-      }
+      setDisplayMediaItems(updatedMedia);
 
       setDisplayContent(editContent);
       setDisplayVisibility(editVisibility);
@@ -536,9 +536,9 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
           <p>{renderContentWithHashtags(displayContent)}</p>
         )}
         
-        {mediaItems.length > 0 && (
-          <div className={`post-media ${mediaItems.length > 1 ? 'media-grid' : ''}`}>
-            {mediaItems.map((media, index) => (
+        {displayMediaItems.length > 0 && (
+          <div className={`post-media ${displayMediaItems.length > 1 ? 'media-grid' : ''}`}>
+            {displayMediaItems.map((media, index) => (
               <div key={index} className="media-item">
                 {media.type === 'video' ? (
                   <video src={media.url} controls />

@@ -192,27 +192,27 @@ const Notifications = () => {
   const getNotificationIcon = (notif) => {
     const type = notif?.notification_type || notif?.type;
     
-    const iconProps = { size: 18, style: { marginRight: '4px' } };
+    const iconProps = { size: 18, className: 'notification-type-icon' };
     
     switch (type) {
       case 'like':
       case 'blog_like':
-        return <FaHeart {...iconProps} style={{ color: '#ff5252', marginRight: '4px' }} />;
+        return <FaHeart {...iconProps} className="notification-type-icon notification-type-icon--like" />;
       case 'comment':
       case 'reply':
       case 'blog_comment':
       case 'blog_reply':
       case 'blog_comment_like':
-        return <FaComment {...iconProps} style={{ color: '#7bbcff', marginRight: '4px' }} />;
+        return <FaComment {...iconProps} className="notification-type-icon notification-type-icon--comment" />;
       case 'follow':
       case 'follow_request':
       case 'follow_accepted':
-        return <FaUserPlus {...iconProps} style={{ color: '#42b883', marginRight: '4px' }} />;
+        return <FaUserPlus {...iconProps} className="notification-type-icon notification-type-icon--follow" />;
       case 'message':
-        return <FaComments {...iconProps} style={{ color: '#ffa500', marginRight: '4px' }} />;
+        return <FaComments {...iconProps} className="notification-type-icon notification-type-icon--message" />;
       case 'group_invite':
       case 'group_join_request':
-        return <FaUserCheck {...iconProps} style={{ color: '#9c27b0', marginRight: '4px' }} />;
+        return <FaUserCheck {...iconProps} className="notification-type-icon notification-type-icon--group" />;
       default:
         return <FaBell {...iconProps} />;
     }
@@ -252,7 +252,7 @@ const Notifications = () => {
           </div>
 
           {summary.length > 0 && (
-            <div className="notifications-filter" style={{ marginTop: '10px' }}>
+            <div className="notifications-filter notifications-filter-row">
               {summary.map((item, index) => {
                 const type = item.notification_type || item.type || `type-${index}`;
                 const unread = item.unread_count || 0;
