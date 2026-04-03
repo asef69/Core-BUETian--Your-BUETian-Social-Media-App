@@ -344,6 +344,38 @@ const GroupDetail = () => {
   const handleInviteMember = async (userId) => {
     try {
       const response = await groupAPI.inviteMember(groupId, userId);
+
+      const invitedUserFromSearch = searchCandidates.find(
+        (person) => String(person.user_id) === String(userId)
+      );
+      const invitedUserFromFollowers = followersToInvite.find(
+        (person) => String(person.user_id) === String(userId)
+      );
+      const invitedUser = invitedUserFromSearch || invitedUserFromFollowers;
+
+      setSearchCandidates((prev) =>
+        prev.filter((person) => String(person.user_id) !== String(userId))
+      );
+      setFollowersToInvite((prev) =>
+        prev.filter((person) => String(person.user_id) !== String(userId))
+      );
+      setInvitedMembers((prev) => {
+        const alreadyInvited = prev.some(
+          (member) => String(member.user_id) === String(userId)
+        );
+        if (alreadyInvited) return prev;
+
+        return [
+          ...prev,
+          {
+            user_id: userId,
+            name: invitedUser?.name || 'User',
+            profile_picture: invitedUser?.profile_picture,
+            role: 'invited',
+          },
+        ];
+      });
+
       toast.success(response?.data?.message || 'User invited successfully');
       loadGroupData();
     } catch (error) {
@@ -388,15 +420,15 @@ const GroupDetail = () => {
       setSearchLoading(true);
       const response = await userAPI.searchUsers(searchTerm.trim());
       const users = extractItems(response.data).map(normalizeUser);
-      const memberIds = new Set(members.map((member) => member.user_id));
-      const pendingIds = new Set(pendingMembers.map((member) => member.user_id));
-      const invitedIds = new Set(invitedMembers.map((member) => member.user_id));
+      const memberIds = new Set(members.map((member) => String(member.user_id)));
+      const pendingIds = new Set(pendingMembers.map((member) => String(member.user_id)));
+      const invitedIds = new Set(invitedMembers.map((member) => String(member.user_id)));
       setSearchCandidates(
         users.filter(
           (item) =>
-            !memberIds.has(item.user_id) &&
-            !pendingIds.has(item.user_id) &&
-            !invitedIds.has(item.user_id)
+            !memberIds.has(String(item.user_id)) &&
+            !pendingIds.has(String(item.user_id)) &&
+            !invitedIds.has(String(item.user_id))
         )
       );
       setSearchPage(1);
