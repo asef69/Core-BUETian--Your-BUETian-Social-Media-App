@@ -509,7 +509,7 @@ const Forums = () => {
                                       <strong>Location:</strong> {post.location}
                                     </p>
                                     <p>
-                                      <strong>Salary Range:</strong> ৳{post.salary_min} 
+                                      <strong>Minimum Salary:</strong> ৳{post.salary_min} 
                                     </p>
                                     <p>
                                       <strong>Days per Week:</strong> {post.days_per_week}

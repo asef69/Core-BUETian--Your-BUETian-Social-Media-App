@@ -130,8 +130,7 @@ const ProductDetail = () => {
       }
       loadProduct();
     } catch (error) {
-      const fallbackMessage = action === 'reserve' ? 'Failed to reserve product' : 'Failed to mark sold';
-      toast.error(error?.response?.data?.error || fallbackMessage);
+      toast.error(action === 'reserve' ? 'Failed to reserve product' : 'Failed to mark sold');
     }
   };
 
@@ -407,11 +406,6 @@ const ProductDetail = () => {
 
               {!isOwnProduct && (
                 <div className="product-actions">
-                  {product.status === 'available' && (
-                    <button className="btn btn-primary" onClick={handleReserve}>
-                      Reserve for Buyer
-                    </button>
-                  )}
                   <button className="btn btn-secondary" onClick={handleContactSeller}>
                     Contact Seller
                   </button>
