@@ -1083,7 +1083,7 @@ class MarkProductSoldView(APIView):
             buyer_id = None
 
         product_result = DatabaseManager.execute_query(
-            "SELECT seller_id, status FROM marketplace_products WHERE id = %s",
+            "SELECT seller_id, status, buyer_id FROM marketplace_products WHERE id = %s",
             (product_id,)
         )
         if not product_result:
@@ -1095,7 +1095,7 @@ class MarkProductSoldView(APIView):
 
         current_status = str(product.get('status') or '').lower()
         if current_status == 'sold':
-            return Response({'error': 'Product is already marked as sold'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'Product is already marked as sold'})
 
         if buyer_id is not None and int(buyer_id) == int(request.user.id):
             return Response({'error': 'Seller cannot be set as buyer'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1107,6 +1107,16 @@ class MarkProductSoldView(APIView):
         
         if result and result[0].get('mark_product_sold'):
             return Response({'message': 'Product marked as sold'})
+
+        # Idempotency/race-safe fallback: another near-simultaneous request may have
+        # already marked this product as sold between the pre-check and the update.
+        latest = DatabaseManager.execute_query(
+            "SELECT status FROM marketplace_products WHERE id = %s AND seller_id = %s",
+            (product_id, request.user.id)
+        )
+        if latest and str(latest[0].get('status') or '').lower() == 'sold':
+            return Response({'message': 'Product is already marked as sold'})
+
         return Response({'error': 'Failed to mark product as sold'}, status=status.HTTP_400_BAD_REQUEST)
 
 

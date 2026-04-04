@@ -24,6 +24,25 @@ def _ensure_blog_comment_extensions():
         """
     )
 
+
+def _resolve_blog_id(blog_id):
+    """Resolve a blog reference that may be a blog id or a blog comment id."""
+    direct_blog = DatabaseManager.execute_query(
+        "SELECT id FROM blog_posts WHERE id = %s",
+        (blog_id,)
+    )
+    if direct_blog:
+        return int(blog_id)
+
+    via_comment = DatabaseManager.execute_query(
+        "SELECT blog_id FROM blog_comments WHERE id = %s",
+        (blog_id,)
+    )
+    if via_comment and via_comment[0].get('blog_id') is not None:
+        return int(via_comment[0]['blog_id'])
+
+    return None
+
 class CreateBlogPostView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -68,6 +87,10 @@ class BlogPostDetailView(APIView):
     def get(self, request, blog_id):
         from datetime import datetime, timezone
 
+        resolved_blog_id = _resolve_blog_id(blog_id)
+        if resolved_blog_id is None:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         query = """
         SELECT b.*, u.name as author_name, u.profile_picture as author_picture,
                ARRAY(SELECT tag_name FROM blog_post_tags WHERE blog_post_id = b.id) as tags,
@@ -81,7 +104,7 @@ class BlogPostDetailView(APIView):
         INNER JOIN users u ON b.author_id = u.id
         WHERE b.id = %s
         """
-        result = DatabaseManager.execute_query(query, (request.user.id, blog_id))
+        result = DatabaseManager.execute_query(query, (request.user.id, resolved_blog_id))
         
         if not result:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -110,10 +133,14 @@ class BlogPostDetailView(APIView):
 
 class BlogPostViewTrackView(APIView):
     def post(self, request, blog_id):
+        resolved_blog_id = _resolve_blog_id(blog_id)
+        if resolved_blog_id is None:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         # SQL-level guard avoids timezone parsing mismatches in Python.
         exists = DatabaseManager.execute_query(
             "SELECT 1 FROM blog_posts WHERE id = %s",
-            (blog_id,)
+            (resolved_blog_id,)
         )
         if not exists:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -127,7 +154,7 @@ class BlogPostViewTrackView(APIView):
               AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP)
             RETURNING views_count
             """,
-            (blog_id,)
+            (resolved_blog_id,)
         )
 
         if not result:
@@ -324,6 +351,10 @@ class DeleteBlogPostView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class LikeBlogView(APIView):
     def post(self, request, blog_id):
+        resolved_blog_id = _resolve_blog_id(blog_id)
+        if resolved_blog_id is None:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         # Explicitly cast types and add OUT params for the procedure
         def cast_or_none(val, typ):
             if val is None:
@@ -334,7 +365,7 @@ class LikeBlogView(APIView):
 
         blog_exists = DatabaseManager.execute_query(
             "SELECT 1 FROM blog_posts WHERE id = %s",
-            (blog_id,)
+            (resolved_blog_id,)
         )
         if not blog_exists:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -347,7 +378,7 @@ class LikeBlogView(APIView):
               AND is_published = TRUE
               AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP)
             """,
-            (blog_id,)
+                        (resolved_blog_id,)
         )
         if not like_allowed:
             return Response(
@@ -356,7 +387,7 @@ class LikeBlogView(APIView):
             )
         params = (
             cast_or_none(request.user.id, 'int'),
-            cast_or_none(blog_id, 'int'),
+            cast_or_none(resolved_blog_id, 'int'),
             None,  # out_liked
             None,  # out_likes_count
             None,  # out_success
@@ -377,7 +408,7 @@ class LikeBlogView(APIView):
                 'message': result[0]['out_message'],
                 'liked': result[0]['out_liked'],
                 'likes_count': result[0]['out_likes_count'],
-                'blog_id': blog_id
+                'blog_id': resolved_blog_id
             })
         except Exception as e:
             return Response({'error': f'Internal error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -413,6 +444,10 @@ class LikeBlogCommentView(APIView):
 class BlogCommentsView(APIView):
     def get(self, request, blog_id):
         _ensure_blog_comment_extensions()
+        resolved_blog_id = _resolve_blog_id(blog_id)
+        if resolved_blog_id is None:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         query = """
         SELECT
             bc.*,
@@ -435,11 +470,15 @@ class BlogCommentsView(APIView):
         GROUP BY bc.id, u.id, u.name, u.profile_picture
         ORDER BY bc.created_at ASC
         """
-        result = DatabaseManager.execute_query(query, (request.user.id, blog_id))
+        result = DatabaseManager.execute_query(query, (request.user.id, resolved_blog_id))
         return Response(result)
     
     def post(self, request, blog_id):
         _ensure_blog_comment_extensions()
+        resolved_blog_id = _resolve_blog_id(blog_id)
+        if resolved_blog_id is None:
+            return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         data = request.data
 
         parent_comment_id = data.get('parent_comment_id')
@@ -449,7 +488,7 @@ class BlogCommentsView(APIView):
         # Use the stored procedure for comment creation and notification
         params = (
             int(request.user.id),
-            int(blog_id),
+            int(resolved_blog_id),
             data['content'],
             int(parent_comment_id) if parent_comment_id is not None else None,
             None,  # out_comment_id
