@@ -25,10 +25,12 @@ Core BUETians is a domain-driven social platform that combines:
 
 The project is organized to support maintainable growth: each core business area is separated into its own Django app, while the frontend is componentized under React + Vite.
 
-## Animated Product Workflow
-<div>
-    <video src="CSB.mp4">
-</div>
+## Project Demo
+
+
+https://github.com/user-attachments/assets/6ac016ff-ade8-4872-86e9-911d4b8a5ae4
+
+
 
 ## Animated Product Workflow
 
