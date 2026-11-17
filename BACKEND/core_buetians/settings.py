@@ -179,16 +179,13 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT', default='5432'),
-        # Opening a connection to Supabase (TCP + TLS + auth) costs several
-        # network round trips, which dominated every request when it was done
-        # per request. Long-running servers (Render, local) therefore reuse
-        # connections; short-lived serverless functions (Vercel) must not.
-        # Override with DB_CONN_MAX_AGE (seconds).
-        'CONN_MAX_AGE': config(
-            'DB_CONN_MAX_AGE',
-            default=0 if os.environ.get('VERCEL') else 600,
-            cast=int,
-        ),
+        # Keep 0 (close after each request). Under ASGI/Daphne Django runs every
+        # request's sync code in a fresh thread, so a persistent connection is
+        # never reused (measured: no speed-up) and only risks leaking sockets.
+        # The cost of reconnecting is instead kept small by hosting the backend
+        # in the same region as the database (see render.yaml). Only raise this
+        # when serving with a WSGI server (gunicorn); override via DB_CONN_MAX_AGE.
+        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=0, cast=int),
         # Drop and replace a reused connection the pooler has closed.
         'CONN_HEALTH_CHECKS': True,
         # Required with pgbouncer/Supavisor in transaction mode.
