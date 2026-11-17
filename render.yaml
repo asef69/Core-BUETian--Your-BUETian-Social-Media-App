@@ -7,7 +7,7 @@
 # live in git. See BACKEND/.env.example for what each one means.
 services:
   - type: web
-    name: buetian-api-ws
+    name: buetian-api-sg
     runtime: python
     rootDir: BACKEND
     plan: free
