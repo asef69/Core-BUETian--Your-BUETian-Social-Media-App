@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { userAPI, postAPI } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
+import PostSkeleton from '../../components/Posts/PostSkeleton';
+import Avatar from '../../components/common/Avatar';
 import { toast } from 'react-toastify';
 import { confirmDialog } from '../../utils/confirmDialog';
-import { FaEdit, FaTimes, FaUserPlus, FaUserCheck, FaUserMinus } from 'react-icons/fa';
+import {
+  FaEdit, FaTimes, FaUserPlus, FaUserCheck, FaUserMinus, FaCamera, FaComments, FaIdCard,
+  FaUniversity, FaTint, FaRegImages, FaRegNewspaper, FaExclamationCircle, FaPlay,
+} from 'react-icons/fa';
 import '../../styles/Profile.css';
+import { formatDate } from '../../utils/time';
+import { getPostMedia } from '../../utils/media';
 
 const getRelationshipState = (data) => {
   if (data?.relationship_status) {
@@ -31,6 +38,7 @@ const Profile = () => {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('posts');
   const [isFollowing, setIsFollowing] = useState(false);
   const [relationshipStatus, setRelationshipStatus] = useState('none');
@@ -45,6 +53,8 @@ const Profile = () => {
   const [followersLoading, setFollowersLoading] = useState(false);
   const [removingFollowerId, setRemovingFollowerId] = useState(null);
   const modalCloseTimerRef = useRef(null);
+  const editModeRef = useRef(false);
+  editModeRef.current = editMode;
   const isOwnProfile = Boolean(currentUser?.id) && Number(currentUser.id) === Number(userId);
 
   useEffect(() => {
@@ -90,6 +100,17 @@ const Profile = () => {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (!editMode && !showFollowersModal) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (editMode) closeEditModal();
+      else handleCloseFollowersModal();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  });
+
   const loadProfile = async () => {
     try {
       const response = await userAPI.getProfile(userId);
@@ -99,21 +120,18 @@ const Profile = () => {
       setIsFollowing(Boolean(response.data.is_following));
       setRelationshipStatus(nextRelationshipStatus);
       setIncomingFollowRequestId(response.data.incoming_follow_request_id || null);
-      setEditData({
-        name: response.data.name,
-        bio: response.data.bio || '',
-        blood_group: response.data.blood_group || '',
-        hall_name: response.data.hall_name || '',
-        hall_attachement: response.data.hall_attachement || 'Resident',
-        department_name: response.data.department_name || '',
-      });
-      console.log('✅ Profile loaded successfully for user:', userId, response.data);
+      if (!editModeRef.current) {
+        setEditData({
+          name: response.data.name,
+          bio: response.data.bio || '',
+          blood_group: response.data.blood_group || '',
+          hall_name: response.data.hall_name || '',
+          hall_attachement: response.data.hall_attachement || 'Resident',
+          department_name: response.data.department_name || '',
+        });
+      }
     } catch (error) {
-      console.error('❌ Error loading profile for user:', userId, {
-        status: error.response?.status,
-        message: error.response?.data?.message || error.message,
-        data: error.response?.data
-      });
+      console.error('Error loading profile for user:', userId, error.response?.data || error.message);
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);
@@ -223,6 +241,7 @@ const Profile = () => {
 
   const loadUserPosts = async () => {
     try {
+      setPostsLoading(true);
       const response = await userAPI.getUserPosts(userId);
       const postsData = response.data.results || response.data;
       const normalizedPosts = postsData.map(post => ({
@@ -234,6 +253,8 @@ const Profile = () => {
       setPosts(normalizedPosts);
     } catch (error) {
       console.error('Error loading posts:', error);
+    } finally {
+      setPostsLoading(false);
     }
   };
 
@@ -416,361 +437,430 @@ const Profile = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="loading">Loading profile...</div>
-      </div>
-    );
-  }
+  const mediaTiles = posts.flatMap((post) =>
+    getPostMedia(post).map((media, index) => ({
+      key: `${post.id || post.post_id}-${index}`,
+      postId: post.id || post.post_id,
+      ...media,
+    })),
+  );
 
-  if (!profile) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="error">Profile not found</div>
-      </div>
-    );
-  }
-
-  return (
+  const shell = (children) => (
     <div className="app-layout">
       <Navbar />
       <div className="main-content">
         <div className="container">
-          <div className="profile-container">
-            <div className="profile-header">
-              <div className="profile-cover"></div>
-              <div className="profile-info">
-                <div className="profile-avatar-container">
-                  <img
-                    src={profile.profile_picture || '/default-avatar.svg'}
-                    alt={profile.name}
-                    className="profile-avatar"
-                  />
-                  {isOwnProfile && (
-                    <label className="avatar-upload-btn">
-                      <FaEdit />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-                  )}
-                </div>
-
-                <div className="profile-details">
-                  <>
-                    <h1>{profile.name}</h1>
-                    <p className="bio">{profile.bio || 'No bio yet'}</p>
-                    <div className="profile-meta">
-                      <span>Student ID: {profile.student_id}</span>
-                      <span>{profile.department_name}</span>
-                      <span>Batch {profile.batch}</span>
-                      {profile.blood_group && <span>Blood: {profile.blood_group}</span>}
-                    </div>
-
-                    <div className="profile-stats">
-                      <div className="stat">
-                        <strong>{profile.posts_count || 0}</strong>
-                        <span>Posts</span>
-                      </div>
-                      <div className="stat">
-                        <strong>{profile.followers_count || 0}</strong>
-                        <span>Followers</span>
-                        {isOwnProfile && (
-                          <button
-                            type="button"
-                            className="followers-manage-btn"
-                            onClick={handleOpenFollowersModal}
-                          >
-                            Manage
-                          </button>
-                        )}
-                      </div>
-                      <div className="stat">
-                        <strong>{profile.following_count || 0}</strong>
-                        <span>Following</span>
-                      </div>
-                      {!isOwnProfile && (
-                        <div className="stat">
-                          <strong>{profile.mutual_friends_count || 0}</strong>
-                          <span>Mutual Friends</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {isOwnProfile ? (
-                      <button className="btn btn-primary" onClick={openEditModal}>
-                        <FaEdit /> Edit Profile
-                      </button>
-                    ) : (
-                      renderFollowAction()
-                    )}
-                  </>
-                </div>
-              </div>
-            </div>
-
-            {isOwnProfile && editMode && (
-              <div
-                className={`profile-edit-overlay${isModalClosing ? ' closing' : ''}`}
-                onClick={closeEditModal}
-              >
-                <div
-                  className={`profile-edit-modal${isModalClosing ? ' closing' : ''}`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="profile-edit-header">
-                    <h2>Update Profile</h2>
-                    <button
-                      className="profile-edit-close"
-                      onClick={closeEditModal}
-                      aria-label="Close edit profile modal"
-                    >
-                      x
-                    </button>
-                  </div>
-
-                  <div className="profile-edit-form">
-                    <label className="profile-edit-field">
-                      <span>Name</span>
-                      <input
-                        type="text"
-                        value={editData.name || ''}
-                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                        placeholder="Your full name"
-                      />
-                    </label>
-
-                    <label className="profile-edit-field">
-                      <span>Bio</span>
-                      <textarea
-                        value={editData.bio || ''}
-                        onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
-                        placeholder="Tell people a bit about yourself"
-                        rows="3"
-                      />
-                    </label>
-
-                    <div className="profile-edit-grid">
-                      <label className="profile-edit-field">
-                        <span>Blood Group</span>
-                        <select
-                          value={editData.blood_group || ''}
-                          onChange={(e) => setEditData({ ...editData, blood_group: e.target.value })}
-                        >
-                          <option value="">Select blood group</option>
-                          <option value="O+">O+</option>
-                          <option value="O-">O-</option>
-                          <option value="A+">A+</option>
-                          <option value="A-">A-</option>
-                          <option value="B+">B+</option>
-                          <option value="B-">B-</option>
-                          <option value="AB+">AB+</option>
-                          <option value="AB-">AB-</option>
-                        </select>
-                      </label>
-
-                      <label className="profile-edit-field">
-                        <span>Hall Name</span>
-                        <input
-                          type="text"
-                          value={editData.hall_name || ''}
-                          onChange={(e) => setEditData({ ...editData, hall_name: e.target.value })}
-                          placeholder="Enter hall name"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="profile-edit-radio-group">
-                      <span>Hall Attachment</span>
-                      <label>
-                        <input
-                          type="radio"
-                          name="hall_attachement"
-                          value="Resident"
-                          checked={editData.hall_attachement === 'Resident'}
-                          onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
-                        />
-                        Resident
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name="hall_attachement"
-                          value="Attached"
-                          checked={editData.hall_attachement === 'Attached'}
-                          onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
-                        />
-                        Attached
-                      </label>
-                    </div>
-
-                    <label className="profile-edit-field">
-                      <span>Department</span>
-                      <input
-                        type="text"
-                        value={editData.department_name || ''}
-                        onChange={(e) => setEditData({ ...editData, department_name: e.target.value })}
-                        placeholder="Enter department"
-                      />
-                    </label>
-
-                    <div className="profile-edit-actions">
-                      <button className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
-                        {profileSaveLoading ? 'Saving...' : 'Save Changes'}
-                      </button>
-                      <button className="btn btn-secondary" onClick={closeEditModal}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {isOwnProfile && showFollowersModal && (
-              <div className="followers-modal-overlay" onClick={handleCloseFollowersModal}>
-                <div className="followers-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="followers-modal-header">
-                    <h2>Manage Followers</h2>
-                    <button
-                      type="button"
-                      className="followers-modal-close"
-                      onClick={handleCloseFollowersModal}
-                      disabled={Boolean(removingFollowerId)}
-                      aria-label="Close followers modal"
-                    >
-                      <FaTimes />
-                    </button>
-                  </div>
-                  <div className="followers-modal-body">
-                    {followersLoading ? (
-                      <p>Loading followers...</p>
-                    ) : followersList.length === 0 ? (
-                      <p>No followers yet.</p>
-                    ) : (
-                      followersList.map((follower) => (
-                        <div className="follower-row" key={follower.user_id}>
-                          <div className="follower-info">
-                            <img
-                              src={follower.profile_picture || '/default-avatar.svg'}
-                              alt={follower.name || 'Follower'}
-                              className="follower-avatar"
-                            />
-                            <div className="follower-meta">
-                              <strong>{follower.name || 'Unknown'}</strong>
-                              <span>
-                                {follower.department_name || 'Unknown dept'}
-                                {follower.batch ? ` • Batch ${follower.batch}` : ''}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-secondary follower-remove-btn"
-                            onClick={() => handleRemoveFollower(follower)}
-                            disabled={removingFollowerId === follower.user_id}
-                          >
-                            <FaUserMinus /> {removingFollowerId === follower.user_id ? 'Removing...' : 'Remove'}
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="profile-tabs">
-              <button
-                className={`tab ${activeTab === 'posts' ? 'active' : ''}`}
-                onClick={() => setActiveTab('posts')}
-              >
-                Posts
-              </button>
-              <button
-                className={`tab ${activeTab === 'about' ? 'active' : ''}`}
-                onClick={() => setActiveTab('about')}
-              >
-                About
-              </button>
-            </div>
-
-            <div className="profile-content">
-              {activeTab === 'posts' && (
-                <div className="posts-section">
-                  {posts.length === 0 ? (
-                    <p>No posts yet</p>
-                  ) : (
-                    posts.map((post) => <PostCard key={post.id} post={post} />)
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'about' && (
-                <div className="about-section">
-                  <div className="about-card">
-                    <h3>About</h3>
-                    <div className="about-item">
-                      <strong>Student ID:</strong>
-                      <span>{profile.student_id}</span>
-                    </div>
-                    <div className="about-item">
-                      <strong>Email:</strong>
-                      <span>{profile.email}</span>
-                    </div>
-                    <div className="about-item">
-                      <strong>Department:</strong>
-                      <span>{profile.department_name}</span>
-                    </div>
-                    <div className="about-item">
-                      <strong>Batch:</strong>
-                      <span>{profile.batch}</span>
-                    </div>
-                    {profile.hall_name && (
-                      <div className="about-item">
-                        <strong>Hall:</strong>
-                        <span>{profile.hall_name}</span>
-                      </div>
-                    )}
-                    {profile.hall_attachement && (
-                      <div className="about-item">
-                        <strong>Hall Attachment:</strong>
-                        <span>{profile.hall_attachement}</span>
-                      </div>
-                    )}
-                    {profile.blood_group && (
-                      <div className="about-item">
-                        <strong>Blood Group:</strong>
-                        <span>{profile.blood_group}</span>
-                      </div>
-                    )}
-                    {profile.bio && (
-                      <div className="about-item">
-                        <strong>Bio:</strong>
-                        <span>{profile.bio}</span>
-                      </div>
-                    )}
-                    {profile.created_at && (
-                      <div className="about-item">
-                        <strong>Member Since:</strong>
-                        <span>{new Date(profile.created_at).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
+          <div className="profile-container">{children}</div>
         </div>
       </div>
     </div>
+  );
+
+  if (loading) {
+    return shell(
+      <div className="profile-header profile-skeleton" aria-busy="true" aria-label="Loading profile">
+        <div className="profile-cover" />
+        <div className="profile-info">
+          <span className="skel profile-skel-avatar" />
+          <div className="profile-details">
+            <span className="skel profile-skel-line" style={{ width: '40%', height: 24 }} />
+            <span className="skel profile-skel-line" style={{ width: '28%' }} />
+            <span className="skel profile-skel-line" style={{ width: '70%' }} />
+          </div>
+        </div>
+      </div>,
+    );
+  }
+
+  if (!profile) {
+    return shell(
+      <div className="state-card" role="alert">
+        <FaExclamationCircle aria-hidden="true" />
+        <strong>We couldn't load this profile</strong>
+        <p>It may not exist, or the connection dropped. Try again in a moment.</p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => {
+            setLoading(true);
+            loadProfile();
+          }}
+        >
+          Try again
+        </button>
+      </div>,
+    );
+  }
+
+  const headline = [profile.department_name, profile.batch ? `Batch ${profile.batch}` : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  return shell(
+    <>
+      <header className="profile-header">
+        <div className="profile-cover" aria-hidden="true" />
+        <div className="profile-info">
+          <div className="profile-avatar-container">
+            <Avatar
+              src={profile.profile_picture}
+              name={profile.name}
+              size={128}
+              className="profile-avatar"
+            />
+            {isOwnProfile && (
+              <label className="avatar-upload-btn" title="Change profile photo">
+                <FaCamera aria-hidden="true" />
+                <span className="sr-only">Change profile photo</span>
+                <input type="file" accept="image/*" onChange={handleImageUpload} hidden />
+              </label>
+            )}
+          </div>
+
+          <div className="profile-details">
+            <div className="profile-title-row">
+              <div className="profile-title">
+                <h1>{profile.name}</h1>
+                <p className="profile-headline">{headline || 'BUET community'}</p>
+              </div>
+              <div className="profile-actions">
+                {isOwnProfile ? (
+                  <button type="button" className="btn btn-primary" onClick={openEditModal}>
+                    <FaEdit aria-hidden="true" /> Edit profile
+                  </button>
+                ) : (
+                  <>
+                    {renderFollowAction()}
+                    <Link to={`/chat/${userId}`} className="btn btn-secondary">
+                      <FaComments aria-hidden="true" /> Message
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {profile.bio ? (
+              <p className="bio">{profile.bio}</p>
+            ) : (
+              isOwnProfile && <p className="bio bio-empty">Add a short bio so people know who you are.</p>
+            )}
+
+            <ul className="profile-meta">
+              {profile.student_id && (
+                <li><FaIdCard aria-hidden="true" /> <span>ID {profile.student_id}</span></li>
+              )}
+              {profile.hall_name && (
+                <li><FaUniversity aria-hidden="true" /> <span>{profile.hall_name}</span></li>
+              )}
+              {profile.blood_group && (
+                <li><FaTint aria-hidden="true" /> <span>Blood {profile.blood_group}</span></li>
+              )}
+            </ul>
+
+            <dl className="profile-stats">
+              <div className="stat">
+                <dt>Posts</dt>
+                <dd>{profile.posts_count || 0}</dd>
+              </div>
+              <div className="stat">
+                {isOwnProfile ? (
+                  <button
+                    type="button"
+                    className="stat-button"
+                    onClick={handleOpenFollowersModal}
+                    aria-label={`${profile.followers_count || 0} followers. Manage followers`}
+                  >
+                    <dt>Followers</dt>
+                    <dd>{profile.followers_count || 0}</dd>
+                  </button>
+                ) : (
+                  <>
+                    <dt>Followers</dt>
+                    <dd>{profile.followers_count || 0}</dd>
+                  </>
+                )}
+              </div>
+              <div className="stat">
+                <dt>Following</dt>
+                <dd>{profile.following_count || 0}</dd>
+              </div>
+              {!isOwnProfile && (
+                <div className="stat">
+                  <dt>Mutual</dt>
+                  <dd>{profile.mutual_friends_count || 0}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </div>
+      </header>
+
+      {isOwnProfile && editMode && (
+        <div className={`profile-edit-overlay${isModalClosing ? ' closing' : ''}`} onClick={closeEditModal}>
+          <div
+            className={`profile-edit-modal${isModalClosing ? ' closing' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-edit-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="profile-edit-header">
+              <h2 id="profile-edit-title">Update profile</h2>
+              <button type="button" className="profile-edit-close" onClick={closeEditModal} aria-label="Close edit profile">
+                <FaTimes aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="profile-edit-form">
+              <label className="profile-edit-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  value={editData.name || ''}
+                  onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                  placeholder="Your full name"
+                />
+              </label>
+
+              <label className="profile-edit-field">
+                <span>Bio</span>
+                <textarea
+                  value={editData.bio || ''}
+                  onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
+                  placeholder="Tell people a bit about yourself"
+                  rows="3"
+                />
+              </label>
+
+              <div className="profile-edit-grid">
+                <label className="profile-edit-field">
+                  <span>Blood group</span>
+                  <select
+                    value={editData.blood_group || ''}
+                    onChange={(e) => setEditData({ ...editData, blood_group: e.target.value })}
+                  >
+                    <option value="">Select blood group</option>
+                    {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((group) => (
+                      <option key={group} value={group}>{group}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="profile-edit-field">
+                  <span>Hall name</span>
+                  <input
+                    type="text"
+                    value={editData.hall_name || ''}
+                    onChange={(e) => setEditData({ ...editData, hall_name: e.target.value })}
+                    placeholder="Enter hall name"
+                  />
+                </label>
+              </div>
+
+              <div className="profile-edit-radio-group" role="radiogroup" aria-label="Hall attachment">
+                <span>Hall attachment</span>
+                {['Resident', 'Attached'].map((option) => (
+                  <label key={option}>
+                    <input
+                      type="radio"
+                      name="hall_attachement"
+                      value={option}
+                      checked={editData.hall_attachement === option}
+                      onChange={(e) => setEditData({ ...editData, hall_attachement: e.target.value })}
+                    />
+                    {option}
+                  </label>
+                ))}
+              </div>
+
+              <label className="profile-edit-field">
+                <span>Department</span>
+                <input
+                  type="text"
+                  value={editData.department_name || ''}
+                  onChange={(e) => setEditData({ ...editData, department_name: e.target.value })}
+                  placeholder="Enter department"
+                />
+              </label>
+
+              <div className="profile-edit-actions">
+                <button type="button" className="btn btn-primary" onClick={handleUpdateProfile} disabled={profileSaveLoading}>
+                  {profileSaveLoading ? 'Saving...' : 'Save changes'}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={closeEditModal}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isOwnProfile && showFollowersModal && (
+        <div className="followers-modal-overlay" onClick={handleCloseFollowersModal}>
+          <div
+            className="followers-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="followers-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="followers-modal-header">
+              <h2 id="followers-modal-title">Manage followers</h2>
+              <button
+                type="button"
+                className="followers-modal-close"
+                onClick={handleCloseFollowersModal}
+                disabled={Boolean(removingFollowerId)}
+                aria-label="Close followers"
+              >
+                <FaTimes aria-hidden="true" />
+              </button>
+            </div>
+            <div className="followers-modal-body">
+              {followersLoading ? (
+                <p className="followers-note">Loading followers...</p>
+              ) : followersList.length === 0 ? (
+                <p className="followers-note">No followers yet.</p>
+              ) : (
+                followersList.map((follower) => (
+                  <div className="follower-row" key={follower.user_id}>
+                    <div className="follower-info">
+                      <Avatar src={follower.profile_picture} name={follower.name} size={44} className="follower-avatar" decorative />
+                      <div className="follower-meta">
+                        <strong>{follower.name || 'Unknown'}</strong>
+                        <span>
+                          {follower.department_name || 'Unknown dept'}
+                          {follower.batch ? ` · Batch ${follower.batch}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary follower-remove-btn"
+                      onClick={() => handleRemoveFollower(follower)}
+                      disabled={removingFollowerId === follower.user_id}
+                    >
+                      <FaUserMinus aria-hidden="true" /> {removingFollowerId === follower.user_id ? 'Removing...' : 'Remove'}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="profile-tabs" role="tablist" aria-label="Profile sections">
+        {[
+          ['posts', 'Posts'],
+          ['media', 'Media'],
+          ['about', 'About'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`profile-tab-${id}`}
+            aria-selected={activeTab === id}
+            aria-controls="profile-panel"
+            className={`tab ${activeTab === id ? 'active' : ''}`}
+            onClick={() => setActiveTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="profile-content" id="profile-panel" role="tabpanel" aria-labelledby={`profile-tab-${activeTab}`}>
+        {activeTab === 'posts' && (
+          <div className="posts-section">
+            {postsLoading ? (
+              <>
+                <PostSkeleton />
+                <PostSkeleton />
+              </>
+            ) : posts.length === 0 ? (
+              <div className="state-card">
+                <FaRegNewspaper aria-hidden="true" />
+                <strong>{isOwnProfile ? "You haven't posted yet" : 'No posts yet'}</strong>
+                <p>
+                  {isOwnProfile
+                    ? 'Share what you are working on with the BUET community.'
+                    : `${profile.name} hasn't shared anything yet.`}
+                </p>
+                {isOwnProfile && (
+                  <Link to="/" className="btn btn-secondary btn-sm">Write a post</Link>
+                )}
+              </div>
+            ) : (
+              posts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onDelete={(postId) => setPosts((prev) => prev.filter((item) => item.id !== postId))}
+                />
+              ))
+            )}
+          </div>
+        )}
+
+        {activeTab === 'media' && (
+          mediaTiles.length === 0 ? (
+            <div className="state-card">
+              <FaRegImages aria-hidden="true" />
+              <strong>No photos or videos yet</strong>
+              <p>Media from posts will show up here.</p>
+            </div>
+          ) : (
+            <ul className="media-grid-tiles">
+              {mediaTiles.map((tile) => (
+                <li key={tile.key}>
+                  <Link to={`/posts/${tile.postId}`} className="media-tile" aria-label="Open post">
+                    {tile.type === 'video' ? (
+                      <>
+                        <video src={tile.url} muted preload="metadata" />
+                        <span className="media-tile-badge"><FaPlay aria-hidden="true" /></span>
+                      </>
+                    ) : (
+                      <img src={tile.url} alt="" loading="lazy" />
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+
+        {activeTab === 'about' && (
+          <div className="about-section">
+            <div className="about-card">
+              <h2>About</h2>
+              <dl className="about-list">
+                {[
+                  ['Student ID', profile.student_id],
+                  ['Email', profile.email],
+                  ['Department', profile.department_name],
+                  ['Batch', profile.batch],
+                  ['Hall', profile.hall_name],
+                  ['Hall attachment', profile.hall_attachement],
+                  ['Blood group', profile.blood_group],
+                  ['Bio', profile.bio],
+                  ['Member since', profile.created_at ? formatDate(profile.created_at) : null],
+                ]
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <div className="about-item" key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </div>
+          </div>
+        )}
+      </div>
+    </>,
   );
 };
 

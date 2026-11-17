@@ -2,14 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { postAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
-import { FaHeart, FaRegHeart, FaComment, FaEllipsisH } from 'react-icons/fa';
-import moment from 'moment';
+import { FaHeart, FaRegHeart, FaRegComment, FaEllipsisH, FaShareAlt, FaGlobeAmericas, FaUserFriends, FaLock } from 'react-icons/fa';
+import Avatar from '../common/Avatar';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { toAbsoluteMediaUrl, MEDIA_BASE_URL } from '../../config';
+import { timeAgo, formatDateTime } from '../../utils/time';
 
-const PostCard = ({ post, onLike, readOnly = false }) => {
+const LONG_TEXT_CHARS = 320;
+const VISIBILITY_META = {
+  public: { label: 'Public', Icon: FaGlobeAmericas },
+  followers: { label: 'Followers', Icon: FaUserFriends },
+  private: { label: 'Only me', Icon: FaLock },
+};
+
+const PostCard = ({ post, onLike, onDelete, readOnly = false }) => {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const [liked, setLiked] = useState(
@@ -26,6 +34,9 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
   const [editMediaToDelete, setEditMediaToDelete] = useState([]); 
   const [editMediaPreviews, setEditMediaPreviews] = useState([]);
   const [showPostMenu, setShowPostMenu] = useState(false);
+  const [textExpanded, setTextExpanded] = useState(false);
+  const [likePop, setLikePop] = useState(false);
+  const likingRef = useRef(false);
   const postMenuRef = useRef(null);
   const postId = post.id || post.post_id;
 
@@ -45,22 +56,6 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
     });
   };
 
-  // Debug: Log post data structure
-  React.useEffect(() => {
-    if (!post.user_id || !post.user_name) {
-      console.warn('⚠️ PostCard missing user data:', {
-        user_id: post.user_id,
-        user_name: post.user_name,
-        profile_picture: post.profile_picture,
-        author_id: post.author_id,
-        author_name: post.author_name,
-        author_picture: post.author_picture,
-        postId: post.id,
-        message: 'Backend is using author_* fields instead of user_* fields'
-      });
-    }
-  }, [post]);
-
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (postMenuRef.current && !postMenuRef.current.contains(event.target)) {
@@ -68,9 +63,15 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
       }
     };
 
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setShowPostMenu(false);
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -106,44 +107,39 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
   }, [editMediaFiles]);
 
   const handleLike = async () => {
-    if (readOnly) {
+    if (readOnly || likingRef.current) return;
+
+    if (!postId) {
+      toast.error('Cannot like post: Post ID is missing');
       return;
     }
 
-    try {
-      console.log('🔄 Attempting to like post:', { postId: post.id, postIdType: typeof post.id });
-      
-      if (!postId) {
-        console.error('❌ Post ID is missing:', post);
-        toast.error('Cannot like post: Post ID is missing');
-        return;
-      }
-      
-      const response = await postAPI.likePost(postId);
-      console.log('✅ Post liked successfully:', response?.data);
+    // Update the UI immediately; roll back if the server rejects it.
+    const previousLiked = liked;
+    const previousCount = likesCount;
+    const optimisticLiked = !previousLiked;
+    likingRef.current = true;
+    setLiked(optimisticLiked);
+    setLikesCount(optimisticLiked ? previousCount + 1 : Math.max(0, previousCount - 1));
+    if (optimisticLiked) setLikePop(true);
 
-      const nextLiked =
-        response?.data?.liked ?? !liked;
+    try {
+      const response = await postAPI.likePost(postId);
+      const nextLiked = response?.data?.liked ?? optimisticLiked;
       const nextLikesCount =
         typeof response?.data?.likes_count === 'number'
           ? response.data.likes_count
-          : (nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1));
+          : (nextLiked ? previousCount + 1 : Math.max(0, previousCount - 1));
 
       setLiked(Boolean(nextLiked));
       setLikesCount(Number(nextLikesCount) || 0);
       if (onLike) {
-        onLike(postId);
+        onLike(postId, Boolean(nextLiked), Number(nextLikesCount) || 0);
       }
     } catch (error) {
-      console.error('❌ Failed to like post:', {
-        postId: postId,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.response?.data?.message || error.message,
-        url: error.config?.url,
-        data: error.response?.data
-      });
-      
+      setLiked(previousLiked);
+      setLikesCount(previousCount);
+
       if (error.response?.status === 404) {
         toast.error('Post not found. The post may have been deleted.');
       } else if (error.response?.status === 401) {
@@ -151,6 +147,19 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
       } else {
         toast.error(error.response?.data?.message || 'Failed to like post');
       }
+    } finally {
+      likingRef.current = false;
+    }
+  };
+
+  const handleShare = async () => {
+    if (!postId) return;
+    const url = `${window.location.origin}/posts/${postId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied');
+    } catch (error) {
+      toast.error('Could not copy the link');
     }
   };
 
@@ -266,7 +275,7 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
     setCommentsCount(commentsCount + 1);
   };
   const handleCommentRemoved = () => {
-    setCommentsCount(commentsCount - 1);
+    setCommentsCount(Math.max(0, commentsCount - 1));
   }; 
 
   const isOwner = user && Number(user.id) === Number(post.user_id);
@@ -287,7 +296,11 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
         try {
           await postAPI.deletePost(postId);
           toast.success('Post deleted');
-          window.location.reload();
+          if (onDelete) {
+            onDelete(postId);
+          } else {
+            window.location.reload();
+          }
         } catch (error) {
           toast.error(error?.response?.data?.error || 'Failed to delete post');
           throw error;
@@ -351,43 +364,45 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
   }, [post.media_urls, post.media_urls_list, post.media_url, post.image, post.video]);
   const visibleMediaItems = displayMediaItems.filter((media) => !editMediaToDelete.includes(media.url));
   const authorName = post.user_name || post.author_name || post.owner_name || post.created_by_name || 'Unknown User';
-  const authorPicture = toAbsoluteUrl(post.profile_picture || post.author_picture || post.owner_picture) || '/default-avatar.svg';
   const canOpenProfile = Boolean(post.user_id);
+  const isLongText = displayContent.length > LONG_TEXT_CHARS || (displayContent.match(/\n/g) || []).length > 5;
 
   return (
     <div className={`post-card ${readOnly ? 'read-only' : ''}`}>
       <div className="post-header">
-        {canOpenProfile ? (
-          <Link to={`/profile/${post.user_id}`} className="post-author">
-            <img
-              src={authorPicture}
-              alt={authorName}
-              className="avatar"
-              onError={(e) => { e.target.src = '/default-avatar.svg'; }}
-            />
-            <div className="author-info">
-              <h4>{authorName}</h4>
+        {(() => {
+          const visibilityMeta = VISIBILITY_META[(displayVisibility || 'public').toLowerCase()] || VISIBILITY_META.public;
+          const VisibilityIcon = visibilityMeta.Icon;
+          const wrap = (children) =>
+            canOpenProfile ? (
+              <Link to={`/profile/${post.user_id}`} className="post-author">{children}</Link>
+            ) : (
+              <span className="post-author">{children}</span>
+            );
+          return (
+            <div className="post-author-block">
+              {wrap(<Avatar src={post.profile_picture || post.author_picture || post.owner_picture} name={authorName} size={44} decorative />)}
+              <div className="author-info">
+                {wrap(<h4>{authorName}</h4>)}
               <p className="post-time">
-                {moment.utc(post.created_at).local().fromNow()} · {(displayVisibility || 'public').toLowerCase()}
+                {postId ? (
+                  <Link to={`/posts/${postId}`} className="post-time-link" title={formatDateTime(post.created_at)}>
+                    {timeAgo(post.created_at)}
+                  </Link>
+                ) : (
+                  <span title={formatDateTime(post.created_at)}>{timeAgo(post.created_at)}</span>
+                )}
+                <span aria-hidden="true"> · </span>
+                <span className="post-visibility" title={`Visible to: ${visibilityMeta.label}`}>
+                  <VisibilityIcon aria-hidden="true" />
+                  <span className="sr-only">Visible to </span>
+                  {visibilityMeta.label}
+                </span>
               </p>
+              </div>
             </div>
-          </Link>
-        ) : (
-          <div className="post-author">
-            <img
-              src={authorPicture}
-              alt={authorName}
-              className="avatar"
-              onError={(e) => { e.target.src = '/default-avatar.svg'; }}
-            />
-            <div className="author-info">
-              <h4>{authorName}</h4>
-              <p className="post-time">
-                {moment.utc(post.created_at).local().fromNow()} · {(displayVisibility || 'public').toLowerCase()}
-              </p>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {isOwner && !editing && (
           <div className="post-menu" ref={postMenuRef}>
@@ -395,6 +410,8 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
               className="post-menu-trigger"
               type="button"
               aria-label="Post actions"
+              aria-haspopup="menu"
+              aria-expanded={showPostMenu}
               onClick={() => setShowPostMenu((prev) => !prev)}
             >
               <FaEllipsisH />
@@ -444,7 +461,7 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
             >
               <option value="public">Public</option>
               <option value="followers">Followers</option>
-              <option value="private">Private</option>
+              <option value="private">Only me</option>
             </select>
 
             {/* Display current media with delete buttons */}
@@ -526,17 +543,28 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
             </div>
           </div>
         ) : (
-          <p>{renderContentWithHashtags(displayContent)}</p>
+          displayContent && (
+            <>
+              <p className={`post-text ${isLongText && !textExpanded ? 'clamped' : ''}`}>
+                {renderContentWithHashtags(displayContent)}
+              </p>
+              {isLongText && (
+                <button type="button" className="post-more" onClick={() => setTextExpanded((open) => !open)}>
+                  {textExpanded ? 'Show less' : 'Show more'}
+                </button>
+              )}
+            </>
+          )
         )}
         
         {displayMediaItems.length > 0 && (
-          <div className={`post-media ${displayMediaItems.length > 1 ? 'media-grid' : ''}`}>
+          <div className={`post-media ${displayMediaItems.length > 1 ? 'media-grid' : ''} media-count-${Math.min(displayMediaItems.length, 4)}`}>
             {displayMediaItems.map((media, index) => (
               <div key={index} className="media-item">
                 {media.type === 'video' ? (
-                  <video src={media.url} controls />
+                  <video src={media.url} controls preload="metadata" />
                 ) : (
-                  <img src={media.url} alt="Post media" />
+                  <img src={media.url} alt={`Photo ${index + 1} by ${authorName}`} loading="lazy" />
                 )}
               </div>
             ))}
@@ -546,31 +574,31 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
 
       <div className="post-actions">
         <button
+          type="button"
           className={`action-btn ${liked ? 'liked' : ''}`}
           onClick={handleLike}
           disabled={readOnly}
+          aria-pressed={liked}
+          aria-label={`${liked ? 'Unlike' : 'Like'}, ${likesCount} likes`}
         >
-          {liked ? <FaHeart color="#e74c3c" /> : <FaRegHeart />}
-          {readOnly ? (
-            <span className="count-pill">{likesCount}</span>
-          ) : likesCount > 0 ? (
-            <span className="count-pill">{likesCount}</span>
-          ) : (
-            <span>Like</span>
-          )}
+          <span className={`like-icon ${likePop ? 'pop' : ''}`} onAnimationEnd={() => setLikePop(false)}>
+            {liked ? <FaHeart aria-hidden="true" /> : <FaRegHeart aria-hidden="true" />}
+          </span>
+          <span>{likesCount > 0 ? likesCount : 'Like'}</span>
         </button>
         <button
-          className="action-btn"
+          type="button"
+          className={`action-btn ${showComments ? 'active' : ''}`}
           onClick={() => setShowComments(!showComments)}
+          aria-expanded={showComments}
+          aria-label={`Comments, ${commentsCount}`}
         >
-          <FaComment />
-          {readOnly ? (
-            <span className="count-pill">{commentsCount}</span>
-          ) : commentsCount > 0 ? (
-            <span className="count-pill">{commentsCount}</span>
-          ) : (
-            <span>Comment</span>
-          )}
+          <FaRegComment aria-hidden="true" />
+          <span>{commentsCount > 0 ? commentsCount : 'Comment'}</span>
+        </button>
+        <button type="button" className="action-btn" onClick={handleShare} aria-label="Copy link to post">
+          <FaShareAlt aria-hidden="true" />
+          <span>Share</span>
         </button>
       </div>
 

@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FaExclamationCircle } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
-import '../../styles/Auth.css';
+import AuthLayout from '../../components/auth/AuthLayout';
+import PasswordField from '../../components/auth/PasswordField';
+import Avatar from '../../components/common/Avatar';
 
-const DEFAULT_PROFILE_PICTURE = '/default-avatar.svg';
+const Required = () => <span className="required-asterisk" aria-hidden="true">*</span>;
 
 const Register = () => {
   const navigate = useNavigate();
@@ -22,20 +25,36 @@ const Register = () => {
     profile_picture: null,
   });
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const passwordsMismatch =
+    formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
+
+  // Preview of the chosen photo; released when it changes or the page closes.
+  const photoPreview = useMemo(
+    () => (formData.profile_picture ? URL.createObjectURL(formData.profile_picture) : null),
+    [formData.profile_picture],
+  );
+  useEffect(() => () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
 
   const handleChange = (e) => {
     const { name, value, type, files } = e.target;
     setFormData({
       ...formData,
-      [name]: type === 'file' ? files[0] : value,
+      [name]: type === 'file' ? files[0] || null : value,
     });
+    if (formError) setFormError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    if (loading) return;
+
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match!');
+      setFormError('Your passwords do not match. Please re-enter them.');
+      document.getElementById('confirmPassword')?.focus();
       return;
     }
 
@@ -43,86 +62,111 @@ const Register = () => {
     const { confirmPassword, ...registerData } = formData;
     const result = await register(registerData);
     setLoading(false);
-    
+
     if (result.success) {
       navigate('/login');
+      return;
     }
+    setFormError(result?.error || 'Registration failed. Please check your details and try again.');
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <div className="auth-header">
-          <h1>Core BUETians</h1>
-          <p>Create your account to get started.</p>
-        </div>
-        <p className="auth-required-note">Fields marked with <span aria-hidden="true">*</span> are required.</p>
-        
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="student_id">Student ID <span className="required-asterisk" aria-hidden="true">*</span></label>
-            <input
-              type="number"
-              id="student_id"
-              name="student_id"
-              value={formData.student_id}
-              onChange={handleChange}
-              placeholder="Enter your student ID"
-              required
-            />
+    <AuthLayout
+      wide
+      title="Create your account"
+      subtitle="Join the BUET community. Fields marked * are required."
+    >
+      <form onSubmit={handleSubmit} className="auth-form">
+        {formError && (
+          <div className="auth-error" role="alert">
+            <FaExclamationCircle aria-hidden="true" />
+            <div>
+              <strong>We couldn't create your account</strong>
+              <p>{formError}</p>
+            </div>
+          </div>
+        )}
+
+        <fieldset className="auth-fieldset">
+          <legend>Account</legend>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="student_id">Student ID <Required /></label>
+              <input
+                type="number"
+                id="student_id"
+                name="student_id"
+                value={formData.student_id}
+                onChange={handleChange}
+                placeholder="e.g. 2105001"
+                inputMode="numeric"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="name">Full name <Required /></label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="Your full name"
+                autoComplete="name"
+                required
+              />
+            </div>
           </div>
 
           <div className="form-group">
-            <label htmlFor="name">Full Name <span className="required-asterisk" aria-hidden="true">*</span></label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="Enter your full name"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="email">Email <span className="required-asterisk" aria-hidden="true">*</span></label>
+            <label htmlFor="email">Email <Required /></label>
             <input
               type="email"
               id="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="Enter your email"
+              placeholder="you@example.com"
+              autoComplete="email"
               required
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="password">Password <span className="required-asterisk" aria-hidden="true">*</span></label>
-            <input
-              type="password"
+          <div className="form-row">
+            <PasswordField
               id="password"
+              label="Password"
               name="password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Enter your password"
-              required
+              placeholder="Create a password"
+              autoComplete="new-password"
             />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password <span className="required-asterisk" aria-hidden="true">*</span></label>
-            <input
-              type="password"
+            <PasswordField
               id="confirmPassword"
+              label="Confirm password"
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
-              placeholder="Confirm your password"
-              required
+              placeholder="Repeat the password"
+              autoComplete="new-password"
+              aria-invalid={passwordsMismatch}
+              aria-describedby={passwordsMismatch ? 'password-mismatch' : undefined}
+              hint={
+                passwordsMismatch ? (
+                  <p className="field-error" id="password-mismatch" role="alert">
+                    Passwords don't match yet.
+                  </p>
+                ) : null
+              }
             />
           </div>
+        </fieldset>
+
+        <fieldset className="auth-fieldset">
+          <legend>About you</legend>
 
           <div className="form-row">
             <div className="form-group">
@@ -133,7 +177,8 @@ const Register = () => {
                 name="batch"
                 value={formData.batch}
                 onChange={handleChange}
-                placeholder="e.g., 18"
+                placeholder="e.g. 21"
+                inputMode="numeric"
               />
             </div>
 
@@ -145,69 +190,69 @@ const Register = () => {
                 name="department_name"
                 value={formData.department_name}
                 onChange={handleChange}
-                placeholder="e.g., CSE"
+                placeholder="e.g. CSE"
               />
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="blood_group">Blood Group</label>
+              <label htmlFor="blood_group">Blood group</label>
               <select
                 id="blood_group"
                 name="blood_group"
                 value={formData.blood_group}
                 onChange={handleChange}
               >
-                <option value="">Select Blood Group</option>
-                <option value="O+">O+</option>
-                <option value="O-">O-</option>
-                <option value="A+">A+</option>
-                <option value="A-">A-</option>
-                <option value="B+">B+</option>
-                <option value="B-">B-</option>
-                <option value="AB+">AB+</option>
-                <option value="AB-">AB-</option>
+                <option value="">Select</option>
+                {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((group) => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
               </select>
             </div>
 
             <div className="form-group">
-              <label htmlFor="hall_name">Hall Name</label>
+              <label htmlFor="hall_name">Hall</label>
               <input
                 type="text"
                 id="hall_name"
                 name="hall_name"
                 value={formData.hall_name}
                 onChange={handleChange}
-                placeholder="e.g., Sher-e-Bangla Hall"
+                placeholder="e.g. Sher-e-Bangla Hall"
               />
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Hall Attachment</label>
-              <div className="hall-toggle">
-                {['Resident', 'Attached'].map((opt) => (
-                  <label
-                    key={opt}
-                    className={`hall-toggle-option${formData.hall_attachement === opt ? ' active' : ''}`}
-                  >
-                    <input
-                      type="radio"
-                      name="hall_attachement"
-                      value={opt}
-                      checked={formData.hall_attachement === opt}
-                      onChange={handleChange}
-                    />
-                    {opt}
-                  </label>
-                ))}
-              </div>
+          <div className="form-group">
+            <span className="field-label" id="hall-attachment-label">Hall attachment</span>
+            <div className="hall-toggle" role="radiogroup" aria-labelledby="hall-attachment-label">
+              {['Resident', 'Attached'].map((opt) => (
+                <label
+                  key={opt}
+                  className={`hall-toggle-option${formData.hall_attachement === opt ? ' active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="hall_attachement"
+                    value={opt}
+                    checked={formData.hall_attachement === opt}
+                    onChange={handleChange}
+                  />
+                  {opt}
+                </label>
+              ))}
             </div>
+          </div>
 
-            <div className="form-group">
-              <label htmlFor="profile_picture">Profile Picture</label>
+          <div className="form-group photo-field">
+            {photoPreview ? (
+              <img className="photo-preview" src={photoPreview} alt="Selected profile" />
+            ) : (
+              <Avatar src={null} name="" size={56} decorative />
+            )}
+            <div className="photo-field-body">
+              <label htmlFor="profile_picture">Profile picture</label>
               <input
                 type="file"
                 id="profile_picture"
@@ -215,28 +260,16 @@ const Register = () => {
                 accept="image/*"
                 onChange={handleChange}
               />
-              <p className="default-avatar-note">If you skip upload, this default picture will be used.</p>
-              <img
-                src={DEFAULT_PROFILE_PICTURE}
-                alt="Default profile preview"
-                className="default-avatar-preview"
-                loading="lazy"
-              />
+              <p className="field-note">Optional. A default picture is used if you skip this.</p>
             </div>
           </div>
+        </fieldset>
 
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Registering...' : 'Register'}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          <p>
-            Already have an account? <Link to="/login">Login here</Link>
-          </p>
-        </div>
-      </div>
-    </div>
+        <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+          {loading ? 'Creating account...' : 'Create account'}
+        </button>
+      </form>
+    </AuthLayout>
   );
 };
 

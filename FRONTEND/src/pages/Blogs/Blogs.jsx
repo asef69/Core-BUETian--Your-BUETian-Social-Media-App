@@ -1,13 +1,15 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI, postAPI } from '../../services/apiService';
 import { showToast } from '../../utils/toast.jsx';
 import { confirmDialog } from '../../utils/confirmDialog';
 import { useAuth } from '../../context/AuthContext';
-import { FaImage, FaPlus, FaSearch, FaTimes, FaEdit, FaTrash, FaRegCalendarAlt } from 'react-icons/fa';
+import { FaImage, FaPlus, FaSearch, FaTimes, FaRegCalendarAlt, FaPenNib, FaExclamationCircle } from 'react-icons/fa';
+import BlogCard from '../../components/blogs/BlogCard';
 import { validateImageFile } from '../../utils/validation';
 import '../../styles/Blogs.css';
+import { formatDateTime, dhakaInputToISO, toDhakaInputValue, toTimestamp } from '../../utils/time';
 
 const BLOG_CATEGORIES = [
   'Technology',
@@ -32,6 +34,7 @@ const Blogs = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [categoryMode, setCategoryMode] = useState('preset');
@@ -73,7 +76,7 @@ const Blogs = () => {
       category: isPresetCategory ? categoryValue : BLOG_CATEGORIES[0],
       tags: Array.isArray(blog.tags) ? blog.tags.join(', ') : String(blog.tags || ''),
       is_published: blog.is_published,
-      scheduled_publish_at: blog.scheduled_publish_at ? blog.scheduled_publish_at.slice(0, 16) : '',
+      scheduled_publish_at: toDhakaInputValue(blog.scheduled_publish_at),
     });
   };
 
@@ -104,6 +107,7 @@ const Blogs = () => {
   const loadBlogs = async (selectedTab = tab, selectedTag = tagFilter) => {
     try {
       setLoading(true);
+      setLoadError(false);
       let response;
       if (selectedTab === 'drafts') {
         response = await blogAPI.getMyBlogs({ mine: true, drafts_tab: true });
@@ -118,6 +122,7 @@ const Blogs = () => {
     } catch (error) {
       showToast.error('Failed to load', 'Could not retrieve blog posts');
       setBlogs([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -193,9 +198,7 @@ const Blogs = () => {
 
     const scheduledInput = createData.scheduled_publish_at;
     const parsedSchedule =
-      scheduledInput && !isNaN(new Date(scheduledInput).getTime())
-        ? new Date(scheduledInput).toISOString()
-        : null;
+      dhakaInputToISO(scheduledInput);
 
     // Checkbox takes precedence. If publish-now is enabled, ignore any schedule value.
     const publishImmediately = Boolean(createData.is_published);
@@ -258,8 +261,11 @@ const Blogs = () => {
       return;
     }
 
+    setCoverImagePreview((previous) => {
+      if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+      return URL.createObjectURL(file);
+    });
     setCoverImageFile(file);
-    setCoverImagePreview(URL.createObjectURL(file));
   };
 
   const handleBlogCardClick = async (event, blogId) => {
@@ -295,249 +301,207 @@ const Blogs = () => {
     }
   };
 
+  const openCreateModal = () => {
+    setEditingBlog(null);
+    setCategoryMode('preset');
+    setCustomCategory('');
+    setCoverImageFile(null);
+    setCoverImagePreview('');
+    setCreateData({
+      title: '',
+      excerpt: '',
+      content: '',
+      category: BLOG_CATEGORIES[0],
+      tags: '',
+      is_published: true,
+      scheduled_publish_at: '',
+    });
+    setShowCreateModal(true);
+  };
+
+  const closeModal = () => {
+    setShowCreateModal(false);
+    setEditingBlog(null);
+  };
+
+  useEffect(() => {
+    if (!showCreateModal) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setShowCreateModal(false);
+        setEditingBlog(null);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showCreateModal]);
+
+  const renderGrid = () => {
+    if (loading) {
+      return (
+        <div className="blogs-grid" aria-busy="true" aria-label="Loading blogs">
+          {[0, 1, 2].map((i) => (
+            <div className="blog-card" key={i} aria-hidden="true">
+              <span className="skel blog-skel-cover" />
+              <div className="blog-card-content">
+                <span className="skel blog-skel-line" style={{ width: '75%', height: 16 }} />
+                <span className="skel blog-skel-line" style={{ width: '95%' }} />
+                <span className="skel blog-skel-line" style={{ width: '60%' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (loadError) {
+      return (
+        <div className="state-card" role="alert">
+          <FaExclamationCircle aria-hidden="true" />
+          <strong>Couldn't load blog posts</strong>
+          <p>Check your connection and try again.</p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadBlogs()}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    if (filteredBlogs.length === 0) {
+      return (
+        <div className="state-card">
+          <FaPenNib aria-hidden="true" />
+          <strong>
+            {searchText.trim()
+              ? 'No posts match your search'
+              : tab === 'drafts'
+                ? 'No drafts yet'
+                : 'No blog posts yet'}
+          </strong>
+          <p>
+            {searchText.trim()
+              ? 'Try a different word, or clear the search.'
+              : tab === 'drafts'
+                ? 'Posts you save as drafts or schedule will appear here.'
+                : 'Be the first to share a story, tutorial or idea.'}
+          </p>
+          {!searchText.trim() && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={openCreateModal}>
+              Write a post
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="blogs-grid">
+        {filteredBlogs.map((blog) => {
+          const blogId = getBlogId(blog);
+          if (!blogId) return null;
+
+          const isAuthor = String(blog.author_id) === String(currentUserId);
+          const canEdit = Boolean(blog.can_edit ?? isAuthor);
+          const canDelete = Boolean(blog.can_delete ?? isAuthor);
+          const isDraft = !blog.is_published;
+          const isScheduledFuture =
+            Boolean(blog.scheduled_publish_at) && toTimestamp(blog.scheduled_publish_at) > Date.now();
+
+          return (
+            <BlogCard
+              key={blogId}
+              blog={blog}
+              blogId={blogId}
+              locked={isDraft || isScheduledFuture}
+              isDraft={isDraft}
+              canEdit={tab === 'drafts' && canEdit}
+              canDelete={canDelete}
+              deleting={deletingBlogId === blogId}
+              onOpen={handleBlogCardClick}
+              onEdit={handleEditBlog}
+              onDelete={handleDeleteBlog}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="app-layout">
       <Navbar />
       <div className="main-content">
-        <div className="container">
+        <div className="container blogs-page">
           <div className="blogs-header">
             <div>
               <h1>Blogs</h1>
-              <p>Write long-form posts, ideas, and tutorials for the community.</p>
-              {tagFilter && (
-                <div style={{ marginTop: '10px' }}>
-                  <span className="blog-tag">Showing hashtag: #{tagFilter}</span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ marginLeft: '10px' }}
-                    onClick={() => setSearchParams({})}
-                  >
-                    Clear hashtag filter
-                  </button>
-                </div>
-              )}
+              <p className="page-subtitle">Long-form posts, tutorials and ideas from the community.</p>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setEditingBlog(null);
-                setCategoryMode('preset');
-                setCustomCategory('');
-                setCoverImageFile(null);
-                setCoverImagePreview('');
-                setCreateData({
-                  title: '',
-                  excerpt: '',
-                  content: '',
-                  category: BLOG_CATEGORIES[0],
-                  tags: '',
-                  is_published: true,
-                  scheduled_publish_at: '',
-                });
-                setShowCreateModal(true);
-              }}
-            >
-              <FaPlus /> New Blog
+            <button type="button" className="btn btn-primary" onClick={openCreateModal}>
+              <FaPlus aria-hidden="true" /> Write a post
             </button>
           </div>
 
-          {/* Tab navigation */}
-          <div className="blogs-tabs">
-            <button
-              className={tab === 'all' ? 'blogs-tab active' : 'blogs-tab'}
-              type="button"
-              onClick={() => setTab('all')}
-              aria-pressed={tab === 'all'}
-            >
-              All Blogs
-            </button>
-            <button
-              className={tab === 'drafts' ? 'blogs-tab active' : 'blogs-tab'}
-              type="button"
-              onClick={() => setTab('drafts')}
-              aria-pressed={tab === 'drafts'}
-            >
-              My Drafts
-            </button>
+          <div className="blogs-toolbar">
+            <div className="blogs-tabs" role="tablist" aria-label="Blog lists">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'all'}
+                className={`blogs-tab ${tab === 'all' ? 'active' : ''}`}
+                onClick={() => setTab('all')}
+              >
+                All blogs
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'drafts'}
+                className={`blogs-tab ${tab === 'drafts' ? 'active' : ''}`}
+                onClick={() => setTab('drafts')}
+              >
+                My drafts
+              </button>
+            </div>
+
+            <div className="blogs-search">
+              <FaSearch aria-hidden="true" />
+              <input
+                type="search"
+                placeholder={tab === 'drafts' ? 'Search your drafts' : 'Search title, author, category'}
+                aria-label="Search blogs"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="blogs-search">
-            <FaSearch />
-            <input
-              type="text"
-              placeholder={tab === 'drafts' ? 'Search your drafts...' : 'Search by title, author, category...'}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-            />
-          </div>
-
-          {loading ? (
-            <div className="loading">Loading blogs...</div>
-          ) : filteredBlogs.length === 0 ? (
-            <div className="empty-state">{tab === 'drafts' ? 'No draft blogs found.' : 'No blog posts found.'}</div>
-          ) : (
-            <div className="blogs-grid">
-              {filteredBlogs.map((blog) => {
-                const blogId = getBlogId(blog);
-                if (!blogId) return null;
-
-                const isAuthor = String(blog.author_id) === String(currentUserId);
-                const canEdit = Boolean(blog.can_edit ?? isAuthor);
-                const canDelete = Boolean(blog.can_delete ?? isAuthor);
-                const canEditDraft = tab === 'drafts' && canEdit;
-                // Determine if like/view should be disabled
-                const now = new Date();
-                const isDraft = !blog.is_published;
-                const isScheduledFuture = blog.scheduled_publish_at && new Date(blog.scheduled_publish_at) > now;
-                const disableActions = isDraft || isScheduledFuture;
-                return (
-                  <div key={blogId} className="blog-card">
-                    <div className={`blog-card-actions ${(canEditDraft || canDelete) ? 'always-visible' : ''}`}>
-                      {canEditDraft && (
-                        <button
-                          className="blog-card-action"
-                          type="button"
-                          title="Edit draft"
-                          onClick={() => handleEditBlog(blog)}
-                        >
-                          <FaEdit />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          className="blog-card-action blog-card-action-danger"
-                          type="button"
-                          title="Delete blog"
-                          onClick={() => handleDeleteBlog(blogId)}
-                          disabled={deletingBlogId === blogId}
-                        >
-                          <FaTrash />
-                          <span>{deletingBlogId === blogId ? 'Deleting' : 'Delete'}</span>
-                        </button>
-                      )}
-                    </div>
-                    {disableActions ? (
-                      <div
-                        style={{ textDecoration: 'none', color: '#aaa' }}
-                        aria-disabled="true"
-                      >
-                        {blog.cover_image ? (
-                          <div className="blog-cover-wrap">
-                            <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
-                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                          </div>
-                        ) : (
-                          <div className="blog-cover-placeholder">
-                            <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
-                            {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                          </div>
-                        )}
-                        <div className="blog-card-content">
-                          <h3>{blog.title}</h3>
-                          <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
-                          <div className="blog-card-footer">
-                            <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
-                            <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
-                            <span style={{ color: '#dc3545', marginLeft: 8, fontSize: 12 }}>(Draft/Scheduled: Like/View disabled)</span>
-                          </div>
-                          {tab === 'drafts' && (
-                            <div className="blog-card-draft-meta">
-                              <span className="blog-card-draft-author">Author: {blog.author_name || 'Unknown'}</span>
-                              {blog.scheduled_publish_at && (
-                                <span className="blog-card-draft-schedule">
-                                  Scheduled: {(() => {
-                                    let dt;
-                                    if (typeof blog.scheduled_publish_at === 'string' && !blog.scheduled_publish_at.endsWith('Z')) {
-                                      dt = new Date(blog.scheduled_publish_at + 'Z');
-                                    } else {
-                                      dt = new Date(blog.scheduled_publish_at);
-                                    }
-                                    return dt.toLocaleString(undefined, {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      hour12: true
-                                    });
-                                  })()}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                    <Link
-                      to={`/blogs/${blogId}`}
-                      onClick={(event) => handleBlogCardClick(event, blogId)}
-                      style={{ textDecoration: 'none', color: 'inherit' }}
-                    >
-                      {blog.cover_image ? (
-                        <div className="blog-cover-wrap">
-                          <img src={blog.cover_image} alt={blog.title} className="blog-cover" />
-                          {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                        </div>
-                      ) : (
-                        <div className="blog-cover-placeholder">
-                          <span className="blog-cover-initial">{String(blog.title || '?')[0].toUpperCase()}</span>
-                          {blog.category && <span className="blog-cover-badge">{blog.category}</span>}
-                        </div>
-                      )}
-                      <div className="blog-card-content">
-                        <h3>{blog.title}</h3>
-                        <p className="blog-card-excerpt">{blog.excerpt || String(blog.content || '').slice(0, 120)}</p>
-                        <div className="blog-card-footer">
-                          <span className="blog-card-author">{blog.author_name || 'Unknown'}</span>
-                          <span className="blog-card-stats">{blog.views_count || 0} views · {blog.likes_count || 0} likes</span>
-                          {disableActions && <span style={{ color: '#dc3545', marginLeft: 8, fontSize: 12 }}>(Draft/Scheduled: Like/View disabled)</span>}
-                        </div>
-                        {tab === 'drafts' && (
-                          <div className="blog-card-draft-meta">
-                            <span className="blog-card-draft-author">Author: {blog.author_name || 'Unknown'}</span>
-                            {blog.scheduled_publish_at && (
-                              <span className="blog-card-draft-schedule">
-                                Scheduled: {(() => {
-                                  // Parse as UTC if not already
-                                  let dt;
-                                  if (typeof blog.scheduled_publish_at === 'string' && !blog.scheduled_publish_at.endsWith('Z')) {
-                                    dt = new Date(blog.scheduled_publish_at + 'Z');
-                                  } else {
-                                    dt = new Date(blog.scheduled_publish_at);
-                                  }
-                                  return dt.toLocaleString(undefined, {
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: true
-                                  });
-                                })()}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                    )}
-                  </div>
-                );
-              })}
+          {tagFilter && (
+            <div className="blog-tag-filter">
+              <span className="blog-tag">#{tagFilter}</span>
+              <button type="button" className="inline-link-btn" onClick={() => setSearchParams({})}>
+                Clear tag filter
+              </button>
             </div>
           )}
+
+          {renderGrid()}
         </div>
       </div>
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}>
-          <div className="modal-content blog-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={closeModal}>
+          <div
+            className="modal-content large blog-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="blog-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="blog-modal-header">
               <div className="blog-modal-header-flex">
                 <div>
-                  <h2 className="blog-modal-title">{editingBlog ? 'Edit Blog Post' : 'Create Blog Post'}</h2>
+                  <h2 className="blog-modal-title" id="blog-modal-title">{editingBlog ? 'Edit Blog Post' : 'Create Blog Post'}</h2>
                   <p className="blog-modal-subtitle">
                     {editingBlog ? 'Update your post details' : 'Share your ideas with the BUET community'}
                   </p>
@@ -546,7 +510,7 @@ const Blogs = () => {
                   type="button"
                   className="modal-close-btn"
                   aria-label="Close"
-                  onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}
+                  onClick={closeModal}
                 >
                   <FaTimes />
                 </button>
@@ -724,7 +688,7 @@ const Blogs = () => {
                   <small className="form-hint">
                     {createData.is_published
                       ? 'Scheduling is disabled while Publish immediately is enabled.'
-                      : 'Leave blank to keep it as draft. If set, the blog will be published at this date/time.'}
+                      : 'Leave blank to keep it as draft. If set, the blog will be published at this date and time (Bangladesh time, UTC+6).'}
                   </small>
                 </div>
                 <div className="modal-actions">
@@ -734,7 +698,7 @@ const Blogs = () => {
                   <button
                     className="btn btn-secondary btn-lg"
                     type="button"
-                    onClick={() => { setShowCreateModal(false); setEditingBlog(null); }}
+                    onClick={closeModal}
                   >
                     Cancel
                   </button>

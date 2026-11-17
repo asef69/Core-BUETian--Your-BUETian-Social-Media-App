@@ -1,445 +1,536 @@
-/* Subject chip for both dark and light mode, using CSS variables for theme */
-.subject-chip {
-  background: var(--chip-bg);
-  color: var(--chip-text);
-  border-radius: 12px;
-  padding: 2px 10px;
-  display: inline-flex;
-  align-items: center;
-  font-weight: 500;
-  transition: background 0.2s, color 0.2s;
-}
-.subject-chip .remove-btn {
-  margin-left: 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: #c00;
-  font-weight: bold;
+/* ==========================================================================
+   Forums: blood requests and tuition listings
+   ========================================================================== */
+
+.forums-page {
+  padding-top: 20px;
+  padding-bottom: 32px;
 }
 
-/* Light mode variables (default) */
-body, body.light {
-  --chip-bg: #f3f4f6;
-  --chip-text: #222;
-}
-
-/* Dark mode variables */
-body.dark {
-  --chip-bg: #23272f;
-  --chip-text: #f3f4f6;
-}
 .forums-header {
-  margin-bottom: 14px;
+  margin: 6px 0 16px;
 }
 
 .forums-header h1 {
-  font-size: 1.7rem;
-  color: var(--light-color);
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--dark-color);
 }
 
 .forums-tabs {
-  display: flex;
-  background: var(--surface);
-  border-radius: 14px;
-  padding: 8px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-solid);
   border: 1px solid var(--border-color);
-  box-shadow: var(--shadow);
-  margin-bottom: 16px;
-  gap: 8px;
+  border-radius: var(--radius-full);
 }
 
 .forums-tabs .tab {
-  flex: 1;
-  padding: 10px 14px;
-  background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--gray-color);
-  border-radius: 10px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted-color);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.forums-tabs .tab:hover {
+  color: var(--dark-color);
 }
 
 .forums-tabs .tab.active {
-  background: rgba(35, 116, 225, 0.2);
-  border-color: rgba(35, 116, 225, 0.42);
-  color: var(--light-color);
-}
-
-.forum-section {
-  margin-bottom: 20px;
+  background: var(--primary-color);
+  color: #fff;
 }
 
 .section-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0 12px;
 }
 
-.section-header h2 {
-  font-size: 1.2rem;
-  color: var(--light-color);
-}
-
-.forum-posts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
-}
-
-.forum-post {
-  background: var(--surface);
-  border-radius: 14px;
-  border: 1px solid var(--border-color);
-  padding: 14px;
-  box-shadow: var(--shadow);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.forum-post:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-}
-
-.forum-post .post-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.blood-group-badge {
-  background: #de4a61;
-  color: #fff;
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.78rem;
-}
-
-.urgency-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.urgency-low {
-  background: rgba(66, 184, 131, 0.2);
-  color: #3ad398;
-}
-
-.urgency-moderate {
-  background: rgba(255, 179, 71, 0.2);
-  color: #ffc35c;
-}
-
-.urgency-urgent {
-  background: rgba(255, 93, 118, 0.22);
-  color: #ff8ea4;
-}
-
-.post-type-badge {
-  display: inline-block;
-  background: rgba(35, 116, 225, 0.24);
-  color: #9cc5ff;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.forum-post h3 {
-  font-size: 1.03rem;
-  margin-bottom: 10px;
-  color: var(--light-color);
-}
-
-.forum-post p {
-  font-size: 0.86rem;
+.results-count {
+  margin: 0;
   color: var(--muted-color);
-  margin-bottom: 7px;
-  line-height: 1.5;
-}
-
-.forum-post p strong {
-  color: var(--light-color);
-  margin-right: 4px;
-}
-
-.forum-post .post-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color);
-  font-size: 0.78rem;
-  color: var(--muted-color);
-}
-
-.forum-post .status-badge,
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: capitalize;
-  background: rgba(66, 184, 131, 0.22);
-  color: #87e4bc;
-}
-
-.forum-layout {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.forum-posts-main {
-  flex: 1;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.forum-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+.forum-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---------- Cards ---------- */
+
+.forum-card {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.forum-card-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.section-actions .btn {
-  min-width: 150px;
+.forum-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.forum-card-head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--dark-color);
+}
+
+.forum-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.forum-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--gray-color);
+  font-size: var(--text-sm);
+}
+
+.forum-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+.forum-facts svg {
+  flex: none;
+  width: 14px;
+  margin-top: 3px;
+  color: var(--brand-color);
+}
+
+.forum-facts a {
+  color: var(--brand-color);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.forum-facts a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.forum-fact-note {
+  color: var(--muted-color);
+}
+
+.forum-card-text {
+  margin: 0;
+  max-width: 65ch;
+  color: var(--dark-color);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.forum-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.forum-time {
+  color: var(--muted-color);
+  font-size: var(--text-xs);
+}
+
+.forum-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.forum-card-actions .btn {
+  text-decoration: none;
+}
+
+/* Blood */
+
+.blood-group-tile {
+  flex: none;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  background: rgba(232, 72, 102, 0.14);
+  color: #e84866;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
 }
 
-.tuition-filter-panel {
-  width: 290px;
-  padding: 18px;
-  background: linear-gradient(160deg, var(--surface-elevated), var(--surface));
-  border-radius: 18px;
-  height: fit-content;
+.blood-card.urgency-urgent {
+  border-color: rgba(232, 72, 102, 0.5);
+}
+
+.blood-card.urgency-low .blood-group-tile {
+  background: rgba(52, 179, 138, 0.16);
+  color: var(--secondary-color);
+}
+
+.blood-card.urgency-moderate .blood-group-tile {
+  background: rgba(255, 179, 71, 0.2);
+  color: #c77a0a;
+}
+
+.urgency-chip,
+.status-badge,
+.post-type-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--bg-secondary);
+  color: var(--gray-color);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.urgency-chip.urgency-urgent {
+  background: rgba(232, 72, 102, 0.16);
+  color: #e84866;
+}
+
+.urgency-chip.urgency-moderate {
+  background: rgba(255, 179, 71, 0.22);
+  color: var(--dark-color);
+}
+
+.urgency-chip.urgency-low {
+  background: rgba(52, 179, 138, 0.18);
+  color: var(--secondary-color);
+}
+
+/* Tuition */
+
+.post-type-badge {
+  margin-bottom: 6px;
+  text-transform: none;
+}
+
+.post-type-badge.seeking {
+  background: rgba(63, 81, 214, 0.16);
+  color: var(--brand-color);
+}
+
+.post-type-badge.offering {
+  background: rgba(52, 179, 138, 0.18);
+  color: var(--secondary-color);
+}
+
+.subject-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subject-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--bg-secondary);
+  color: var(--dark-color);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.subject-chip .remove-btn {
+  margin-left: 2px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-color);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.subject-chip .remove-btn:hover {
+  color: var(--danger-color);
+}
+
+/* ---------- Skeleton ---------- */
+
+.forum-skel-tile {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+}
+
+.forum-skel-line {
+  height: 12px;
+}
+
+/* ---------- Filters ---------- */
+
+.forum-filters {
   position: sticky;
-  top: 20px;
+  top: calc(var(--navbar-height) + 24px);
+  padding: 16px;
+  background: var(--surface-solid);
   border: 1px solid var(--border-color);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(8px);
+  border-radius: var(--radius-lg);
 }
 
-.tuition-filter-panel h3 {
-  margin-top: 0;
-  margin-bottom: 16px;
-  color: var(--light-color);
-  font-size: 1.12rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+.filters-toggle {
+  display: none;
+}
+
+.filters-title {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--dark-color);
+}
+
+.filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .filter-input-group {
-  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.filter-input-group label {
-  display: block;
-  margin-bottom: 7px;
+.filter-input-group label,
+.filter-checkbox-label {
+  color: var(--gray-color);
+  font-size: var(--text-sm);
   font-weight: 600;
-  font-size: 0.93rem;
-  color: var(--light-color);
 }
 
 .filter-input-group input,
 .filter-input-group select {
   width: 100%;
-  min-height: 42px;
-  padding: 9px 12px;
+  min-height: 40px;
+  padding: 8px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-sizing: border-box;
-  background: var(--surface-soft);
-  color: var(--light-color);
-  font-size: 0.9rem;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
-}
-
-.filter-input-group select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  color-scheme: dark;
-  background-color: var(--surface-solid) !important;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted-color) 50%),
-    linear-gradient(135deg, var(--muted-color) 50%, transparent 50%);
-  background-position: calc(100% - 17px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
-  padding-right: 34px;
-}
-
-.filter-input-group input::placeholder {
-  color: var(--muted-color);
-}
-
-.filter-input-group select option {
-  background-color: var(--surface-solid) !important;
-  color: var(--light-color) !important;
-}
-
-body:not([data-theme='light']) .filter-input-group select,
-body:not([data-theme='light']) .filter-input-group select option,
-body:not([data-theme='light']) .filter-input-group select optgroup {
-  background-color: var(--surface-solid) !important;
-  color: #f2f4f8 !important;
-  color-scheme: dark !important;
-}
-
-body[data-theme='light'] .filter-input-group select {
-  color-scheme: light !important;
-  background-color: #ffffff !important;
-  background-image: linear-gradient(45deg, transparent 50%, #5e6f86 50%),
-    linear-gradient(135deg, #5e6f86 50%, transparent 50%) !important;
-  color: #1a2432 !important;
-  border-color: rgba(64, 80, 106, 0.24) !important;
-}
-
-body[data-theme='light'] .filter-input-group select option,
-body[data-theme='light'] .filter-input-group select optgroup {
-  background-color: #ffffff !important;
-  color: #1a2432 !important;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--dark-color);
+  font: inherit;
+  font-size: var(--text-sm);
 }
 
 .filter-input-group input:focus,
 .filter-input-group select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: var(--shadow-glow);
-  background: rgba(255, 255, 255, 0.1);
 }
 
-.filter-input-group label input[type='checkbox'] {
-  accent-color: var(--primary-color, #2374e1);
-  cursor: pointer;
-}
-
-.filter-input-group .filter-checkbox-label {
+.filter-checkbox-label {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 0;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-color);
 }
 
-.filter-input-group input[type='checkbox'] {
-  width: 18px;
-  min-height: 18px;
-  height: 18px;
-  margin-top: 2px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  box-shadow: none;
-  background: transparent;
-  flex: 0 0 auto;
+.filter-checkbox-label input {
+  accent-color: var(--primary-color);
 }
 
 .filter-type-buttons {
   display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-full);
 }
 
 .filter-type-btn {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  border: 1px solid var(--border-color);
-  background: var(--surface);
-  color: var(--light-color);
-  cursor: pointer;
+  flex: 1;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted-color);
+  font: inherit;
+  font-size: var(--text-xs);
   font-weight: 700;
-  font-size: 0.72rem;
-  transition: border-color var(--transition-fast), transform var(--transition-fast), background var(--transition-fast);
+  cursor: pointer;
 }
 
-.filter-type-btn:hover {
-  border-color: rgba(35, 116, 225, 0.65);
-  transform: translateY(-1px);
-}
-
-.filter-type-btn.active-all {
-  border-color: #2374e1;
-  background: rgba(35, 116, 225, 0.15);
-}
-
-.filter-type-btn.active-seek {
-  border-color: #42b883;
-  background: rgba(66, 184, 131, 0.15);
-}
-
-.filter-type-btn.active-offer {
-  border-color: #ffc107;
-  background: rgba(255, 193, 7, 0.15);
+.filter-type-btn.active {
+  background: var(--primary-color);
+  color: #fff;
 }
 
 .filter-clear-btn {
-  width: 100%;
-  min-height: 42px;
-  padding: 9px 12px;
-  background: linear-gradient(135deg, rgba(35, 116, 225, 0.16), rgba(66, 184, 131, 0.14));
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-color);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0.92rem;
-  color: var(--light-color);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.filter-clear-btn:hover {
-  transform: translateY(-1px);
-  background: linear-gradient(135deg, rgba(35, 116, 225, 0.24), rgba(66, 184, 131, 0.2));
-  border-color: rgba(35, 116, 225, 0.45);
+.filter-clear-btn:disabled {
+  color: var(--muted-color);
+  cursor: default;
+  text-decoration: none;
 }
 
-@media (max-width: 768px) {
-  .forum-posts {
-    grid-template-columns: 1fr;
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .forum-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .forum-filters {
+    position: static;
+    order: -1;
+    padding: 8px;
+  }
+
+  .filters-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 0;
+    background: none;
+    color: var(--dark-color);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .filters-body {
+    display: none;
+    padding: 8px 8px 8px;
+  }
+
+  .filters-body.open {
+    display: flex;
+  }
+
+  .filters-title {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .forum-card {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .blood-card {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .blood-group-tile,
+  .forum-skel-tile {
+    width: 52px;
+    height: 52px;
+    font-size: var(--text-lg);
   }
 
   .forums-tabs {
-    flex-direction: column;
+    display: flex;
+    width: 100%;
   }
 
-  .section-header {
-    flex-direction: column;
-    align-items: stretch;
+  .forums-tabs .tab {
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px;
   }
 
-  .section-actions {
-    flex-direction: row;
+  .section-actions,
+  .section-actions .btn {
+    width: 100%;
   }
 
   .section-actions .btn {
-    width: 100%;
-    min-width: 0;
+    min-height: 44px;
   }
 
-  .forum-layout {
-    flex-direction: column;
-  }
-
-  .tuition-filter-panel {
+  .forum-card-actions,
+  .forum-card-actions .btn {
     width: 100%;
-    position: static;
   }
 }

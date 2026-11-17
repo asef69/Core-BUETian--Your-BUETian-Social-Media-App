@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { marketplaceAPI } from '../services/apiService';
 import { FaStar, FaUser } from 'react-icons/fa';
 import '../styles/ReviewsList.css';
+import { formatDate } from '../utils/time';
+import Avatar from './common/Avatar';
 
 const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 }) => {
   const [reviews, setReviews] = useState([]);
@@ -31,7 +33,7 @@ const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 
 
   const renderStars = (rating) => {
     return (
-      <div className="star-display">
+      <div className="star-display" role="img" aria-label={`${rating} out of 5 stars`}>
         {[1, 2, 3, 4, 5].map((star) => (
           <FaStar key={star} className={star <= rating ? 'filled' : 'empty'} />
         ))}
@@ -48,7 +50,7 @@ const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 
       {reputation && (
         <div className="seller-reputation">
           <div className="reputation-header">
-            <h3>{sellerName}'s Reputation</h3>
+            <h3>{sellerName}'s reputation</h3>
           </div>
           <div className="reputation-stats">
             <div className="stat">
@@ -80,17 +82,19 @@ const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 
       )}
 
       <div className="reviews-section">
-        <h3>Customer Reviews</h3>
+        <h3>Reviews</h3>
         {reviews && reviews.length > 0 ? (
           <div className="reviews-list">
             {reviews.map((review) => (
               <div key={review.id} className="review-item">
                 <div className="review-header">
                   <div className="reviewer-info">
-                    <img
-                      src={review.buyer_picture || '/default-avatar.svg'}
-                      alt={review.buyer_name}
+                    <Avatar
+                      src={review.buyer_picture}
+                      name={review.buyer_name}
+                      size={40}
                       className="reviewer-avatar"
+                      decorative
                     />
                     <div className="reviewer-details">
                       <div className="reviewer-name">
@@ -111,14 +115,14 @@ const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 
                   </div>
                 )}
                 <div className="review-date">
-                  {new Date(review.created_at).toLocaleDateString()}
+                  {formatDate(review.created_at)}
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="no-reviews">
-            No reviews yet. Be the first to review!
+            No reviews yet.
           </div>
         )}
       </div>

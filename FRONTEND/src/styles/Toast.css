@@ -91,9 +91,9 @@
 
 /* Info Toast */
 .Toastify__toast--info {
-  background: linear-gradient(135deg, rgba(35, 116, 225, 0.15), rgba(35, 116, 225, 0.08));
-  border-color: rgba(35, 116, 225, 0.3);
-  color: #2374e1;
+  background: linear-gradient(135deg, rgba(63, 81, 214, 0.15), rgba(63, 81, 214, 0.08));
+  border-color: rgba(63, 81, 214, 0.3);
+  color: #3f51d6;
 }
 
 .Toastify__toast--info::before {
@@ -103,7 +103,7 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  background: #2374e1;
+  background: #3f51d6;
   border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
@@ -121,7 +121,7 @@
 /* Toast Progress Bar */
 .Toastify__progress-bar {
   height: 3px;
-  background: linear-gradient(90deg, #2374e1, #42b883);
+  background: linear-gradient(90deg, #3f51d6, #42b883);
 }
 
 .Toastify__toast--success .Toastify__progress-bar {
@@ -137,7 +137,7 @@
 }
 
 .Toastify__toast--info .Toastify__progress-bar {
-  background: #2374e1;
+  background: #3f51d6;
 }
 
 /* Toast Body */
@@ -160,7 +160,7 @@
 /* Light mode overrides */
 body[data-theme='light'] .Toastify__toast {
   background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(35, 116, 225, 0.1);
+  border-color: rgba(63, 81, 214, 0.1);
   color: var(--dark-color);
   box-shadow: 0 4px 16px rgba(31, 43, 64, 0.12);
 }
@@ -200,8 +200,8 @@ body[data-theme='light'] .Toastify__toast--warning::before {
 }
 
 body[data-theme='light'] .Toastify__toast--info {
-  background: linear-gradient(135deg, rgba(35, 116, 225, 0.09), rgba(35, 116, 225, 0.04));
-  border-color: rgba(35, 116, 225, 0.2);
+  background: linear-gradient(135deg, rgba(63, 81, 214, 0.09), rgba(63, 81, 214, 0.04));
+  border-color: rgba(63, 81, 214, 0.2);
   color: #1a5fce;
 }
 

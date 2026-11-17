@@ -1,16 +1,4 @@
-import moment from 'moment';
-
-export const formatDate = (date) => {
-  return moment(date).format('MMM DD, YYYY');
-};
-
-export const formatDateTime = (date) => {
-  return moment(date).format('MMM DD, YYYY HH:mm');
-};
-
-export const timeAgo = (date) => {
-  return moment(date).fromNow();
-};
+export { formatDate, formatDateTime, timeAgo } from './time';
 
 export const truncateText = (text, maxLength) => {
   if (!text) return '';

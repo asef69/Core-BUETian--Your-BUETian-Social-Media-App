@@ -1,24 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
 import { marketplaceAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import BuyerPickerModal from '../../components/BuyerPickerModal';
 import { toast } from 'react-toastify';
-import { FaPlus, FaMapMarkerAlt, FaTag, FaBox, FaChartLine } from 'react-icons/fa';
+import { FaPlus, FaSearch, FaStore, FaExclamationCircle } from 'react-icons/fa';
+import ProductCard from '../../components/marketplace/ProductCard';
+import {
+  PRODUCT_CATEGORIES, CONDITION_LABELS, STATUS_LABELS, formatTaka, getProductId, statusOf,
+} from '../../components/marketplace/productUtils';
 import '../../styles/Marketplace.css';
-
-const HARD_CODED_CATEGORIES = [
-  'Electronics',
-  'Books',
-  'Academic Notes',
-  'Lab Equipment',
-  'Hostel Essentials',
-  'Furniture',
-  'Bikes & Cycles',
-  'Fashion',
-  'Sports',
-  'Others',
-];
 
 const Marketplace = () => {
   const [products, setProducts] = useState([]);
@@ -26,6 +16,11 @@ const Marketplace = () => {
   const [myStats, setMyStats] = useState({});
   const [priceRanges, setPriceRanges] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeTab, setActiveTab] = useState('browse');
   const [browseStatusFilter, setBrowseStatusFilter] = useState('all');
@@ -34,7 +29,7 @@ const Marketplace = () => {
     title: '',
     description: '',
     price: '',
-    category: HARD_CODED_CATEGORIES[0],
+    category: PRODUCT_CATEGORIES[0],
     condition: 'good',
     location: '',
   });
@@ -48,22 +43,14 @@ const Marketplace = () => {
     loadSellerData();
   }, []);
 
-  const getProductId = (product) =>
-    product?.product_id || product?.id || product?.pk;
-
-  const getProductImage = (product) => {
-    if (Array.isArray(product?.images) && product.images.length > 0) {
-      return product.images[0];
-    }
-    return product?.image || '/default-product.svg';
-  };
-
   const loadProducts = async (status = browseStatusFilter) => {
     try {
+      setLoadError(false);
       const response = await marketplaceAPI.getProducts(1, status);
       setProducts(response.data.results || response.data);
     } catch (error) {
       console.error('Error loading products:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -100,6 +87,7 @@ const Marketplace = () => {
 
   const handleCreateProduct = async (e) => {
     e.preventDefault();
+    if (creating) return;
 
     const finalCategory = categoryMode === 'new'
       ? customCategory.trim()
@@ -123,6 +111,7 @@ const Marketplace = () => {
       formData.append('images', file);
     });
 
+    setCreating(true);
     try {
       await marketplaceAPI.createProduct(formData);
       toast.success('Product listed successfully!');
@@ -131,7 +120,7 @@ const Marketplace = () => {
         title: '',
         description: '',
         price: '',
-        category: HARD_CODED_CATEGORIES[0],
+        category: PRODUCT_CATEGORIES[0],
         condition: 'good',
         location: '',
       });
@@ -141,9 +130,26 @@ const Marketplace = () => {
       loadProducts(browseStatusFilter);
       loadSellerData();
     } catch (error) {
-      toast.error('Failed to create product');
+      toast.error(error?.response?.data?.error || 'Failed to create product');
+    } finally {
+      setCreating(false);
     }
   };
+
+  const closeCreateModal = () => setShowCreateModal(false);
+
+  // Preview URLs are created once per selection and released afterwards.
+  const imagePreviews = useMemo(() => imageFiles.map((file) => URL.createObjectURL(file)), [imageFiles]);
+  useEffect(() => () => imagePreviews.forEach((url) => URL.revokeObjectURL(url)), [imagePreviews]);
+
+  useEffect(() => {
+    if (!showCreateModal) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setShowCreateModal(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showCreateModal]);
 
   const handleBuyerPicked = async (buyer) => {
     const { productId, action } = buyerPickerState;
@@ -172,6 +178,64 @@ const Marketplace = () => {
     }
   };
 
+  const query = search.trim().toLowerCase();
+  const categoriesInUse = Array.from(
+    new Set(products.map((product) => product.category).filter(Boolean)),
+  ).sort();
+
+  const visibleProducts = products
+    .filter((product) => {
+      const matchesQuery =
+        !query ||
+        String(product.title || '').toLowerCase().includes(query) ||
+        String(product.description || '').toLowerCase().includes(query);
+      const matchesCategory = categoryFilter === 'all' || product.category === categoryFilter;
+      return matchesQuery && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price_asc') return Number(a.price) - Number(b.price);
+      if (sortBy === 'price_desc') return Number(b.price) - Number(a.price);
+      return 0; // keep the order the API returned (newest first)
+    });
+
+  const hasActiveFilters = Boolean(query) || categoryFilter !== 'all' || sortBy !== 'newest';
+  const clearFilters = () => {
+    setSearch('');
+    setCategoryFilter('all');
+    setSortBy('newest');
+  };
+
+  const renderSkeletons = () => (
+    <div className="products-grid" aria-busy="true" aria-label="Loading products">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div className="product-card" key={i} aria-hidden="true">
+          <span className="skel product-skel-media" />
+          <div className="product-info">
+            <span className="skel product-skel-line" style={{ width: '35%', height: 16 }} />
+            <span className="skel product-skel-line" style={{ width: '80%' }} />
+            <span className="skel product-skel-line" style={{ width: '55%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const statusFilters = (current, onChange) => (
+    <div className="status-filters" role="group" aria-label="Filter by status">
+      {['all', 'available', 'reserved', 'sold'].map((status) => (
+        <button
+          key={status}
+          type="button"
+          aria-pressed={current === status}
+          className={`filter-chip ${current === status ? 'active' : ''}`}
+          onClick={() => onChange(status)}
+        >
+          {status === 'all' ? 'All' : STATUS_LABELS[status]}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="app-layout">
       <Navbar />
@@ -184,306 +248,358 @@ const Marketplace = () => {
         onSelect={handleBuyerPicked}
       />
       <div className="main-content">
-        <div className="container">
+        <div className="container marketplace-page">
           <div className="marketplace-header">
-            <h1>Marketplace</h1>
-            <div className="marketplace-actions">
-              <button
-                className={`btn ${activeTab === 'browse' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setActiveTab('browse')}
-              >
-                Browse
-              </button>
-              <button
-                className={`btn ${activeTab === 'seller' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => {
-                  setActiveTab('seller');
-                  loadSellerData();
-                }}
-              >
-                Seller Dashboard
-              </button>
-              <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-                <FaPlus /> List Product
-              </button>
+            <div>
+              <h1>Marketplace</h1>
+              <p className="page-subtitle">Buy and sell books, gear and hostel essentials within BUET.</p>
             </div>
+            <button type="button" className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+              <FaPlus aria-hidden="true" /> List a product
+            </button>
           </div>
 
-          {loading ? (
-            <div className="loading">Loading products...</div>
-          ) : (
+          <div className="market-tabs" role="tablist" aria-label="Marketplace sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'browse'}
+              className={`tab ${activeTab === 'browse' ? 'active' : ''}`}
+              onClick={() => setActiveTab('browse')}
+            >
+              Browse
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'seller'}
+              className={`tab ${activeTab === 'seller' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('seller');
+                loadSellerData();
+              }}
+            >
+              My listings
+            </button>
+          </div>
+
+          {activeTab === 'browse' && (
             <>
-              {activeTab === 'browse' && (
+              <div className="market-toolbar">
+                <div className="market-search">
+                  <FaSearch aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search listings"
+                    aria-label="Search listings"
+                  />
+                </div>
+                <select
+                  className="market-select"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  aria-label="Category"
+                >
+                  <option value="all">All categories</option>
+                  {categoriesInUse.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+                <select
+                  className="market-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  aria-label="Sort"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="price_asc">Price: low to high</option>
+                  <option value="price_desc">Price: high to low</option>
+                </select>
+              </div>
+
+              {statusFilters(browseStatusFilter, (status) => {
+                setBrowseStatusFilter(status);
+                setLoading(true);
+                loadProducts(status);
+              })}
+
+              {loading ? (
+                renderSkeletons()
+              ) : loadError ? (
+                <div className="state-card" role="alert">
+                  <FaExclamationCircle aria-hidden="true" />
+                  <strong>Couldn't load listings</strong>
+                  <p>Check your connection and try again.</p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setLoading(true);
+                      loadProducts(browseStatusFilter);
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : visibleProducts.length === 0 ? (
+                <div className="state-card">
+                  <FaStore aria-hidden="true" />
+                  <strong>{hasActiveFilters ? 'No listings match' : 'Nothing listed here yet'}</strong>
+                  <p>
+                    {hasActiveFilters
+                      ? 'Try a different search or clear the filters.'
+                      : 'Be the first to list something for the community.'}
+                  </p>
+                  {hasActiveFilters && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              ) : (
                 <>
-                  <div className="marketplace-status-filters">
-                    {['all', 'available', 'reserved', 'sold'].map((status) => (
-                      <button
-                        key={`browse-${status}`}
-                        className={`btn ${browseStatusFilter === status ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => {
-                          setBrowseStatusFilter(status);
-                          loadProducts(status);
-                        }}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-
+                  <p className="results-count" aria-live="polite">
+                    {visibleProducts.length} {visibleProducts.length === 1 ? 'listing' : 'listings'}
+                  </p>
                   <div className="products-grid">
-                    {products.length === 0 ? (
-                      <p>No products found for this status</p>
-                    ) : (
-                      products.map((product) => {
-                        const productId = getProductId(product);
-                        if (!productId) return null;
-
-                        return (
-                        <Link to={`/marketplace/${productId}`} key={productId} className="product-card">
-                          <img
-                            src={getProductImage(product)}
-                            alt={product.title}
-                            className="product-image"
-                          />
-                          <div className="product-info">
-                            <h3>{product.title}</h3>
-                            <p className="product-price">
-                              <FaTag size={14} /> BDT {product.price}
-                            </p>
-                            <p className="product-condition">
-                              <FaBox size={12} /> {product.condition}
-                            </p>
-                            <p className="product-location">
-                              <FaMapMarkerAlt size={12} /> {product.location}
-                            </p>
-                            {product.buyer_name && product.status !== 'available' && (
-                              <span className={`buyer-badge ${product.status === 'sold' ? 'sold' : 'reserved'}`}>
-                                {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
-                              </span>
-                            )}
-                            <p className={`market-status status-${(product.status || 'available').toLowerCase()}`}>
-                              {(product.status || 'available').toUpperCase()}
-                            </p>
-                          </div>
-                        </Link>
-                      );
-                      })
-                    )}
+                    {visibleProducts.map((product) => {
+                      const productId = getProductId(product);
+                      if (!productId) return null;
+                      return <ProductCard key={productId} product={product} />;
+                    })}
                   </div>
                 </>
               )}
+            </>
+          )}
 
-              {activeTab === 'seller' && (
-                <div>
-                  <div className="products-grid marketplace-stats-grid">
-                    <div className="product-card marketplace-stat-card">
-                      <h3>Total Listings</h3>
-                      <p className="product-price">{myStats.total_products || 0}</p>
-                    </div>
-                    <div className="product-card marketplace-stat-card">
-                      <h3>Available</h3>
-                      <p className="product-price">{myStats.available_products || 0}</p>
-                    </div>
-                    <div className="product-card marketplace-stat-card">
-                      <h3>Sold</h3>
-                      <p className="product-price">{myStats.sold_products || 0}</p>
-                    </div>
-                    <div className="product-card marketplace-stat-card">
-                      <h3>Revenue</h3>
-                      <p className="product-price">BDT {myStats.total_revenue || 0}</p>
-                    </div>
+          {activeTab === 'seller' && (
+            <div className="seller-dashboard">
+              <dl className="seller-stats">
+                {[
+                  ['Listings', myStats.total_products || 0],
+                  ['Available', myStats.available_products || 0],
+                  ['Sold', myStats.sold_products || 0],
+                  ['Earned', formatTaka(myStats.total_revenue || 0)],
+                ].map(([label, value]) => (
+                  <div className="seller-stat" key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
                   </div>
+                ))}
+              </dl>
 
-                  <div className="marketplace-status-filters">
-                    {['all', 'available', 'reserved', 'sold'].map((status) => (
-                      <button
-                        key={status}
-                        className={`btn ${myStatusFilter === status ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => {
-                          setMyStatusFilter(status);
-                          loadSellerData(status);
-                        }}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
+              {statusFilters(myStatusFilter, (status) => {
+                setMyStatusFilter(status);
+                loadSellerData(status);
+              })}
 
-                  <div className="products-grid">
-                    {myProducts.length === 0 ? (
-                      <p>No listings found</p>
-                    ) : (
-                      myProducts.map((product) => {
-                        const productId = getProductId(product);
-                        if (!productId) return null;
-                        return (
-                          <div key={productId} className="product-card">
-                            <img
-                              src={getProductImage(product)}
-                              alt={product.title}
-                              className="product-image"
-                            />
-                            <div className="product-info">
-                              <h3>{product.title}</h3>
-                              <p className="product-price">BDT {product.price}</p>
-                              <p className="product-condition">Status: {product.status || 'available'}</p>
-                              {product.buyer_name && product.status !== 'available' && (
-                                <span className={`buyer-badge ${product.status === 'sold' ? 'sold' : 'reserved'}`}>
-                                  {product.status === 'sold' ? 'Sold to' : 'Reserved for'} {product.buyer_name}
-                                </span>
-                              )}
-                              <div className="product-actions">
-                                <Link to={`/marketplace/${productId}`} className="btn btn-secondary">Open</Link>
-                                {(product.status || '').toLowerCase() !== 'sold' && (
-                                  <button className="btn btn-primary" onClick={() => setBuyerPickerState({ open: true, productId, action: 'sold' })}>
-                                    Mark Sold
-                                  </button>
-                                )}
-                                {(product.status || '').toLowerCase() === 'available' && (
-                                  <button className="btn btn-secondary" onClick={() => setBuyerPickerState({ open: true, productId, action: 'reserve' })}>
-                                    Reserve
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {priceRanges.length > 0 && (
-                    <div className="marketplace-price-insights">
-                      <h3 className="marketplace-price-insights-title">Market Price Range Insights</h3>
-                      <div className="products-grid marketplace-price-insights-grid">
-                        {priceRanges.slice(0, 4).map((item, index) => (
-                          <div key={`range-${index}`} className="product-card marketplace-insight-card">
-                            <h3>{item.price_range || 'Range'}</h3>
-                            <p className="product-condition">Products: {item.product_count || 0}</p>
-                            <p className="product-condition">Avg: BDT {item.avg_price || 0}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {myProducts.length === 0 ? (
+                <div className="state-card">
+                  <FaStore aria-hidden="true" />
+                  <strong>No listings found</strong>
+                  <p>List something and it will show up here with its status.</p>
+                </div>
+              ) : (
+                <div className="products-grid">
+                  {myProducts.map((product) => {
+                    const productId = getProductId(product);
+                    if (!productId) return null;
+                    const status = statusOf(product);
+                    return (
+                      <ProductCard
+                        key={productId}
+                        product={product}
+                        actions={
+                          <>
+                            {status !== 'sold' && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => setBuyerPickerState({ open: true, productId, action: 'sold' })}
+                              >
+                                Mark sold
+                              </button>
+                            )}
+                            {status === 'available' && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setBuyerPickerState({ open: true, productId, action: 'reserve' })}
+                              >
+                                Reserve
+                              </button>
+                            )}
+                          </>
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
 
-            </>
+              {priceRanges.length > 0 && (
+                <section className="side-card price-insights" aria-labelledby="price-insights-title">
+                  <h2 className="side-title" id="price-insights-title">Price ranges on the market</h2>
+                  <ul className="insight-list">
+                    {priceRanges.slice(0, 4).map((item, index) => (
+                      <li key={`range-${index}`}>
+                        <span className="insight-range">{item.price_range || 'Range'}</span>
+                        <span className="insight-meta">
+                          {item.product_count || 0} listings · avg {formatTaka(item.avg_price || 0)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
           )}
         </div>
       </div>
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>List New Product</h2>
+        <div className="modal-overlay" onClick={closeCreateModal}>
+          <div
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="list-product-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="list-product-title">List a product</h2>
             <form onSubmit={handleCreateProduct}>
               <div className="form-group">
-                <label>Title</label>
+                <label htmlFor="product-title">Title</label>
                 <input
+                  id="product-title"
                   type="text"
                   value={createData.title}
                   onChange={(e) => setCreateData({ ...createData, title: e.target.value })}
                   required
+                  autoFocus
                 />
               </div>
               <div className="form-group">
-                <label>Description</label>
+                <label htmlFor="product-description">Description</label>
                 <textarea
+                  id="product-description"
                   value={createData.description}
                   onChange={(e) => setCreateData({ ...createData, description: e.target.value })}
                   rows="3"
+                  placeholder="Condition, age, what's included"
                 />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Price</label>
+                  <label htmlFor="product-price">Price (৳)</label>
                   <input
+                    id="product-price"
                     type="number"
                     step="0.01"
+                    min="0"
                     value={createData.price}
                     onChange={(e) => setCreateData({ ...createData, price: e.target.value })}
                     required
                   />
                 </div>
                 <div className="form-group">
-                  <label>Condition</label>
+                  <label htmlFor="product-condition">Condition</label>
                   <select
+                    id="product-condition"
                     value={createData.condition}
                     onChange={(e) => setCreateData({ ...createData, condition: e.target.value })}
                   >
-                    <option value="new">New</option>
-                    <option value="like_new">Like New</option>
-                    <option value="good">Good</option>
-                    <option value="fair">Fair</option>
-                    <option value="poor">Poor</option>
+                    {Object.entries(CONDITION_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
+
               <div className="form-group">
-                <label>Category</label>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <label htmlFor="product-category">Category</label>
+                <div className="segmented" role="group" aria-label="Category source">
                   <button
                     type="button"
-                    className={`btn ${categoryMode === 'existing' ? 'btn-primary' : 'btn-secondary'}`}
+                    aria-pressed={categoryMode === 'existing'}
+                    className={categoryMode === 'existing' ? 'active' : ''}
                     onClick={() => {
                       setCategoryMode('existing');
-                      setCreateData({ ...createData, category: createData.category || HARD_CODED_CATEGORIES[0] });
+                      setCreateData({ ...createData, category: createData.category || PRODUCT_CATEGORIES[0] });
                     }}
                   >
-                    Choose Existing
+                    Choose one
                   </button>
                   <button
                     type="button"
-                    className={`btn ${categoryMode === 'new' ? 'btn-primary' : 'btn-secondary'}`}
+                    aria-pressed={categoryMode === 'new'}
+                    className={categoryMode === 'new' ? 'active' : ''}
                     onClick={() => setCategoryMode('new')}
                   >
-                    Add New Category
+                    Add new
                   </button>
                 </div>
-
                 {categoryMode === 'existing' ? (
                   <select
+                    id="product-category"
                     value={createData.category}
                     onChange={(e) => setCreateData({ ...createData, category: e.target.value })}
                   >
-                    {HARD_CODED_CATEGORIES.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
+                    {PRODUCT_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>{category}</option>
                     ))}
                   </select>
                 ) : (
                   <input
+                    id="product-category"
                     type="text"
-                    placeholder="Type new category"
+                    placeholder="Type a new category"
                     value={customCategory}
                     onChange={(e) => setCustomCategory(e.target.value)}
                   />
                 )}
               </div>
+
               <div className="form-group">
-                <label>Location</label>
+                <label htmlFor="product-location">Location</label>
                 <input
+                  id="product-location"
                   type="text"
                   value={createData.location}
                   onChange={(e) => setCreateData({ ...createData, location: e.target.value })}
+                  placeholder="e.g. Sher-e-Bangla Hall"
                 />
               </div>
+
               <div className="form-group">
-                <label>Images</label>
+                <label htmlFor="product-images">Photos</label>
                 <input
+                  id="product-images"
                   type="file"
                   accept="image/*"
                   multiple
                   onChange={(e) => setImageFiles(Array.from(e.target.files))}
                 />
+                {imagePreviews.length > 0 && (
+                  <ul className="image-previews">
+                    {imagePreviews.map((url, index) => (
+                      <li key={url}>
+                        <img src={url} alt={`Selected photo ${index + 1}`} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
               <div className="modal-actions">
-                <button type="submit" className="btn btn-primary">List Product</button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
+                <button type="button" className="btn btn-secondary" onClick={closeCreateModal}>
                   Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? 'Listing...' : 'List product'}
                 </button>
               </div>
             </form>

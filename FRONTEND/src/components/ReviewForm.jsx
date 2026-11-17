@@ -40,15 +40,18 @@ const ReviewForm = ({ productId, sellerId, onReviewSubmitted }) => {
 
   return (
     <div className="review-form-container">
-      <h3>Share Your Experience</h3>
+      <h3>Review this seller</h3>
       <form onSubmit={handleSubmit} className="review-form">
         <div className="rating-section">
-          <label>Rating *</label>
-          <div className="star-rating">
+          <label id="rating-label">Rating *</label>
+          <div className="star-rating" role="radiogroup" aria-labelledby="rating-label">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
                 type="button"
+                role="radio"
+                aria-checked={rating === star}
+                aria-label={`${star} ${star === 1 ? 'star' : 'stars'}`}
                 className={`star ${
                   star <= (hoveredRating || rating) ? 'active' : ''
                 }`}

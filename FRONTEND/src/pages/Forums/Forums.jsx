@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { forumAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaTint, FaBook, FaPlus } from 'react-icons/fa';
-import moment from 'moment';
+import { FaTint, FaBook, FaPlus, FaFilter, FaExclamationCircle } from 'react-icons/fa';
+import BloodRequestCard from '../../components/forums/BloodRequestCard';
+import TuitionCard from '../../components/forums/TuitionCard';
 import '../../styles/Forums.css';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
+import { toTimestamp, dhakaDayKey } from '../../utils/time';
 
 const Forums = () => {
   const { user: currentUser } = useAuth();
@@ -29,6 +31,8 @@ const Forums = () => {
   const [bloodRequests, setBloodRequests] = useState([]);
   const [tuitionPosts, setTuitionPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [showBloodModal, setShowBloodModal] = useState(false);
   const [showSeekTuitionModal, setShowSeekTuitionModal] = useState(false);
   const [showOfferTuitionModal, setShowOfferTuitionModal] = useState(false);
@@ -63,8 +67,21 @@ const Forums = () => {
     loadForums();
   }, []);
 
+  useEffect(() => {
+    if (!showBloodModal && !showSeekTuitionModal && !showOfferTuitionModal) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      setShowBloodModal(false);
+      setShowSeekTuitionModal(false);
+      setShowOfferTuitionModal(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showBloodModal, showSeekTuitionModal, showOfferTuitionModal]);
+
   const loadForums = async () => {
     try {
+      setLoadError(false);
       const [bloodRes, tuitionRes] = await Promise.all([
         forumAPI.getBloodRequests(),
         forumAPI.getTuitionPosts(),
@@ -73,6 +90,7 @@ const Forums = () => {
       setTuitionPosts(tuitionRes.data.results || tuitionRes.data);
     } catch (error) {
       console.error('Error loading forums:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -267,394 +285,334 @@ const Forums = () => {
     });
   };
 
+  const isOwnerOf = (ownerId) =>
+    Boolean(currentUser?.id) && Boolean(ownerId) && Number(currentUser.id) === Number(ownerId);
+
+  const filteredRequests = bloodRequests
+    .filter((request) => {
+      const bloodGroupMatch = bloodFilters.bloodGroup === '' || request.blood_group === bloodFilters.bloodGroup;
+      const urgencyMatch = bloodFilters.urgency === '' || request.urgency === bloodFilters.urgency;
+      return bloodGroupMatch && urgencyMatch;
+    })
+    .sort((a, b) => {
+      if (!bloodFilters.sortByDate) return 0;
+      // Upcoming requests first (soonest on top); dates already past go to the end.
+      const today = toTimestamp(dhakaDayKey(new Date()));
+      const aPast = toTimestamp(a.needed_date) < today ? 1 : 0;
+      const bPast = toTimestamp(b.needed_date) < today ? 1 : 0;
+      if (aPast !== bPast) return aPast - bPast;
+      const dateDiff = toTimestamp(a.needed_date) - toTimestamp(b.needed_date);
+      return dateDiff !== 0 ? dateDiff : toTimestamp(a.created_at) - toTimestamp(b.created_at);
+    });
+
+  const filteredTuition = tuitionPosts.filter((post) => {
+    const typeMatch = tuitionFilters.postType === '' || post.post_type === tuitionFilters.postType;
+    const subjectMatch =
+      tuitionFilters.subject === '' ||
+      (Array.isArray(post.subjects) &&
+        post.subjects.some((s) => s.toLowerCase().includes(tuitionFilters.subject.toLowerCase())));
+    const locationMatch =
+      tuitionFilters.location === '' ||
+      String(post.location || '').toLowerCase().includes(tuitionFilters.location.toLowerCase());
+    const salaryMatch =
+      tuitionFilters.minSalary === '' ||
+      (post.salary_min && Number(post.salary_min) >= Number(tuitionFilters.minSalary));
+    const genderMatch =
+      tuitionFilters.preferredGender === '' ||
+      (post.preferred_gender && post.preferred_gender.toLowerCase() === tuitionFilters.preferredGender.toLowerCase());
+    return typeMatch && subjectMatch && locationMatch && salaryMatch && genderMatch;
+  });
+
+  const bloodFilterCount = (bloodFilters.bloodGroup ? 1 : 0) + (bloodFilters.urgency ? 1 : 0);
+  const tuitionFilterCount = Object.values(tuitionFilters).filter(Boolean).length;
+  const activeFilterCount = activeTab === 'blood' ? bloodFilterCount : tuitionFilterCount;
+
+  const clearBloodFilters = () => setBloodFilters({ bloodGroup: '', urgency: '', sortByDate: true });
+  const clearTuitionFilters = () =>
+    setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '', preferredGender: '' });
+
+  const renderSkeletons = () => (
+    <div aria-busy="true" aria-label="Loading">
+      {[0, 1, 2].map((i) => (
+        <div className="forum-card forum-card-skeleton" key={i} aria-hidden="true">
+          <span className="skel forum-skel-tile" />
+          <div className="forum-card-main">
+            <span className="skel forum-skel-line" style={{ width: '45%', height: 16 }} />
+            <span className="skel forum-skel-line" style={{ width: '80%' }} />
+            <span className="skel forum-skel-line" style={{ width: '60%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderBloodFilters = () => (
+    <>
+      <div className="filter-input-group">
+        <label htmlFor="blood-group-filter">Blood group</label>
+        <select
+          id="blood-group-filter"
+          value={bloodFilters.bloodGroup}
+          onChange={(e) => setBloodFilters({ ...bloodFilters, bloodGroup: e.target.value })}
+        >
+          <option value="">All</option>
+          {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((group) => (
+            <option key={group} value={group}>{group}</option>
+          ))}
+        </select>
+      </div>
+      <div className="filter-input-group">
+        <label htmlFor="urgency-filter">Urgency</label>
+        <select
+          id="urgency-filter"
+          value={bloodFilters.urgency}
+          onChange={(e) => setBloodFilters({ ...bloodFilters, urgency: e.target.value })}
+        >
+          <option value="">All</option>
+          <option value="low">Low</option>
+          <option value="moderate">Moderate</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
+      <label className="filter-checkbox-label">
+        <input
+          type="checkbox"
+          checked={bloodFilters.sortByDate}
+          onChange={(e) => setBloodFilters({ ...bloodFilters, sortByDate: e.target.checked })}
+        />
+        Soonest needed first
+      </label>
+      <button type="button" onClick={clearBloodFilters} className="filter-clear-btn" disabled={bloodFilterCount === 0}>
+        Clear filters
+      </button>
+    </>
+  );
+
+  const renderTuitionFilters = () => (
+    <>
+      <div className="filter-type-buttons" role="group" aria-label="Post type">
+        {[
+          ['', 'All'],
+          ['seeking_tutor', 'Seeking'],
+          ['offering_tuition', 'Offering'],
+        ].map(([value, label]) => (
+          <button
+            key={value || 'all'}
+            type="button"
+            aria-pressed={tuitionFilters.postType === value}
+            onClick={() => setTuitionFilters({ ...tuitionFilters, postType: value })}
+            className={`filter-type-btn ${tuitionFilters.postType === value ? 'active' : ''}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="filter-input-group">
+        <label htmlFor="subject-filter">Subject</label>
+        <input
+          id="subject-filter"
+          type="text"
+          placeholder="e.g. Math, Physics"
+          value={tuitionFilters.subject}
+          onChange={(e) => setTuitionFilters({ ...tuitionFilters, subject: e.target.value })}
+        />
+      </div>
+      <div className="filter-input-group">
+        <label htmlFor="location-filter">Location</label>
+        <input
+          id="location-filter"
+          type="text"
+          placeholder="e.g. Dhaka, Gulshan"
+          value={tuitionFilters.location}
+          onChange={(e) => setTuitionFilters({ ...tuitionFilters, location: e.target.value })}
+        />
+      </div>
+      <div className="filter-input-group">
+        <label htmlFor="salary-filter">Minimum salary (৳)</label>
+        <input
+          id="salary-filter"
+          type="number"
+          min="0"
+          placeholder="e.g. 5000"
+          value={tuitionFilters.minSalary}
+          onChange={(e) => setTuitionFilters({ ...tuitionFilters, minSalary: e.target.value })}
+        />
+      </div>
+      <div className="filter-input-group">
+        <label htmlFor="gender-filter">Preferred gender</label>
+        <select
+          id="gender-filter"
+          value={tuitionFilters.preferredGender}
+          onChange={(e) => setTuitionFilters({ ...tuitionFilters, preferredGender: e.target.value })}
+        >
+          <option value="">All</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+      <button type="button" onClick={clearTuitionFilters} className="filter-clear-btn" disabled={tuitionFilterCount === 0}>
+        Clear filters
+      </button>
+    </>
+  );
+
+  const results = activeTab === 'blood' ? filteredRequests : filteredTuition;
+  const total = activeTab === 'blood' ? bloodRequests.length : tuitionPosts.length;
+
   return (
     <div className="app-layout">
       <Navbar />
       <div className="main-content">
-        <div className="container">
+        <div className="container forums-page">
           <div className="forums-header">
-            <h1>Forums</h1>
+            <div>
+              <h1>Forums</h1>
+              <p className="page-subtitle">Ask for blood donors, or find and offer tuition within the BUET community.</p>
+            </div>
           </div>
 
-          <div className="forums-tabs">
+          <div className="forums-tabs" role="tablist" aria-label="Forum sections">
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'blood'}
               className={`tab ${activeTab === 'blood' ? 'active' : ''}`}
-              onClick={() => setActiveTab('blood')}
+              onClick={() => { setActiveTab('blood'); setFiltersOpen(false); }}
             >
-              <FaTint /> Blood Donation
+              <FaTint aria-hidden="true" /> Blood donation
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'tuition'}
               className={`tab ${activeTab === 'tuition' ? 'active' : ''}`}
-              onClick={() => setActiveTab('tuition')}
+              onClick={() => { setActiveTab('tuition'); setFiltersOpen(false); }}
             >
-              <FaBook /> Tuition
+              <FaBook aria-hidden="true" /> Tuition
             </button>
           </div>
 
-          {loading ? (
-            <div className="loading">Loading...</div>
-          ) : (
-            <>
-              {activeTab === 'blood' && (
-                <div className="forum-section">
-                  <div className="section-header">
-                    <h2>Blood Donation Requests</h2>
-                    <button className="btn btn-primary" onClick={() => setShowBloodModal(true)}>
-                      <FaPlus /> Create Request
+          <div className="section-header">
+            <p className="results-count" aria-live="polite">
+              {loading || loadError ? '' : `Showing ${results.length} of ${total}`}
+            </p>
+            <div className="section-actions">
+              {activeTab === 'blood' ? (
+                <button type="button" className="btn btn-primary" onClick={() => setShowBloodModal(true)}>
+                  <FaPlus aria-hidden="true" /> Request blood
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-primary" onClick={openSeekTuitionModal}>
+                    <FaPlus aria-hidden="true" /> Seek a tutor
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={openOfferTuitionModal}>
+                    <FaPlus aria-hidden="true" /> Offer tuition
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="forum-layout">
+            <div className="forum-posts">
+              {loading ? (
+                renderSkeletons()
+              ) : loadError ? (
+                <div className="state-card" role="alert">
+                  <FaExclamationCircle aria-hidden="true" />
+                  <strong>Couldn't load the forums</strong>
+                  <p>Check your connection and try again.</p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setLoading(true);
+                      loadForums();
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : results.length === 0 ? (
+                <div className="state-card">
+                  {activeTab === 'blood' ? <FaTint aria-hidden="true" /> : <FaBook aria-hidden="true" />}
+                  <strong>
+                    {activeFilterCount > 0
+                      ? 'Nothing matches these filters'
+                      : activeTab === 'blood'
+                        ? 'No blood requests right now'
+                        : 'No tuition posts yet'}
+                  </strong>
+                  <p>
+                    {activeFilterCount > 0
+                      ? 'Try removing a filter to see more.'
+                      : activeTab === 'blood'
+                        ? 'If you need blood, post a request and the community will see it.'
+                        : 'Post what you are looking for, or offer to teach.'}
+                  </p>
+                  {activeFilterCount > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={activeTab === 'blood' ? clearBloodFilters : clearTuitionFilters}
+                    >
+                      Clear filters
                     </button>
-                  </div>
-                  <div className="forum-layout">
-                    <div className="forum-posts forum-posts-main">
-                      {(() => {
-                        let filteredRequests = bloodRequests.filter((request) => {
-                          const bloodGroupMatch =
-                            bloodFilters.bloodGroup === '' || request.blood_group === bloodFilters.bloodGroup;
-                          const urgencyMatch =
-                            bloodFilters.urgency === '' || request.urgency === bloodFilters.urgency;
-                          return bloodGroupMatch && urgencyMatch;
-                        });
-
-                        if (bloodFilters.sortByDate) {
-                          filteredRequests = filteredRequests.sort((a, b) => {
-                            const dateA = new Date(a.needed_date).getTime();
-                            const dateB = new Date(b.needed_date).getTime();
-
-                            if (dateA !== dateB) {
-                              return dateA - dateB;
-                            }
-
-                            const createdA = new Date(a.created_at).getTime();
-                            const createdB = new Date(b.created_at).getTime();
-                            return createdA - createdB;
-                          });
-                        }
-
-                        return filteredRequests.length === 0 ? (
-                          <p>No blood requests matching filters</p>
-                        ) : (
-                          filteredRequests.map((request) => (
-                            <div key={request.id || request.request_id} className="forum-post blood-request">
-                              <div className="post-header">
-                                <div className="blood-group-badge">{request.blood_group}</div>
-                                <div className={`urgency-badge urgency-${request.urgency}`}>
-                                  {request.urgency}
-                                </div>
-                              </div>
-                              <h3>{request.patient_name}</h3>
-                              <p>
-                                <strong>Hospital:</strong> {request.hospital_name}
-                              </p>
-                              <p>
-                                <strong>Address:</strong> {request.hospital_address}
-                              </p>
-                              <p>
-                                <strong>Needed Date:</strong>{' '}
-                                {moment(request.needed_date).format('MMM DD, YYYY')}
-                              </p>
-                              <p>
-                                <strong>Contact:</strong> {request.contact_number}
-                              </p>
-                              {request.description && <p>{request.description}</p>}
-                              <div className="post-meta">
-                                <span>Posted {moment.utc(request.created_at).local().fromNow()}</span>
-                                <span className="status-badge">{request.status}</span>
-                              </div>
-                              {currentUser?.id && Number(currentUser.id) === Number(request.requester_id) && (
-                                <div className="post-meta">
-                                  <button className="btn btn-secondary" onClick={() => handleEditBlood(request)}>
-                                    Edit
-                                  </button>
-                                  <button
-                                    className="btn btn-danger"
-                                    onClick={() => handleDeleteBlood(request.id || request.request_id)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
-                              {currentUser?.id &&
-                                Number(currentUser.id) !== Number(request.requester_id) &&
-                                request.requester_id && (
-                                  <div className="post-meta">
-                                    <Link
-                                      to={`/chat/${request.requester_id}?message=${encodeURIComponent(
-                                        `Hi, I saw your blood request for ${request.blood_group} at ${request.hospital_name}. I want to help.`
-                                      )}`}
-                                      className="btn btn-primary"
-                                    >
-                                      Message Requester
-                                    </Link>
-                                  </div>
-                                )}
-                            </div>
-                          ))
-                        );
-                      })()}
-                    </div>
-                    <div className="tuition-filter-panel">
-                      <h3>Filters</h3>
-                      <div className="filter-input-group">
-                        <label>Blood Group (Optional)</label>
-                        <select
-                          value={bloodFilters.bloodGroup}
-                          onChange={(e) => setBloodFilters({ ...bloodFilters, bloodGroup: e.target.value })}
-                        >
-                          <option value="">All</option>
-                          <option value="A+">A+</option>
-                          <option value="A-">A-</option>
-                          <option value="B+">B+</option>
-                          <option value="B-">B-</option>
-                          <option value="O+">O+</option>
-                          <option value="O-">O-</option>
-                          <option value="AB+">AB+</option>
-                          <option value="AB-">AB-</option>
-                        </select>
-                      </div>
-                      <div className="filter-input-group">
-                        <label>Urgency (Optional)</label>
-                        <select
-                          value={bloodFilters.urgency}
-                          onChange={(e) => setBloodFilters({ ...bloodFilters, urgency: e.target.value })}
-                        >
-                          <option value="">All</option>
-                          <option value="low">Low</option>
-                          <option value="moderate">Moderate</option>
-                          <option value="urgent">Urgent</option>
-                        </select>
-                      </div>
-                      <div className="filter-input-group">
-                        <label className="filter-checkbox-label">
-                          <input
-                            type="checkbox"
-                            checked={bloodFilters.sortByDate}
-                            onChange={(e) =>
-                              setBloodFilters({ ...bloodFilters, sortByDate: e.target.checked })
-                            }
-                            style={{ marginRight: '8px' }}
-                          />
-                          Sort by Needed Date (Urgent First)
-                        </label>
-                      </div>
-                      <button
-                        onClick={() => setBloodFilters({ bloodGroup: '', urgency: '', sortByDate: true })}
-                        className="filter-clear-btn"
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
-                  </div>
+                  )}
                 </div>
+              ) : activeTab === 'blood' ? (
+                filteredRequests.map((request) => (
+                  <BloodRequestCard
+                    key={request.id || request.request_id}
+                    request={request}
+                    isOwner={isOwnerOf(request.requester_id)}
+                    canMessage={Boolean(currentUser?.id) && Boolean(request.requester_id) && !isOwnerOf(request.requester_id)}
+                    onEdit={handleEditBlood}
+                    onDelete={(item) => handleDeleteBlood(item.id || item.request_id)}
+                  />
+                ))
+              ) : (
+                filteredTuition.map((post) => {
+                  const posterId = Number(post.poster_id || post.user_id || post.poster?.id || 0);
+                  return (
+                    <TuitionCard
+                      key={post.id || post.tuition_id}
+                      post={post}
+                      posterId={posterId}
+                      isOwner={isOwnerOf(posterId)}
+                      canMessage={Boolean(currentUser?.id) && posterId > 0 && !isOwnerOf(posterId)}
+                      onEdit={handleEditTuition}
+                      onDelete={(item) => handleDeleteTuition(item.id || item.tuition_id)}
+                    />
+                  );
+                })
               )}
+            </div>
 
-              {activeTab === 'tuition' && (
-                <div className="forum-section">
-                  <div className="section-header">
-                    <h2>Tuition Posts</h2>
-                    <div className="section-actions">
-                      <button className="btn btn-primary" onClick={openSeekTuitionModal}>
-                        <FaPlus />Seek Tutor
-                      </button>
-                      <button className="btn btn-primary" onClick={openOfferTuitionModal}>
-                        <FaPlus />Offer Tuition
-                      </button>
-                    </div>
-                  </div>
-                  <div className="forum-layout">
-                    <div className="forum-posts forum-posts-main">
-                      {(() => {
-                        const filteredPosts = tuitionPosts.filter((post) => {
-                          const typeMatch =
-                            tuitionFilters.postType === '' || post.post_type === tuitionFilters.postType;
-                          const subjectMatch =
-                            tuitionFilters.subject === '' ||
-                            (Array.isArray(post.subjects) &&
-                              post.subjects.some((s) =>
-                                s.toLowerCase().includes(tuitionFilters.subject.toLowerCase())
-                              ));
-                          const locationMatch =
-                            tuitionFilters.location === '' ||
-                            post.location.toLowerCase().includes(tuitionFilters.location.toLowerCase());
-                          const salaryMatch =
-                            tuitionFilters.minSalary === '' ||
-                            (post.salary_min && Number(post.salary_min) >= Number(tuitionFilters.minSalary));
-                          const genderMatch =
-                            tuitionFilters.preferredGender === '' ||
-                            (post.preferred_gender && post.preferred_gender.toLowerCase() === tuitionFilters.preferredGender.toLowerCase());
-                          return typeMatch && subjectMatch && locationMatch && salaryMatch && genderMatch;
-                        });
-
-                        return filteredPosts.length === 0 ? (
-                          <p>No tuition posts available</p>
-                        ) : (
-                          filteredPosts.map((post) => (
-                            <div key={post.id || post.tuition_id} className="forum-post tuition-post">
-                              {(() => {
-                                const posterId = Number(post.poster_id || post.user_id || post.poster?.id || 0);
-                                const messageText = `Hi, I am interested in your tuition post for ${post.class_level} at ${post.location}.`;
-                                return (
-                                  <>
-                                    <div className="post-type-badge">
-                                      {post.post_type === 'seeking_tutor'
-                                        ? 'Seeking Tutor'
-                                        : 'Offering Tuition'}
-                                    </div>
-                                    <h3>Grade : {post.class_level}</h3>
-                                    <p>
-                                      <strong>Subject(s):</strong>{' '}
-                                      {Array.isArray(post.subjects) && post.subjects.length > 0
-                                        ? post.subjects.join(', ')
-                                        : 'N/A'}
-                                    </p>
-                                    <p>
-                                      <strong>Location:</strong> {post.location}
-                                    </p>
-                                    <p>
-                                      <strong>Minimum Salary:</strong> ৳{post.salary_min} 
-                                    </p>
-                                    <p>
-                                      <strong>Days per Week:</strong> {post.days_per_week}
-                                    </p>
-                                    <p>
-                                      <strong>Duration:</strong> {post.duration_hours} hours
-                                    </p>
-                                    <p>
-                                      <strong>{post.post_type === 'offering_tuition' ? 'Student Preferred Gender' : 'Tutor Preferred Gender'}:</strong> {post.preferred_gender}
-                                    </p>
-                                    {post.requirements && (
-                                      <p>
-                                        <strong>Requirements:</strong> {post.requirements}
-                                      </p>
-                                    )}
-                                    <p>
-                                      <strong>Contact:</strong> {post.contact_number}
-                                    </p>
-                                    <div className="post-meta">
-                                      <span>Posted {moment.utc(post.created_at).local().fromNow()}</span>
-                                      <span className="status-badge">{post.status}</span>
-                                    </div>
-                                    {currentUser?.id && Number(currentUser.id) === posterId && (
-                                      <div className="post-meta">
-                                        <button className="btn btn-secondary" onClick={() => handleEditTuition(post)}>
-                                          Edit
-                                        </button>
-                                        <button
-                                          className="btn btn-danger"
-                                          onClick={() => handleDeleteTuition(post.id || post.tuition_id)}
-                                        >
-                                          Delete/Booked
-                                        </button>
-                                      </div>
-                                    )}
-                                    {currentUser?.id && Number(currentUser.id) !== posterId && posterId > 0 && (
-                                      <div className="post-meta">
-                                        <Link
-                                          to={`/chat/${posterId}?message=${encodeURIComponent(messageText)}`}
-                                          className="btn btn-primary"
-                                        >
-                                          Message Poster
-                                        </Link>
-                                      </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          ))
-                        );
-                      })()}
-                    </div>
-                    <div className="tuition-filter-panel">
-                      <h3>Filters</h3>
-                      <div className="filter-type-buttons">
-                        <button
-                          onClick={() => setTuitionFilters({ ...tuitionFilters, postType: '' })}
-                          className={`filter-type-btn ${
-                            tuitionFilters.postType === '' ? 'active-all' : ''
-                          }`}
-                        >
-                          All
-                        </button>
-                        <button
-                          onClick={() =>
-                            setTuitionFilters({ ...tuitionFilters, postType: 'seeking_tutor' })
-                          }
-                          className={`filter-type-btn ${
-                            tuitionFilters.postType === 'seeking_tutor' ? 'active-seek' : ''
-                          }`}
-                        >
-                          Seek
-                        </button>
-                        <button
-                          onClick={() =>
-                            setTuitionFilters({ ...tuitionFilters, postType: 'offering_tuition' })
-                          }
-                          className={`filter-type-btn ${
-                            tuitionFilters.postType === 'offering_tuition' ? 'active-offer' : ''
-                          }`}
-                        >
-                          Offer
-                        </button>
-                      </div>
-                      <div className="filter-input-group">
-                        <label>Subject (Optional)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g., Math, Physics"
-                          value={tuitionFilters.subject}
-                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, subject: e.target.value })}
-                        />
-                      </div>
-                      <div className="filter-input-group">
-                        <label>Location (Optional)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g., Dhaka, Gulshan"
-                          value={tuitionFilters.location}
-                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, location: e.target.value })}
-                        />
-                      </div>
-                      <div className="filter-input-group">
-                        <label>Min Salary (Optional)</label>
-                        <input
-                          type="number"
-                          placeholder="e.g., 5000"
-                          value={tuitionFilters.minSalary}
-                          onChange={(e) =>
-                            setTuitionFilters({ ...tuitionFilters, minSalary: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="filter-input-group">
-                        <label>Preferred Gender (Optional)</label>
-                        <select
-                          value={tuitionFilters.preferredGender}
-                          onChange={(e) => setTuitionFilters({ ...tuitionFilters, preferredGender: e.target.value })}
-                        >
-                          <option value="">All</option>
-                          <option value="male">Male</option>
-                          <option value="female">Female</option>
-                        </select>
-                      </div>
-                      <button
-                        onClick={() =>
-                          setTuitionFilters({ postType: '', subject: '', location: '', minSalary: '', preferredGender: '' })
-                        }
-                        className="filter-clear-btn"
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+            <aside className="forum-filters" aria-label="Filters">
+              <button
+                type="button"
+                className="filters-toggle"
+                aria-expanded={filtersOpen}
+                aria-controls="forum-filter-body"
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <FaFilter aria-hidden="true" /> Filters
+                {activeFilterCount > 0 && <span className="tab-badge">{activeFilterCount}</span>}
+              </button>
+              <div id="forum-filter-body" className={`filters-body ${filtersOpen ? 'open' : ''}`}>
+                <h2 className="filters-title">Filters</h2>
+                {activeTab === 'blood' ? renderBloodFilters() : renderTuitionFilters()}
+              </div>
+            </aside>
+          </div>
         </div>
       </div>
 
       {showBloodModal && (
         <div className="modal-overlay" onClick={() => setShowBloodModal(false)}>
-          <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content large" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2>Create Blood Donation Request</h2>
             <form onSubmit={handleCreateBloodRequest}>
               <div className="form-row">
@@ -757,7 +715,7 @@ const Forums = () => {
 
       {showSeekTuitionModal && (
         <div className="modal-overlay" onClick={() => setShowSeekTuitionModal(false)}>
-          <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content large" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2>{editingTuitionId ? 'Update Seek Tutor Post' : 'Create Seek Tutor Post'}</h2>
             <form onSubmit={handleCreateTuitionPost}>
               <div className="form-group">
@@ -928,7 +886,7 @@ const Forums = () => {
 
       {showOfferTuitionModal && (
         <div className="modal-overlay" onClick={() => setShowOfferTuitionModal(false)}>
-          <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content large" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2>{editingTuitionId ? 'Update Offer Tuition Post' : 'Create Offer Tuition Post'}</h2>
             <form onSubmit={handleCreateTuitionPost}>
               <div className="form-group">

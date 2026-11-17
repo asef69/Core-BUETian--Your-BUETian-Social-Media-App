@@ -4,10 +4,15 @@ import { groupAPI, postAPI, userAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
-import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
+import {
+  FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash, FaArrowLeft, FaCamera, FaSearch,
+  FaRegNewspaper, FaExclamationCircle,
+} from 'react-icons/fa';
+import GroupHero from '../../components/groups/GroupHero';
+import MemberRow from '../../components/groups/MemberRow';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
-import { toAbsoluteMediaUrl } from '../../config';
+import '../../styles/Groups.css';
 
 const GroupDetail = () => {
   const { groupId } = useParams();
@@ -44,16 +49,18 @@ const GroupDetail = () => {
   const [updatingGroup, setUpdatingGroup] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
     loadGroupData();
   }, [groupId]);
 
-  const toAbsoluteUrl = toAbsoluteMediaUrl;
-
-  const setFallbackOnce = (event, fallbackSrc) => {
-    if (event.currentTarget.dataset.fallbackApplied) return;
-    event.currentTarget.dataset.fallbackApplied = 'true';
-    event.currentTarget.src = fallbackSrc;
-  };
+  useEffect(() => {
+    if (!showEditForm) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setShowEditForm(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showEditForm]);
 
   const extractItems = (data) => {
     if (Array.isArray(data)) return data;
@@ -507,21 +514,42 @@ const GroupDetail = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="loading">Loading group...</div>
+  const shell = (children) => (
+    <div className="app-layout">
+      <Navbar />
+      <div className="main-content">
+        <div className="container group-page">{children}</div>
       </div>
+    </div>
+  );
+
+  if (loading) {
+    return shell(
+      <div className="group-hero group-hero-skeleton" aria-busy="true" aria-label="Loading group">
+        <span className="skel group-skel-hero-cover" />
+        <div className="group-hero-body">
+          <span className="skel group-skel-line" style={{ width: '40%', height: 24 }} />
+          <span className="skel group-skel-line" style={{ width: '70%' }} />
+        </div>
+      </div>,
     );
   }
 
   if (!group) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="error">Group not found</div>
-      </div>
+    return shell(
+      <div className="state-card" role="alert">
+        <FaExclamationCircle aria-hidden="true" />
+        <strong>We couldn't load this group</strong>
+        <p>It may have been removed, or you may not have access.</p>
+        <div className="state-card-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setLoading(true); loadGroupData(); }}>
+            Try again
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate('/groups')}>
+            Back to groups
+          </button>
+        </div>
+      </div>,
     );
   }
 
@@ -532,619 +560,474 @@ const GroupDetail = () => {
     currentUserRole === 'moderator';
   const canChangeRoles = currentUserRole === 'admin' || currentUserRole === 'owner';
 
-  return (
-    <div className="app-layout">
-      <Navbar />
-      <div className="main-content">
-        <div className="container">
-          <div className="group-detail">
-            <div className="group-header">
-              <div className="group-cover-wrapper">
-                <img
-                  src={toAbsoluteUrl(group.cover_image) || '/default-group.svg'}
-                  alt={group.name}
-                  className="group-cover-large"
-                  onError={(e) => setFallbackOnce(e, '/default-group.svg')}
-                />
-                <div className="group-cover-overlay" aria-hidden="true" />
-              </div>
-              <div className="group-info">
-                <h1>{group.name}</h1>
-                <p>{group.description}</p>
-                <div className="group-meta">
-                  <span><FaUsers /> {members.length} members</span>
-                </div>
-                {canChangeRoles && (
-                  <form className="group-cover-form" onSubmit={handleUpdateCover}>
-                    <input
-                      id="group-cover-input"
-                      className="group-cover-input-hidden"
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
-                    />
-                    <button
-                      className="btn btn-secondary cover-picker-btn"
-                      type="button"
-                      onClick={() => document.getElementById('group-cover-input')?.click()}
-                    >
-                      {coverImageFile ? 'Change Cover' : 'Choose Cover'}
-                    </button>
-                    <span className="cover-file-name">{coverImageFile?.name || 'No file selected'}</span>
-                    <button
-                      className="btn btn-secondary"
-                      type="submit"
-                      disabled={updatingCover || !coverImageFile}
-                    >
-                      {updatingCover ? 'Updating...' : 'Update Cover'}
-                    </button>
-                  </form>
-                )}
-                <div className="group-primary-actions">
-                  <button className="btn btn-danger" onClick={handleLeaveGroup}>
-                    <FaSignOutAlt /> Leave Group
-                  </button>
-                  {canChangeRoles && (
-                    <button className="btn btn-danger delete-group-btn" onClick={handleDeleteGroup}>
-                      <FaTrash /> Delete Group
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+  const roleBadge = (role) => {
+    const value = String(role || 'member').toLowerCase();
+    return value === 'member' ? null : value;
+  };
 
-            <div className="group-tabs">
-              <button
-                className={`tab ${activeTab === 'posts' ? 'active' : ''}`}
-                onClick={() => setActiveTab('posts')}
-              >
-                Posts
-              </button>
-              <button
-                className={`tab ${activeTab === 'members' ? 'active' : ''}`}
-                onClick={() => setActiveTab('members')}
-              >
-                Members ({members.length})
-                {canManageMembers && pendingMembers.length > 0 && (
-                  <sup style={{ marginLeft: 4, color: 'orange' }}>{pendingMembers.length} pending</sup>
-                )}
-              </button>
-              {canManageMembers && (
-                <button
-                  className={`tab ${activeTab === 'dashboard' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('dashboard')}
-                >
-                  Admin Dashboard
-                </button>
-              )}
-            </div>
+  const tabs = [
+    ['posts', 'Posts'],
+    ['members', 'Members'],
+    ...(canManageMembers ? [['dashboard', 'Admin']] : []),
+  ];
 
-            {activeTab === 'posts' && (
-              <div className="group-posts">
-                <form onSubmit={handleCreatePost} className="create-post-form fancy-post-form">
-                  <textarea
-                    placeholder="What's on your mind?"
-                    value={newPostContent}
-                    onChange={(e) => setNewPostContent(e.target.value)}
-                    rows="4"
-                  />
+  const coverTools = canChangeRoles && (
+    <form className="cover-tools" onSubmit={handleUpdateCover}>
+      <input
+        id="group-cover-input"
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => setCoverImageFile(e.target.files?.[0] || null)}
+      />
+      {coverImageFile ? (
+        <>
+          <span className="cover-file-name">{coverImageFile.name}</span>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={updatingCover}>
+            {updatingCover ? 'Saving...' : 'Save cover'}
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCoverImageFile(null)}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => document.getElementById('group-cover-input')?.click()}
+        >
+          <FaCamera aria-hidden="true" /> Change cover
+        </button>
+      )}
+    </form>
+  );
 
-                  <input
-                    id="group-post-photo-input"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.files || []);
-                      if (selected.length > 0) {
-                        setNewPostFiles((prev) => [...prev, ...selected]);
-                      }
-                      e.target.value = '';
-                    }}
-                  />
-                  <input
-                    id="group-post-video-input"
-                    type="file"
-                    accept="video/*"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.files || []);
-                      if (selected.length > 0) {
-                        setNewPostFiles((prev) => [...prev, ...selected]);
-                      }
-                      e.target.value = '';
-                    }}
-                  />
+  const removePost = (postId) => setPosts((prev) => prev.filter((item) => item.id !== postId));
 
-                  <div className="fancy-post-actions">
-                    <button
-                      type="button"
-                      className="fancy-media-btn"
-                      onClick={() => document.getElementById('group-post-photo-input')?.click()}
-                    >
-                      <FaImage /> Photo
-                    </button>
-                    <button
-                      type="button"
-                      className="fancy-media-btn"
-                      onClick={() => document.getElementById('group-post-video-input')?.click()}
-                    >
-                      <FaVideo /> Video
-                    </button>
+  return shell(
+    <>
+      <button type="button" className="back-link" onClick={() => navigate('/groups')}>
+        <FaArrowLeft aria-hidden="true" /> All groups
+      </button>
 
-                    <button type="submit" className="btn btn-primary fancy-post-submit" disabled={creatingPost}>
-                      {creatingPost ? 'Posting...' : 'Post'}
-                    </button>
-                  </div>
+      <GroupHero
+        group={group}
+        groupId={groupId}
+        memberCount={members.length}
+        coverTools={coverTools}
+        actions={
+          <button type="button" className="btn btn-secondary" onClick={handleLeaveGroup}>
+            <FaSignOutAlt aria-hidden="true" /> Leave
+          </button>
+        }
+      />
 
-                  {newPostFiles.length > 0 && (
-                    <div className="selected-media-list">
-                      {newPostFiles.map((file, index) => (
-                        <span key={`${file.name}-${file.lastModified}`} className="selected-media-chip">
-                          {file.name}
-                          <button
-                            type="button"
-                            className="remove-media-chip"
-                            onClick={() => {
-                              setNewPostFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index));
-                            }}
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            <FaTimes />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </form>
-
-                {posts.length === 0 ? (
-                  <p>No posts yet</p>
-                ) : (
-                  posts.map((post) => <PostCard key={post.id} post={post} />)
-                )}
-              </div>
+      <div className="group-tabs" role="tablist" aria-label="Group sections">
+        {tabs.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`group-tab-${id}`}
+            aria-selected={activeTab === id}
+            aria-controls="group-panel"
+            className={`tab ${activeTab === id ? 'active' : ''}`}
+            onClick={() => setActiveTab(id)}
+          >
+            {label}
+            {id === 'members' && <span className="tab-count">{members.length}</span>}
+            {id === 'members' && canManageMembers && pendingMembers.length > 0 && (
+              <span className="tab-badge" aria-label={`${pendingMembers.length} pending requests`}>
+                {pendingMembers.length}
+              </span>
             )}
+          </button>
+        ))}
+      </div>
 
-            {activeTab === 'members' && (
-              <div className="group-members">
-                {canManageMembers && pendingMembers.length > 0 && (
-                  <div className="pending-members">
-                    <h3>Pending Requests</h3>
-                    {pendingMembers.map((member) => (
-                      <div key={member.user_id} className="member-item pending">
-                        <img
-                          src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
-                          alt={member.name || 'User'}
-                          className="avatar"
-                          onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
-                        />
-                        <div className="member-info">
-                          <h4>{member.name}</h4>
-                          <span className="member-role">pending</span>
-                        </div>
-                        <div className="member-actions">
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleAcceptMember(member.user_id)}
-                          >
+      <div id="group-panel" role="tabpanel" aria-labelledby={`group-tab-${activeTab}`} className="group-panel">
+        {activeTab === 'posts' && (
+          <div className="group-posts">
+            <form onSubmit={handleCreatePost} className="create-post-card expanded group-composer">
+              <textarea
+                placeholder="Share something with the group"
+                aria-label="Write a group post"
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                rows="3"
+              />
+
+              <input
+                id="group-post-photo-input"
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files || []);
+                  if (selected.length > 0) setNewPostFiles((prev) => [...prev, ...selected]);
+                  e.target.value = '';
+                }}
+              />
+              <input
+                id="group-post-video-input"
+                type="file"
+                accept="video/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files || []);
+                  if (selected.length > 0) setNewPostFiles((prev) => [...prev, ...selected]);
+                  e.target.value = '';
+                }}
+              />
+
+              {newPostFiles.length > 0 && (
+                <div className="selected-media-list">
+                  {newPostFiles.map((file, index) => (
+                    <span key={`${file.name}-${file.lastModified}`} className="selected-media-chip">
+                      {file.name}
+                      <button
+                        type="button"
+                        className="remove-media-chip"
+                        onClick={() => setNewPostFiles((prev) => prev.filter((_, i) => i !== index))}
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        <FaTimes aria-hidden="true" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="composer-actions">
+                <div className="media-buttons">
+                  <button
+                    type="button"
+                    className="media-btn"
+                    onClick={() => document.getElementById('group-post-photo-input')?.click()}
+                  >
+                    <FaImage aria-hidden="true" /> Photo
+                  </button>
+                  <button
+                    type="button"
+                    className="media-btn"
+                    onClick={() => document.getElementById('group-post-video-input')?.click()}
+                  >
+                    <FaVideo aria-hidden="true" /> Video
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={creatingPost || (!newPostContent.trim() && newPostFiles.length === 0)}
+                >
+                  {creatingPost ? 'Posting...' : 'Post'}
+                </button>
+              </div>
+            </form>
+
+            {posts.length === 0 ? (
+              <div className="state-card">
+                <FaRegNewspaper aria-hidden="true" />
+                <strong>No posts yet</strong>
+                <p>Be the first to start a conversation in {group.name}.</p>
+              </div>
+            ) : (
+              posts.map((post) => <PostCard key={post.id} post={post} onDelete={removePost} />)
+            )}
+          </div>
+        )}
+
+        {activeTab === 'members' && (
+          <div className="group-members">
+            {canManageMembers && pendingMembers.length > 0 && (
+              <section className="side-card" aria-labelledby="pending-title">
+                <h2 className="side-title" id="pending-title">Pending requests <span>{pendingMembers.length}</span></h2>
+                <ul className="member-list">
+                  {pendingMembers.map((member) => (
+                    <MemberRow
+                      key={member.user_id}
+                      member={member}
+                      actions={
+                        <>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAcceptMember(member.user_id)}>
                             Accept
                           </button>
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleRejectMember(member.user_id)}
-                          >
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleRejectMember(member.user_id)}>
                             Reject
                           </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        </>
+                      }
+                    />
+                  ))}
+                </ul>
+              </section>
+            )}
 
-                {canManageMembers && (
-                  <div className="pending-members">
-                    <h3>Invited Users</h3>
-                    {invitedMembers.length === 0 ? (
-                      <p>No active invites right now.</p>
-                    ) : (
-                      invitedMembers.map((member) => (
-                        <div key={member.user_id} className="member-item pending">
-                          <img
-                            src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
-                            alt={member.name || 'User'}
-                            className="avatar"
-                            onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
-                          />
-                          <div className="member-info">
-                            <h4>{member.name}</h4>
-                            <span className="member-role">invited</span>
-                          </div>
-                          <div className="member-actions">
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => handleCancelInvite(member.user_id)}
-                            >
-                              Cancel Invite
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+            {canManageMembers && (
+              <section className="side-card" aria-labelledby="invite-title">
+                <h2 className="side-title" id="invite-title">Invite people</h2>
 
-                {canManageMembers && (
-                  <div className="pending-members">
-                    <h3>Invite Followers</h3>
-                    {followersToInvite.length === 0 ? (
-                      <p>No followers available to invite.</p>
-                    ) : (
-                      pagedFollowers.map((person) => (
-                        <div key={person.user_id} className="member-item pending">
-                          <img
-                            src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.svg'}
-                            alt={person.name || 'User'}
-                            className="avatar"
-                            onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
-                          />
-                          <div className="member-info">
-                            <h4>{person.name}</h4>
-                            <span className="member-role">follower</span>
-                          </div>
-                          <div className="member-actions">
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleInviteMember(person.user_id)}
-                            >
-                              Invite
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                    {followersToInvite.length > followersPageSize && (
-                      <div className="member-actions">
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setFollowersPage((page) => Math.max(1, page - 1))}
-                          disabled={followersPage === 1}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setFollowersPage((page) => Math.min(followersTotalPages, page + 1))}
-                          disabled={followersPage >= followersTotalPages}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <form
+                  className="invite-search"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSearchUsers();
+                  }}
+                >
+                  <FaSearch aria-hidden="true" />
+                  <input
+                    type="search"
+                    placeholder="Search people by name, ID or email"
+                    aria-label="Search people to invite"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={searchLoading}>
+                    {searchLoading ? 'Searching...' : 'Search'}
+                  </button>
+                </form>
 
-                {canManageMembers && (
-                  <div className="pending-members">
-                    <h3>Invite Random Users</h3>
-                    <div className="create-post-form">
-                      <textarea
-                        placeholder="Search users by name, id, or email"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        rows="2"
-                      />
-                      <button type="button" className="btn btn-primary" onClick={handleSearchUsers}>
-                        {searchLoading ? 'Searching...' : 'Search'}
-                      </button>
-                    </div>
+                {pagedSearchCandidates.length > 0 && (
+                  <ul className="member-list">
                     {pagedSearchCandidates.map((person) => (
-                      <div key={person.user_id} className="member-item pending">
-                        <img
-                          src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.svg'}
-                          alt={person.name || 'User'}
-                          className="avatar"
-                          onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
-                        />
-                        <div className="member-info">
-                          <h4>{person.name}</h4>
-                          <span className="member-role">search result</span>
-                        </div>
-                        <div className="member-actions">
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleInviteMember(person.user_id)}
-                          >
+                      <MemberRow
+                        key={person.user_id}
+                        member={person}
+                        actions={
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => handleInviteMember(person.user_id)}>
                             Invite
                           </button>
-                        </div>
-                      </div>
+                        }
+                      />
                     ))}
-                    {searchCandidates.length > searchPageSize && (
-                      <div className="member-actions">
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setSearchPage((page) => Math.max(1, page - 1))}
-                          disabled={searchPage === 1}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setSearchPage((page) => Math.min(searchTotalPages, page + 1))}
-                          disabled={searchPage >= searchTotalPages}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    )}
+                  </ul>
+                )}
+                {searchCandidates.length > searchPageSize && (
+                  <div className="pager">
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSearchPage((page) => Math.max(1, page - 1))} disabled={searchPage === 1}>
+                      Previous
+                    </button>
+                    <span>{searchPage} / {searchTotalPages}</span>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSearchPage((page) => Math.min(searchTotalPages, page + 1))} disabled={searchPage >= searchTotalPages}>
+                      Next
+                    </button>
                   </div>
                 )}
 
-                <div className='members'>
-                  <h3>Current Members</h3>
-                  {members.map((member) => (
-                    <div key={member.user_id} className="member-item">
-                      <img
-                        src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
-                        alt={member.name || 'User'}
-                        className="avatar"
-                        onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
+                <h3 className="side-subtitle">Your followers</h3>
+                {followersToInvite.length === 0 ? (
+                  <p className="text-muted">No followers available to invite.</p>
+                ) : (
+                  <ul className="member-list">
+                    {pagedFollowers.map((person) => (
+                      <MemberRow
+                        key={person.user_id}
+                        member={person}
+                        actions={
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => handleInviteMember(person.user_id)}>
+                            Invite
+                          </button>
+                        }
                       />
-                      <div className="member-info">
-                        <h4>{member.name}</h4>
-                        <span className="member-role">{member.role}</span>
-                      </div>
-                      {member.user_id !== currentUser?.id && (
-                        <div className="member-actions">
+                    ))}
+                  </ul>
+                )}
+                {followersToInvite.length > followersPageSize && (
+                  <div className="pager">
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setFollowersPage((page) => Math.max(1, page - 1))} disabled={followersPage === 1}>
+                      Previous
+                    </button>
+                    <span>{followersPage} / {followersTotalPages}</span>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setFollowersPage((page) => Math.min(followersTotalPages, page + 1))} disabled={followersPage >= followersTotalPages}>
+                      Next
+                    </button>
+                  </div>
+                )}
+
+                {invitedMembers.length > 0 && (
+                  <>
+                    <h3 className="side-subtitle">Invited</h3>
+                    <ul className="member-list">
+                      {invitedMembers.map((member) => (
+                        <MemberRow
+                          key={member.user_id}
+                          member={member}
+                          badge="invited"
+                          actions={
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleCancelInvite(member.user_id)}>
+                              Cancel invite
+                            </button>
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </section>
+            )}
+
+            <section className="side-card" aria-labelledby="members-title">
+              <h2 className="side-title" id="members-title">Members <span>{members.length}</span></h2>
+              <ul className="member-list">
+                {members.map((member) => (
+                  <MemberRow
+                    key={member.user_id}
+                    member={member}
+                    badge={roleBadge(member.role)}
+                    actions={
+                      member.user_id !== currentUser?.id && (
+                        <>
                           {canChangeRoles && (
                             <>
                               {member.role === 'moderator' ? (
-                                <>
-                                  <button
-                                    className="btn btn-secondary btn-sm"
-                                    onClick={() => handleDemote(member.user_id)}
-                                  >
-                                    Demote
-                                  </button>
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    onClick={() => handleTransferAdmin(member.user_id)}
-                                  >
-                                    Make Admin
-                                  </button>
-                                </>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleDemote(member.user_id)}>
+                                  Demote
+                                </button>
                               ) : (
-                                <>
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    onClick={() => handlePromote(member.user_id)}
-                                  >
-                                    Promote
-                                  </button>
-                                  <button
-                                    className="btn btn-secondary btn-sm"
-                                    onClick={() => handleTransferAdmin(member.user_id)}
-                                  >
-                                    Make Admin
-                                  </button>
-                                </>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlePromote(member.user_id)}>
+                                  Make moderator
+                                </button>
                               )}
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleTransferAdmin(member.user_id)}>
+                                Make admin
+                              </button>
                             </>
                           )}
-
                           {canManageMembers &&
-                            !(
-                              currentUserRole === 'moderator' &&
-                              (member.role === 'admin' || member.role === 'owner')
-                            ) && (
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handleKickMember(member.user_id)}
-                              >
-                                Kick
+                            !(currentUserRole === 'moderator' && (member.role === 'admin' || member.role === 'owner')) && (
+                              <button type="button" className="btn btn-secondary btn-sm btn-quiet-danger" onClick={() => handleKickMember(member.user_id)}>
+                                Remove
                               </button>
                             )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                        </>
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            </section>
+          </div>
+        )}
 
-            {activeTab === 'dashboard' && canManageMembers && (
-              <div className="group-admin-dashboard">
-                <div className="dashboard-panel dashboard-panel-compact">
-                  <div className="dashboard-heading">
-                    <h3>Edit Group</h3>
-                    <p>Admins can update group name, description, privacy, and cover image.</p>
+        {activeTab === 'dashboard' && canManageMembers && (
+          <div className="group-admin-dashboard">
+            <section className="side-card">
+              <h2 className="side-title">Group settings</h2>
+              <p className="text-muted">Update the name, description, privacy and cover image.</p>
+              <button type="button" className="btn btn-primary" onClick={() => setShowEditForm(true)}>
+                Edit group
+              </button>
+            </section>
 
-                    {!showEditForm && (
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => setShowEditForm(true)}
-                      >
-                        Edit Group
-                      </button>
-                    )}
+            <section className="side-card">
+              <h2 className="side-title">Last 30 days</h2>
+              <dl className="activity-list">
+                {[
+                  ['Posts', activity.posts_count],
+                  ['Active members', activity.active_members_count],
+                  ['New members', activity.new_members_count],
+                  ['Likes', activity.total_likes],
+                  ['Comments', activity.total_comments],
+                  ['Pending requests', pendingMembers.length],
+                  ['Total members', members.length],
+                ].map(([label, value]) => (
+                  <div className="activity-item" key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value || 0}</dd>
                   </div>
-                </div>
+                ))}
+              </dl>
+            </section>
 
-                {showEditForm && (
-                  <div className="modal-overlay group-edit-modal-overlay" onClick={() => setShowEditForm(false)}>
-                    <div
-                      className="modal-content large group-edit-modal"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="group-edit-modal-header">
-                        <div>
-                          <span className="group-edit-modal-kicker">Group Settings</span>
-                          <h2>Edit Group</h2>
-                          <p>Refine the group identity, privacy, and visual presence.</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="modal-close-btn group-edit-modal-close"
-                          aria-label="Close edit group dialog"
-                          onClick={() => setShowEditForm(false)}
-                        >
-                          <FaTimes />
-                        </button>
-                      </div>
-
-                      <form className="edit-group-form group-edit-form" onSubmit={handleUpdateGroup}>
-                        <div className="group-edit-grid">
-                          <div className="form-group">
-                            <label>Group Name</label>
-                            <input
-                              type="text"
-                              name="name"
-                              value={editGroupData.name}
-                              onChange={handleEditChange}
-                              required
-                            />
-                          </div>
-
-                          <div className="form-group group-edit-privacy">
-                            <label>Visibility</label>
-                            <button
-                              type="button"
-                              className={`private-group-toggle ${editGroupData.is_private ? 'active' : ''}`}
-                              onClick={() =>
-                                setEditGroupData((prev) => ({
-                                  ...prev,
-                                  is_private: !prev.is_private,
-                                }))
-                              }
-                            >
-                              <span className={`toggle-knob ${editGroupData.is_private ? 'active' : ''}`} />
-                              <span className="private-group-toggle-text">
-                                {editGroupData.is_private ? 'Private group' : 'Public group'}
-                              </span>
-                            </button>
-                            <span className="private-group-helper">
-                              Private groups require approval before members can see posts.
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="form-group">
-                          <label>Description</label>
-                          <textarea
-                            name="description"
-                            value={editGroupData.description}
-                            onChange={handleEditChange}
-                            rows="4"
-                            placeholder="Describe the purpose of the group"
-                          />
-                        </div>
-
-                        <div className="group-edit-upload-card">
-                          <div className="group-edit-upload-copy">
-                            <label>Cover Image</label>
-                            <p>Upload a new cover to give the group a more polished header.</p>
-                          </div>
-                          <div className="group-edit-upload-controls">
-                            <label className="cover-picker-btn btn btn-secondary" htmlFor="group-cover-image">
-                              Choose Image
-                            </label>
-                            <input
-                              id="group-cover-image"
-                              type="file"
-                              accept="image/*"
-                              name="cover_image"
-                              className="group-cover-input-hidden"
-                              onChange={handleEditChange}
-                            />
-                            <span className="cover-file-name">
-                              {editGroupData.cover_image ? editGroupData.cover_image.name : 'No file selected'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="modal-actions group-edit-modal-actions">
-                          <button type="button" className="btn btn-secondary" onClick={() => setShowEditForm(false)}>
-                            Cancel
-                          </button>
-                          <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
-                            {updatingGroup ? 'Updating...' : 'Update Group'}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                )}
-
-                <div className="dashboard-panel">
-                  <div className="dashboard-heading">
-                    <h3>30-Day Group Activity</h3>
-                    <p>Track how your group is growing and engaging this month.</p>
-                  </div>
-
-                  <div className="dashboard-stats-grid">
-                    <div className="dashboard-stat-card">
-                      <span className="stat-label">Posts</span>
-                      <strong>{activity.posts_count || 0}</strong>
-                    </div>
-                    <div className="dashboard-stat-card">
-                      <span className="stat-label">Active Members</span>
-                      <strong>{activity.active_members_count || 0}</strong>
-                    </div>
-                    <div className="dashboard-stat-card">
-                      <span className="stat-label">New Members</span>
-                      <strong>{activity.new_members_count || 0}</strong>
-                    </div>
-                    <div className="dashboard-stat-card">
-                      <span className="stat-label">Likes</span>
-                      <strong>{activity.total_likes || 0}</strong>
-                    </div>
-                    <div className="dashboard-stat-card">
-                      <span className="stat-label">Comments</span>
-                      <strong>{activity.total_comments || 0}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="dashboard-panel queue-panel">
-                  <div className="dashboard-heading">
-                    <h3>Member Queue</h3>
-                    <p>Quickly monitor approvals and total group size.</p>
-                  </div>
-
-                  <div className="queue-metrics">
-                    <div className="queue-item">
-                      <span className="queue-label">Pending Requests</span>
-                      <strong>{pendingMembers.length}</strong>
-                    </div>
-                    <div className="queue-item">
-                      <span className="queue-label">Total Members</span>
-                      <strong>{members.length}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="dashboard-panel queue-panel">
-                  <div className="dashboard-bottom">
-                    <h3>Delete Group</h3>
-                    <p>Admins can delete group and all its data.</p>
-                    <button
-                      className="btn btn-danger"
-                      onClick={handleDeleteGroup}
-                    >
-                      Delete Group
-                    </button>
-                  </div>
-                </div>
-              </div>
+            {canChangeRoles && (
+              <section className="side-card danger-zone">
+                <h2 className="side-title">Delete group</h2>
+                <p className="text-muted">Permanently deletes the group and all of its posts. This can't be undone.</p>
+                <button type="button" className="btn btn-danger" onClick={handleDeleteGroup}>
+                  <FaTrash aria-hidden="true" /> Delete group
+                </button>
+              </section>
             )}
           </div>
-        </div>
+        )}
       </div>
-    </div>
+
+      {showEditForm && (
+        <div className="modal-overlay" onClick={() => setShowEditForm(false)}>
+          <div
+            className="modal-content large"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-group-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 id="edit-group-title">Edit group</h2>
+              <button type="button" className="modal-close-btn" aria-label="Close" onClick={() => setShowEditForm(false)}>
+                <FaTimes aria-hidden="true" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateGroup}>
+              <div className="form-group">
+                <label htmlFor="edit-group-name">Group name</label>
+                <input id="edit-group-name" type="text" name="name" value={editGroupData.name} onChange={handleEditChange} required />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-group-description">Description</label>
+                <textarea
+                  id="edit-group-description"
+                  name="description"
+                  value={editGroupData.description}
+                  onChange={handleEditChange}
+                  rows="4"
+                  placeholder="Describe the purpose of the group"
+                />
+              </div>
+
+              <div className="form-group">
+                <label id="edit-privacy-label">Privacy</label>
+                <button
+                  type="button"
+                  className={`private-group-toggle ${editGroupData.is_private ? 'active' : ''}`}
+                  aria-pressed={editGroupData.is_private}
+                  aria-labelledby="edit-privacy-label"
+                  onClick={() => setEditGroupData((prev) => ({ ...prev, is_private: !prev.is_private }))}
+                >
+                  <span className={`toggle-knob ${editGroupData.is_private ? 'active' : ''}`} />
+                  <span className="private-group-toggle-text">
+                    {editGroupData.is_private ? 'Private group' : 'Public group'}
+                  </span>
+                </button>
+                <p className="private-group-helper">
+                  Private groups require approval before people can see posts.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="group-cover-image">Cover image</label>
+                <input id="group-cover-image" type="file" accept="image/*" name="cover_image" onChange={handleEditChange} />
+                {editGroupData.cover_image && (
+                  <span className="cover-file-name">{editGroupData.cover_image.name}</span>
+                )}
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowEditForm(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={updatingGroup}>
+                  {updatingGroup ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>,
   );
 };
 

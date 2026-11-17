@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { postAPI } from "../../services/apiService";
 import { toast } from "react-toastify";
-import moment from "moment";
 import { FaEllipsisH } from "react-icons/fa";
 import { useAuth } from "../../context/AuthContext";
 import { FaHeart, FaRegHeart } from "react-icons/fa";
 import { confirmDialog } from "../../utils/confirmDialog";
+import Avatar from "../common/Avatar";
+import { timeAgo, toTimestamp } from '../../utils/time';
 
 const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = false }) => {
   const { user } = useAuth();
   const [comments, setComments] = useState([]);
+  const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -82,6 +85,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
 
   const loadComments = async () => {
     try {
+      setFetchError(false);
       const response = await postAPI.getComments(postId);
 
       const normalized = extractComments(response.data).map((comment) => ({
@@ -91,6 +95,9 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       setComments(normalized);
     } catch (error) {
       console.error("Error loading comments:", error);
+      setFetchError(true);
+    } finally {
+      setFetching(false);
     }
   };
 
@@ -104,11 +111,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
 
     setLoading(true);
     try {
-      console.log("🔄 Attempting to add comment:", {
-        postId,
-        postIdType: typeof postId,
-        content: newComment,
-      });
 
       if (!postId) {
         console.error("❌ Post ID is missing for comment");
@@ -121,7 +123,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       const response = await postAPI.addComment(postId, {
         content: contentToAdd,
       });
-      console.log("✅ Comment added successfully:", response.data);
       setNewComment("");
       await loadComments();
       if (onCommentAdded) {
@@ -167,7 +168,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       danger: true,
       onConfirmAction: async () => {
         try {
-          console.log("Deleting comment ID:", comment_id);
 
           // Call API
           await postAPI.deleteComment(comment_id);
@@ -268,11 +268,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
     }
 
     try {
-      console.log("🔄 Attempting to like comment:", {
-        commentId: commentId,
-        commentIdType: typeof commentId,
-      });
-
       if (!commentId) {
         console.error("❌ Comment ID is missing");
         toast.error("Cannot love comment: Comment ID is missing");
@@ -281,7 +276,6 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
 
       const response = await postAPI.likecomment(commentId);
 
-      console.log("✅ Comment loved successfully:", response?.data);
 
       setComments((prevComments) =>
         prevComments.map((comment) =>
@@ -356,8 +350,8 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
 
     grouped.forEach((commentList) => {
       commentList.sort((a, b) => {
-        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        const aTime = toTimestamp(a.created_at);
+        const bTime = toTimestamp(b.created_at);
         return aTime - bTime;
       });
     });
@@ -383,21 +377,14 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
         style={{ marginLeft: depth > 0 ? `${Math.min(depth, 4) * 24}px` : 0 }}
       >
         <div className="comment">
-          <img
-            src={comment.user_profile_picture || "/default-avatar.svg"}
-            alt={comment.user_name || "User"}
-            className="comment-avatar"
-            onError={(e) => {
-              e.target.src = "/default-avatar.svg";
-            }}
-          />
+          <Avatar src={comment.user_profile_picture} name={comment.user_name} size={36} className="comment-avatar" decorative />
 
           <div className="comment-content">
             <div className="comment-header">
               <div className="comment-meta">
                 <strong>{comment.user_name || "Unknown User"}</strong>
                 <span className="comment-time">
-                  {moment.utc(comment.created_at).local().fromNow()}
+                  {timeAgo(comment.created_at)}
                 </span>
               </div>
 
@@ -406,6 +393,9 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
                   <button
                     className="comment-menu-trigger"
                     type="button"
+                    aria-label="Comment actions"
+                    aria-haspopup="menu"
+                    aria-expanded={openMenuId === comment.comment_id}
                     onClick={() =>
                       setOpenMenuId(
                         openMenuId === comment.comment_id ? null : comment.comment_id,
@@ -539,7 +529,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
     );
   };
 
-  console.log("COMMENTS:", comments);
+  const topLevel = repliesByParent.get(null) || [];
 
   return (
     <div className="comments-section">
@@ -548,6 +538,7 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
           <input
             type="text"
             placeholder="Write a comment..."
+            aria-label="Write a comment"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />
@@ -558,8 +549,26 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       )}
 
       <div className="comments-list">
-        {(repliesByParent.get(null) || []).map((comment) =>
-          renderCommentNode(comment),
+        {fetching ? (
+          <div className="comments-loading" aria-busy="true" aria-label="Loading comments">
+            {[0, 1].map((i) => (
+              <div className="comment" key={i}>
+                <span className="skel comment-skel-avatar" />
+                <span className="skel comment-skel-body" />
+              </div>
+            ))}
+          </div>
+        ) : fetchError ? (
+          <p className="comments-note" role="alert">
+            Couldn't load comments.{" "}
+            <button type="button" className="comments-retry" onClick={() => { setFetching(true); loadComments(); }}>
+              Try again
+            </button>
+          </p>
+        ) : topLevel.length === 0 ? (
+          <p className="comments-note">No comments yet. Start the conversation.</p>
+        ) : (
+          topLevel.map((comment) => renderCommentNode(comment))
         )}
       </div>
     </div>

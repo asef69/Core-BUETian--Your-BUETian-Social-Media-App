@@ -3,10 +3,11 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { blogAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
-import moment from 'moment';
-import { FaHeart, FaRegHeart, FaEdit } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaEdit, FaArrowLeft, FaExclamationCircle } from 'react-icons/fa';
+import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/Blogs.css';
+import { timeAgo, formatDate, toTimestamp, parseServerDate } from '../../utils/time';
 
 const BlogDetail = () => {
   const { blogId } = useParams();
@@ -30,7 +31,7 @@ const BlogDetail = () => {
     if (!blog.is_published) return true;
 
     if (blog.scheduled_publish_at) {
-      const scheduledAt = new Date(blog.scheduled_publish_at);
+      const scheduledAt = parseServerDate(blog.scheduled_publish_at) || new Date(NaN);
       if (Number.isNaN(scheduledAt.getTime()) || scheduledAt > new Date()) {
         return true;
       }
@@ -58,7 +59,6 @@ const BlogDetail = () => {
 
   const loadBlog = async () => {
     try {
-      setLoading(true);
       const [blogRes, commentsRes] = await Promise.all([
         blogAPI.getBlogDetail(blogId),
         blogAPI.getComments(blogId),
@@ -69,9 +69,9 @@ const BlogDetail = () => {
       const rawComments = Array.isArray(commentsRes.data) ? commentsRes.data : commentsRes.data?.results || [];
       setComments(rawComments.map(normalizeComment));
 
-      const scheduledAt = blogData?.scheduled_publish_at ? new Date(blogData.scheduled_publish_at) : null;
+      const scheduledAt = blogData?.scheduled_publish_at ? parseServerDate(blogData.scheduled_publish_at) : null;
       const isFutureScheduled = Boolean(
-        scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt > new Date()),
+        blogData?.scheduled_publish_at && (!scheduledAt || scheduledAt > new Date()),
       );
       const canTrackView = Boolean(blogData?.is_published) && !isFutureScheduled;
 
@@ -96,6 +96,7 @@ const BlogDetail = () => {
   };
 
   useEffect(() => {
+    setLoading(true);
     loadBlog();
   }, [blogId, location.state]);
 
@@ -211,8 +212,8 @@ const BlogDetail = () => {
     });
     grouped.forEach((arr) => {
       arr.sort((a, b) => {
-        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        const aTime = toTimestamp(a.created_at);
+        const bTime = toTimestamp(b.created_at);
         return aTime - bTime;
       });
     });
@@ -250,16 +251,12 @@ const BlogDetail = () => {
     return (
       <div key={commentId} className="comment-thread" style={{ marginLeft: depth > 0 ? `${Math.min(depth, 4) * 18}px` : 0 }}>
         <div className="comment">
-          <img
-            src={comment.user_picture || '/default-avatar.svg'}
-            alt={comment.user_name || 'User'}
-            className="comment-avatar"
-          />
+          <Avatar src={comment.user_picture} name={comment.user_name} size={36} className="comment-avatar" decorative />
           <div className="comment-content">
             <div className="comment-header">
               <div className="comment-meta">
                 <strong className="comment-author">{comment.user_name || 'User'}</strong>
-                <span className="comment-time">{moment.utc(comment.created_at).local().fromNow()}</span>
+                <span className="comment-time">{timeAgo(comment.created_at)}</span>
               </div>
             </div>
             <p>{comment.content}</p>
@@ -317,101 +314,138 @@ const BlogDetail = () => {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="loading">Loading blog...</div>
+  const shell = (children) => (
+    <div className="app-layout">
+      <Navbar />
+      <div className="main-content">
+        <div className="container blog-detail-layout">{children}</div>
       </div>
+    </div>
+  );
+
+  if (loading) {
+    return shell(
+      <div className="blog-article" aria-busy="true" aria-label="Loading blog post">
+        <span className="skel blog-skel-hero" />
+        <div className="blog-article-header">
+          <span className="skel blog-skel-line" style={{ width: '70%', height: 32 }} />
+          <span className="skel blog-skel-line" style={{ width: '35%' }} />
+        </div>
+      </div>,
     );
   }
 
   if (!blog) {
-    return (
-      <div className="app-layout">
-        <Navbar />
-        <div className="error">Blog post not found</div>
-      </div>
+    return shell(
+      <div className="state-card" role="alert">
+        <FaExclamationCircle aria-hidden="true" />
+        <strong>We couldn't find this post</strong>
+        <p>It may have been removed, or the connection dropped.</p>
+        <div className="state-card-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadBlog()}>
+            Try again
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate('/blogs')}>
+            Back to blogs
+          </button>
+        </div>
+      </div>,
     );
   }
 
-  return (
-    <div className="app-layout">
-      <Navbar />
-      <div className="main-content">
-        <div className="container blog-detail-layout">
-          <article className="blog-article">
-            {blog.cover_image && <img src={blog.cover_image} alt={blog.title} className="blog-detail-cover" />}
-            <div className="blog-article-header">
-              <p className="blog-kicker">Article</p>
-              <h1>{blog.title}</h1>
-              <div className="blog-meta-row">
-                <span className="blog-meta-author">By {blog.author_name || 'Unknown Author'}</span>
-                <span className="blog-meta-sep">•</span>
-                <span className="blog-meta-category">{blog.category || 'General'}</span>
-                <span className="blog-meta-sep">•</span>
-                <span>{moment(blog.created_at || blog.published_at).format('MMM D, YYYY')}</span>
-              </div>
-            </div>
-            {Array.isArray(blog.tags) && blog.tags.length > 0 && (
-              <div className="blog-tags">
-                {blog.tags.map((tag, index) => {
-                  const normalizedTag = String(tag || '').replace(/^#/, '').trim();
-                  if (!normalizedTag) return null;
-                  return (
-                    <Link
-                      key={`${normalizedTag}-${index}`}
-                      to={`/blogs?tag=${encodeURIComponent(normalizedTag)}`}
-                      className="blog-tag blog-tag-link"
-                    >
-                      #{normalizedTag}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-            <div className="blog-actions-row">
-              <button className="btn btn-primary" onClick={handleLike} disabled={isDraftOrScheduled}>
-                {liked ? 'Unlike' : 'Like'} ({blog.likes_count || 0})
-              </button>
-              {canEdit && (
-                <button className="btn btn-secondary" type="button" onClick={handleEditFromDetail}>
-                  <FaEdit /> Edit Post
-                </button>
-              )}
-              <span className="blog-stat">{blog.views_count || 0} views</span>
-              <span className="blog-stat">{blog.comments_count || comments.length || 0} comments</span>
-            </div>
-            <div className="blog-content-block">
-              {String(blog.content || '').split('\n').map((line, idx) => (
-                <p key={`line-${idx}`}>{renderContentWithHashtags(line, `line-${idx}`)}</p>
-              ))}
-            </div>
-          </article>
+  const words = String(blog.content || '').trim().split(/\s+/).filter(Boolean).length;
+  const readingMinutes = Math.max(1, Math.round(words / 200));
+  const commentTotal = blog.comments_count || comments.length || 0;
 
-          <section className="blog-comments-panel">
-            <h3>Comments</h3>
-            <form onSubmit={handleComment} className="comment-form">
-              <input
-                type="text"
-                placeholder="Write a comment..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-              />
-              <button className="btn btn-primary" type="submit">Post</button>
-            </form>
+  return shell(
+    <>
+      <button type="button" className="back-link" onClick={() => navigate('/blogs')}>
+        <FaArrowLeft aria-hidden="true" /> All blogs
+      </button>
 
-            <div className="comments-list">
-              {comments.length === 0 ? (
-                <p className="text-muted">No comments yet.</p>
-              ) : (
-                (repliesByParent.get(null) || []).map((comment) => renderCommentNode(comment))
-              )}
+      <article className="blog-article">
+        {blog.cover_image && <img src={blog.cover_image} alt="" className="blog-detail-cover" />}
+
+        <div className="blog-article-header">
+          {blog.category && <span className="blog-category-chip">{blog.category}</span>}
+          <h1>{blog.title}</h1>
+          <div className="blog-byline">
+            <Avatar src={blog.author_picture || blog.author_profile_picture} name={blog.author_name} size={40} decorative />
+            <div>
+              <strong>{blog.author_name || 'Unknown author'}</strong>
+              <span>
+                {formatDate(blog.published_at || blog.created_at)} · {readingMinutes} min read
+              </span>
             </div>
-          </section>
+          </div>
         </div>
-      </div>
-    </div>
+
+        <div className="blog-content-block">
+          {String(blog.content || '').split('\n').map((line, idx) =>
+            line.trim() ? <p key={`line-${idx}`}>{renderContentWithHashtags(line, `line-${idx}`)}</p> : null,
+          )}
+        </div>
+
+        {Array.isArray(blog.tags) && blog.tags.length > 0 && (
+          <div className="blog-tags">
+            {blog.tags.map((tag, index) => {
+              const normalizedTag = String(tag || '').replace(/^#/, '').trim();
+              if (!normalizedTag) return null;
+              return (
+                <Link
+                  key={`${normalizedTag}-${index}`}
+                  to={`/blogs?tag=${encodeURIComponent(normalizedTag)}`}
+                  className="blog-tag blog-tag-link"
+                >
+                  #{normalizedTag}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="blog-actions-row">
+          <button
+            type="button"
+            className={`blog-like-btn ${liked ? 'liked' : ''}`}
+            onClick={handleLike}
+            disabled={isDraftOrScheduled}
+            aria-pressed={liked}
+          >
+            {liked ? <FaHeart aria-hidden="true" /> : <FaRegHeart aria-hidden="true" />}
+            {liked ? 'Liked' : 'Like'} <span>{blog.likes_count || 0}</span>
+          </button>
+          {canEdit && (
+            <button className="btn btn-secondary btn-sm" type="button" onClick={handleEditFromDetail}>
+              <FaEdit aria-hidden="true" /> Edit post
+            </button>
+          )}
+          <span className="blog-stat">{blog.views_count || 0} views</span>
+        </div>
+      </article>
+
+      <section className="blog-comments-panel" aria-labelledby="blog-comments-title">
+        <h2 id="blog-comments-title">Comments <span>{commentTotal}</span></h2>
+        <form onSubmit={handleComment} className="comment-form">
+          <input
+            type="text"
+            placeholder="Write a comment"
+            aria-label="Write a comment"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+          />
+          <button type="submit" disabled={!commentText.trim()}>Post</button>
+        </form>
+
+        <div className="comments-list">
+          {comments.length === 0 ? (
+            <p className="comments-note">No comments yet. Start the conversation.</p>
+          ) : (
+            (repliesByParent.get(null) || []).map((comment) => renderCommentNode(comment))
+          )}
+        </div>
+      </section>
+    </>,
   );
 };
 

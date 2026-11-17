@@ -1,25 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FaBookOpen, FaComments, FaHome, FaPenFancy, FaStore, FaUsers } from 'react-icons/fa';
-import { postAPI } from '../../services/apiService';
+import { Link } from 'react-router-dom';
+import { FaBookOpen, FaComments, FaHome, FaPenFancy, FaStore, FaUsers, FaRegNewspaper, FaExclamationCircle } from 'react-icons/fa';
+import { postAPI, userAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import CreatePost from '../../components/Posts/CreatePost';
 import PostCard from '../../components/Posts/PostCard';
+import PostSkeleton from '../../components/Posts/PostSkeleton';
 import SuggestedUsers from '../../components/Users/SuggestedUsers';
+import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/Home.css';
+import { toTimestamp } from '../../utils/time';
 
 const Home = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [me, setMe] = useState(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [feedMode, setFeedMode] = useState('following');
   const [trendingHashtags, setTrendingHashtags] = useState([]);
   const [activeHashtag, setActiveHashtag] = useState('');
   const [mediaFilter, setMediaFilter] = useState('all');
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    userAPI
+      .getProfile(user.id)
+      .then((response) => {
+        if (!cancelled) setMe(response.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     loadFeed(1);
@@ -84,6 +102,7 @@ const Home = () => {
   const loadFeed = async (requestedPage = 1) => {
     try {
       setLoading(true);
+      setError(false);
       let response;
 
       if (feedMode === 'trending') {
@@ -111,8 +130,8 @@ const Home = () => {
         });
 
         const mergedPosts = Array.from(mergedMap.values()).sort((a, b) => {
-          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+          const aTime = toTimestamp(a.created_at);
+          const bTime = toTimestamp(b.created_at);
           return bTime - aTime;
         });
 
@@ -129,6 +148,7 @@ const Home = () => {
       setPage(requestedPage);
     } catch (error) {
       console.error('Error loading feed:', error);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -151,11 +171,20 @@ const Home = () => {
     setPosts([normalizedPost, ...posts]);
   };
 
-  const handlePostLike = (postId) => {
+  const handlePostDeleted = (postId) => {
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
+  };
+
+  // PostCard reports the server's final state; fall back to a toggle if it is missing.
+  const handlePostLike = (postId, liked, likesCount) => {
     setPosts((prevPosts) =>
       prevPosts.map((post) => {
         if (post.id !== postId) {
           return post;
+        }
+
+        if (typeof liked === 'boolean') {
+          return { ...post, has_liked: liked, likes_count: likesCount };
         }
 
         const wasLiked = Boolean(post.has_liked);
@@ -194,7 +223,9 @@ const Home = () => {
   const applyHashtag = (tag) => {
     const normalizedTag = String(tag || '').replace(/^#/, '').trim();
     if (!normalizedTag) return;
-    navigate(`/blogs?tag=${encodeURIComponent(normalizedTag)}`);
+    setActiveHashtag(normalizedTag);
+    setFeedMode('hashtag');
+    window.scrollTo({ top: 0 });
   };
 
   return (
@@ -203,11 +234,16 @@ const Home = () => {
       <div className="main-content">
         <div className="container">
           <div className="home-layout">
-            <aside className="left-rail">
-              <div className="sidebar-card left-rail-card">
-                <h3>{user?.name ? `${user.name}'s Space` : 'Your Space'}</h3>
-                <p>Jump back into your favorite sections.</p>
-                <div className="shortcut-list">
+            <aside className="left-rail" aria-label="Shortcuts">
+              <div className="left-rail-card">
+                <Link to={`/profile/${user?.id}`} className="left-rail-profile">
+                  <Avatar src={me?.profile_picture} name={me?.name} size={44} decorative />
+                  <span className="left-rail-profile-text">
+                    <strong>{me?.name || 'Your profile'}</strong>
+                    <span>{me?.department_name || 'View your profile'}</span>
+                  </span>
+                </Link>
+                <nav className="shortcut-list" aria-label="Sections">
                   <Link to="/" className="shortcut-item">
                     <FaHome />
                     <span>News Feed</span>
@@ -232,77 +268,92 @@ const Home = () => {
                     <FaBookOpen />
                     <span>Forums</span>
                   </Link>
-                </div>
+                </nav>
               </div>
             </aside>
 
             <main className="feed-section">
-              <div className="feed-headline">
-                <h2>Home Feed</h2>
-                <span>See what your network is sharing right now</span>
-                <div className="feed-filters">
-                  <button className={`filter-chip ${feedMode === 'following' ? 'active' : ''}`} onClick={() => switchMode('following')}>
-                    Following
+              <h1 className="sr-only">Home feed</h1>
+              <div className="feed-filters" role="toolbar" aria-label="Feed filters">
+                <button type="button" className={`filter-chip ${feedMode === 'following' ? 'active' : ''}`} aria-pressed={feedMode === 'following'} onClick={() => switchMode('following')}>
+                  Following
+                </button>
+                <button type="button" className={`filter-chip ${feedMode === 'trending' ? 'active' : ''}`} aria-pressed={feedMode === 'trending'} onClick={() => switchMode('trending')}>
+                  Trending
+                </button>
+                {activeHashtag && (
+                  <button type="button" className={`filter-chip ${feedMode === 'hashtag' ? 'active' : ''}`} aria-pressed={feedMode === 'hashtag'} onClick={() => switchMode('hashtag')}>
+                    #{activeHashtag}
                   </button>
-                  <button className={`filter-chip ${feedMode === 'trending' ? 'active' : ''}`} onClick={() => switchMode('trending')}>
-                    Trending
-                  </button>
-                  {activeHashtag && (
-                    <button className={`filter-chip ${feedMode === 'hashtag' ? 'active' : ''}`} onClick={() => switchMode('hashtag')}>
-                      #{activeHashtag}
-                    </button>
-                  )}
-                  <select
-                    className="filter-chip filter-select"
-                    value={mediaFilter}
-                    onChange={(e) => {
-                      setMediaFilter(e.target.value);
-                      setFeedMode('following');
-                    }}
-                  >
-                    <option value="all">All media</option>
-                    <option value="image">Images</option>
-                    <option value="video">Videos</option>
-                    <option value="text">Text</option>
-                  </select>
-                </div>
+                )}
+                <select
+                  className="filter-chip filter-select"
+                  aria-label="Filter by media type"
+                  value={mediaFilter}
+                  onChange={(e) => {
+                    setMediaFilter(e.target.value);
+                    setFeedMode('following');
+                  }}
+                >
+                  <option value="all">All media</option>
+                  <option value="image">Images</option>
+                  <option value="video">Videos</option>
+                  <option value="text">Text</option>
+                </select>
               </div>
 
-              <CreatePost onPostCreated={handlePostCreated} />
+              <CreatePost onPostCreated={handlePostCreated} currentUser={me} />
 
               {loading ? (
-                <div className="loading">Loading feed...</div>
+                <div aria-busy="true" aria-label="Loading feed">
+                  <PostSkeleton withMedia />
+                  <PostSkeleton />
+                  <PostSkeleton />
+                </div>
+              ) : error ? (
+                <div className="state-card" role="alert">
+                  <FaExclamationCircle aria-hidden="true" />
+                  <strong>Couldn't load your feed</strong>
+                  <p>Check your connection and try again.</p>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadFeed(1)}>
+                    Try again
+                  </button>
+                </div>
+              ) : posts.length === 0 ? (
+                <div className="state-card">
+                  <FaRegNewspaper aria-hidden="true" />
+                  <strong>
+                    {feedMode === 'hashtag' ? `No posts tagged #${activeHashtag} yet` : 'Nothing here yet'}
+                  </strong>
+                  <p>
+                    {feedMode === 'following'
+                      ? 'Follow people from the suggestions, or share the first post yourself.'
+                      : 'Check back soon, or switch to another feed.'}
+                  </p>
+                </div>
               ) : (
                 <>
-                  {posts.length === 0 ? (
-                    <div className="no-posts">
-                      <p>No posts yet. Be the first to share something!</p>
-                    </div>
-                  ) : (
-                    <>
-                      {posts.map((post) => (
-                        <PostCard
-                          key={post.id}
-                          post={post}
-                          onLike={handlePostLike}
-                        />
-                      ))}
-                      {hasMore && feedMode === 'following' && mediaFilter === 'all' && (
-                        <button onClick={loadMore} className="btn btn-secondary load-more">
-                          Load More Stories
-                        </button>
-                      )}
-                    </>
+                  {posts.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      onLike={handlePostLike}
+                      onDelete={handlePostDeleted}
+                    />
+                  ))}
+                  {hasMore && feedMode === 'following' && mediaFilter === 'all' && (
+                    <button onClick={loadMore} className="btn btn-secondary load-more">
+                      Load more posts
+                    </button>
                   )}
                 </>
               )}
             </main>
 
-            <aside className="sidebar">
-              <div className="sidebar-label">People you may know</div>
+            <aside className="sidebar" aria-label="Discover">
               <SuggestedUsers />
-              <div className="sidebar-card" style={{ marginTop: '12px' }}>
-                <h3>Trending Hashtags</h3>
+              <div className="sidebar-card">
+                <h3>Trending hashtags</h3>
                 {trendingHashtags.length === 0 ? (
                   <p className="text-muted">No hashtag trends yet</p>
                 ) : (
@@ -319,7 +370,7 @@ const Home = () => {
                         >
                           <span className="hashtag-chip-tag">#{tag}</span>
                           <span className="hashtag-chip-meta">
-                            {item.post_count ?? 0} posts · {item.total_engagement ?? 0} 🔥
+                            {item.post_count ?? 0} posts · {item.total_engagement ?? 0} reactions
                           </span>
                         </button>
                       );

@@ -53,16 +53,31 @@ const BuyerPickerModal = ({ open, title, description, initialBuyer = '', onClose
     };
   }, [open, query]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open) {
     return null;
   }
 
   return (
     <div className="modal-overlay buyer-picker-overlay" onClick={onClose}>
-      <div className="modal-content buyer-picker-modal" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="modal-content buyer-picker-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="buyer-picker-title"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="buyer-picker-header">
           <div>
-            <h2>{title || 'Select Buyer'}</h2>
+            <h2 id="buyer-picker-title">{title || 'Select Buyer'}</h2>
             <p>{description || 'Search for the buyer who should be linked to this product.'}</p>
           </div>
           <button type="button" className="buyer-picker-close" onClick={onClose} aria-label="Close picker">

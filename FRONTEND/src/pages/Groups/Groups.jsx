@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
 import { groupAPI, userAPI } from "../../services/apiService";
 import Navbar from "../../components/Navbar";
 import { toast } from "react-toastify";
-import { FaPlus, FaUsers, FaLock, FaGlobe } from "react-icons/fa";
+import { FaPlus, FaUsers, FaSearch, FaExclamationCircle } from "react-icons/fa";
+import GroupCard from "../../components/groups/GroupCard";
 import "../../styles/Groups.css";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -14,6 +14,9 @@ const Groups = () => {
   const [suggested, setSuggested] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
   const [pendingGroupIds, setPendingGroupIds] = useState(new Set());
   const navigate = useNavigate();
   const [createData, setCreateData] = useState({
@@ -90,6 +93,7 @@ const Groups = () => {
 
   const loadGroups = async () => {
     try {
+      setLoadError(false);
       const requests = [groupAPI.getUserGroups(), groupAPI.getSuggested()];
       if (currentUser?.id) {
         requests.push(userAPI.getFollowers(currentUser.id));
@@ -151,6 +155,7 @@ const Groups = () => {
       persistPendingGroups(nextPendingIds);
     } catch (error) {
       console.error("Error loading groups:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -158,6 +163,8 @@ const Groups = () => {
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
+    if (creating) return;
+    setCreating(true);
     try {
       const formData = new FormData();
       formData.append("name", createData.name);
@@ -183,8 +190,30 @@ const Groups = () => {
     } catch (error) {
       console.error(error.response || error);
       toast.error(error?.response?.data?.error || "Failed to create group");
+    } finally {
+      setCreating(false);
     }
   };
+
+  const closeCreateModal = () => setShowCreateModal(false);
+
+  // Cover preview: create the object URL once per file and release it afterwards.
+  const coverPreview = useMemo(
+    () => (createData.cover_image ? URL.createObjectURL(createData.cover_image) : null),
+    [createData.cover_image],
+  );
+  useEffect(() => () => {
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+  }, [coverPreview]);
+
+  useEffect(() => {
+    if (!showCreateModal) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setShowCreateModal(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showCreateModal]);
 
   const handleJoinGroup = async (groupId) => {
     try {
@@ -223,250 +252,247 @@ const Groups = () => {
       toast.error(message || "Failed to join group");
     }
   };
-  const handleNonmemberView = (groupId) => {
-    navigate(`/groups/${groupId}/nonmember`);
-  };
+
+  const query = search.trim().toLowerCase();
+  const matchesQuery = (group) =>
+    !query ||
+    String(group?.name || "").toLowerCase().includes(query) ||
+    String(group?.description || "").toLowerCase().includes(query);
+  const visibleMine = myGroups.filter(matchesQuery);
+  const visibleSuggested = suggested.filter(matchesQuery);
+
+  const renderSkeletons = () => (
+    <div className="groups-grid" aria-busy="true" aria-label="Loading groups">
+      {[0, 1, 2].map((i) => (
+        <div className="group-card group-card-skeleton" key={i} aria-hidden="true">
+          <span className="skel group-skel-cover" />
+          <div className="group-card-body">
+            <span className="skel group-skel-line" style={{ width: "55%" }} />
+            <span className="skel group-skel-line" style={{ width: "85%" }} />
+            <span className="skel group-skel-line" style={{ width: "40%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="app-layout">
       <Navbar />
       <div className="main-content">
-        <div className="container">
+        <div className="container groups-page">
           <div className="groups-header">
-            <h1>Groups</h1>
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowCreateModal(true)}
-            >
-              <FaPlus /> Create Group
+            <div>
+              <h1>Groups</h1>
+              <p className="page-subtitle">Find your people: batches, clubs, hobbies and study circles.</p>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+              <FaPlus aria-hidden="true" /> Create group
             </button>
           </div>
 
+          <div className="groups-search">
+            <FaSearch aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search groups"
+              aria-label="Search groups"
+            />
+          </div>
+
           {loading ? (
-            <div className="loading">Loading groups...</div>
+            <>
+              <h2 className="section-title">My groups</h2>
+              {renderSkeletons()}
+            </>
+          ) : loadError ? (
+            <div className="state-card" role="alert">
+              <FaExclamationCircle aria-hidden="true" />
+              <strong>Couldn't load groups</strong>
+              <p>Check your connection and try again.</p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setLoading(true);
+                  loadGroups();
+                }}
+              >
+                Try again
+              </button>
+            </div>
           ) : (
             <>
-              <section className="groups-section">
-                <h2>My Groups</h2>
-                <div className="groups-grid">
-                  {myGroups.length === 0 ? (
-                    <p>You haven't joined any groups yet</p>
-                  ) : (
-                    myGroups.map((group) => {
+              <section className="groups-section" aria-labelledby="my-groups-title">
+                <h2 className="section-title" id="my-groups-title">My groups</h2>
+                {visibleMine.length === 0 ? (
+                  <div className="state-card">
+                    <FaUsers aria-hidden="true" />
+                    <strong>{query ? "No matching groups" : "You haven't joined any groups yet"}</strong>
+                    <p>
+                      {query
+                        ? "Try a different name."
+                        : "Join one from the suggestions below, or start your own."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="groups-grid">
+                    {visibleMine.map((group) => {
                       const groupId = getGroupId(group);
                       if (!groupId) return null;
-
                       return (
-                        <Link
-                          to={`/groups/${groupId}`}
-                          key={groupId}
-                          className="group-card"
-                        >
-                          <img
-                            src={group.cover_image || "/default-group.svg"}
-                            alt={group.name}
-                            className="group-cover"
-                          />
-                          <div className="group-info">
-                            <h3>{group.name}</h3>
-                            <p>{group.description}</p>
-                            <div className="group-meta">
-                              {group.is_private ? <FaLock /> : <FaGlobe />}
-                              <span>
-                                <FaUsers /> {group.members_count} members
-                              </span>
-                            </div>
-                          </div>
-                        </Link>
+                        <GroupCard key={groupId} group={group} groupId={groupId} to={`/groups/${groupId}`} />
                       );
-                    })
-                  )}
-                </div>
+                    })}
+                  </div>
+                )}
               </section>
 
-              <section className="groups-section">
-                <h2>Suggested Groups</h2>
-                <div className="groups-grid">
-                  {suggested.length === 0 ? (
-                    <p>No suggestions available</p>
-                  ) : (
-                    suggested.map((group) => {
+              <section className="groups-section" aria-labelledby="discover-groups-title">
+                <h2 className="section-title" id="discover-groups-title">Discover</h2>
+                {visibleSuggested.length === 0 ? (
+                  <div className="state-card">
+                    <FaSearch aria-hidden="true" />
+                    <strong>{query ? "No matching groups" : "No suggestions right now"}</strong>
+                    <p>{query ? "Try a different name." : "Follow more people and suggestions will show up here."}</p>
+                  </div>
+                ) : (
+                  <div className="groups-grid">
+                    {visibleSuggested.map((group) => {
                       const groupId = getGroupId(group);
                       if (!groupId) return null;
                       const memberStatus = String(group?.member_status || "").toLowerCase();
                       const isInvited = memberStatus === "invited";
-                      const isPending = pendingGroupIds.has(Number(groupId)) || memberStatus === "pending";
+                      const isPending =
+                        pendingGroupIds.has(Number(groupId)) || memberStatus === "pending";
 
                       return (
-                        <div key={groupId} className="group-card">
-                          <img
-                            src={group.cover_image || "/default-group.svg"}
-                            alt={group.name}
-                            className="group-cover"
-                          />
-                          <div className="group-info">
-                            <h3>{group.name}</h3>
-                            <p>{group.description}</p>
-                            <div className="group-meta">
-                              {group.is_private ? <FaLock /> : <FaGlobe />}
-                              <span>
-                                <FaUsers /> {group.members_count} members
-                              </span>
-                            </div>
-
-                            <div className="group-card-actions">
+                        <GroupCard
+                          key={groupId}
+                          group={group}
+                          groupId={groupId}
+                          to={`/groups/${groupId}/nonmember`}
+                          actions={
+                            isInvited ? (
+                              <span className="status-chip invited">Invited</span>
+                            ) : isPending ? (
+                              <span className="status-chip pending">Request pending</span>
+                            ) : (
                               <button
-                                className="btn btn-secondary"
-                                onClick={() => handleNonmemberView(groupId)}
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleJoinGroup(groupId)}
                               >
-                                View Group
+                                {group.is_private ? "Request to join" : "Join"}
                               </button>
-                              {isInvited ? (
-                                <button className="btn btn-secondary" disabled>
-                                  Invited
-                                </button>
-                              ) : isPending ? (
-                                <button className="btn btn-secondary" disabled>
-                                  Request Pending
-                                </button>
-                              ) : (
-                                <button
-                                  className="btn btn-primary"
-                                  onClick={() => handleJoinGroup(groupId)}
-                                >
-                                  Join Group
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                            )
+                          }
+                        />
                       );
-                    })
-                  )}
-                </div>
+                    })}
+                  </div>
+                )}
               </section>
             </>
           )}
         </div>
       </div>
 
-      {
-        showCreateModal && (
-          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2>Create New Group</h2>
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={closeCreateModal}>
+          <div
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-group-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="create-group-title">Create a group</h2>
 
-              <form onSubmit={handleCreateGroup}>
+            <form onSubmit={handleCreateGroup}>
+              <div className="form-group">
+                <label htmlFor="group-name">Group name</label>
+                <input
+                  id="group-name"
+                  type="text"
+                  value={createData.name}
+                  onChange={(e) => setCreateData({ ...createData, name: e.target.value })}
+                  required
+                  autoFocus
+                />
+              </div>
 
-                {/* Group Name */}
-                <div className="form-group">
-                  <label>Group Name</label>
-                  <input
-                    type="text"
-                    value={createData.name}
-                    onChange={(e) =>
-                      setCreateData({ ...createData, name: e.target.value })
-                    }
-                    required
-                  />
-                </div>
+              <div className="form-group">
+                <label htmlFor="group-description">Description</label>
+                <textarea
+                  id="group-description"
+                  value={createData.description}
+                  onChange={(e) => setCreateData({ ...createData, description: e.target.value })}
+                  rows="3"
+                  placeholder="What is this group about?"
+                />
+              </div>
 
-                {/* Description */}
-                <div className="form-group">
-                  <label>Description</label>
-                  <textarea
-                    value={createData.description}
-                    onChange={(e) =>
-                      setCreateData({ ...createData, description: e.target.value })
-                    }
-                    rows="3"
-                  />
-                </div>
+              <div className="form-group private-group-form-group">
+                <label id="group-privacy-label">Privacy</label>
+                <button
+                  type="button"
+                  className={`private-group-toggle ${createData.is_private ? "active" : ""}`}
+                  onClick={() => setCreateData({ ...createData, is_private: !createData.is_private })}
+                  aria-pressed={createData.is_private}
+                  aria-labelledby="group-privacy-label"
+                >
+                  <span className={`toggle-knob ${createData.is_private ? "active" : ""}`} />
+                  <span className="private-group-toggle-text">
+                    {createData.is_private ? "Private group" : "Public group"}
+                  </span>
+                </button>
+                <p className="private-group-helper">
+                  {createData.is_private
+                    ? "Only approved members can join and view posts."
+                    : "Anyone can discover and join this group."}
+                </p>
+              </div>
 
-                {/* Private checkbox */}
-                <div className="form-group private-group-form-group">
-                  <label className="private-group-label">Group Privacy</label>
+              <div className="form-group">
+                <label htmlFor="group-cover">Cover image (optional)</label>
+                <input
+                  id="group-cover"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setCreateData({ ...createData, cover_image: e.target.files[0] || null })
+                  }
+                />
+              </div>
+
+              {coverPreview && (
+                <div className="image-preview">
+                  <img src={coverPreview} alt="Cover preview" className="preview-img" />
                   <button
                     type="button"
-                    className={`private-group-toggle ${createData.is_private ? 'active' : ''}`}
-                    onClick={() =>
-                      setCreateData({
-                        ...createData,
-                        is_private: !createData.is_private,
-                      })
-                    }
-                    aria-pressed={createData.is_private}
-                  >
-                    <span className={`toggle-knob ${createData.is_private ? 'active' : ''}`} />
-                    <span className="private-group-toggle-text">
-                      {createData.is_private ? 'Private Group' : 'Public Group'}
-                    </span>
-                  </button>
-                  <p className="private-group-helper">
-                    {createData.is_private
-                      ? 'Only approved members can join and view private content.'
-                      : 'Anyone can discover and join this group.'}
-                  </p>
-                </div>
-
-                {/* Cover Image Upload */}
-                <div className="form-group">
-                  <label>Cover Image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      setCreateData({
-                        ...createData,
-                        cover_image: e.target.files[0],
-                      })
-                    }
-                  />
-
-                  {createData.cover_image && (
-                    <p className="file-name">
-                      Selected: {createData.cover_image.name}
-                    </p>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
+                    className="btn btn-secondary btn-sm"
                     onClick={() => setCreateData({ ...createData, cover_image: null })}
                   >
-                    Remove Image
+                    Remove image
                   </button>
                 </div>
+              )}
 
-                {/* Preview */}
-                {createData.cover_image && (
-                  <div className="image-preview">
-                    <img
-                      src={URL.createObjectURL(createData.cover_image)}
-                      alt="preview"
-                      className="preview-img"
-                    />
-                  </div>
-                )}
-
-                {/* Buttons */}
-                <div className="modal-actions">
-                  <button type="submit" className="btn btn-primary">
-                    Create
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowCreateModal(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={closeCreateModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? "Creating..." : "Create group"}
+                </button>
+              </div>
+            </form>
           </div>
-        )
-      }
+        </div>
+      )}
     </div>
   );
 };

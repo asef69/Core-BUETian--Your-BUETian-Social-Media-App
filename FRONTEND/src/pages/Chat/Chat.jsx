@@ -1,140 +1,65 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { chatAPI, userAPI } from '../../services/apiService';
-import { API_ORIGIN, WS_BASE_URL, REALTIME_ENABLED } from '../../config';
-import { useAuth } from '../../context/AuthContext';
-import Navbar from '../../components/Navbar';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FaPaperPlane, FaImage, FaBars, FaTimes } from 'react-icons/fa';
-import moment from 'moment';
+import { FaRegCommentDots } from 'react-icons/fa';
+import { chatAPI, userAPI } from '../../services/apiService';
+import { REALTIME_ENABLED } from '../../config';
+import { useAuth } from '../../context/AuthContext';
+import { useChatSocket } from '../../hooks/useChatSocket';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import Navbar from '../../components/Navbar';
+import ConversationList from '../../components/chat/ConversationList';
+import ChatHeader from '../../components/chat/ChatHeader';
+import MessageList from '../../components/chat/MessageList';
+import MessageComposer from '../../components/chat/MessageComposer';
+import { isVideoUrl } from '../../components/chat/MessageBubble';
 import '../../styles/Chat.css';
+
+const TYPING_HEARTBEAT_MS = 1000;
+const TYPING_IDLE_MS = 2500;
+const PEER_TYPING_EXPIRY_MS = 2000;
+const POLL_INTERVAL_MS = 5000;
+
+const hasContent = (message) =>
+  Boolean(message && ((message.content && String(message.content).trim()) || message.media_url));
 
 const Chat = () => {
   const { userId: chatUserId } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
+  const isOnline = useOnlineStatus();
+
   const [conversations, setConversations] = useState([]);
   const [followers, setFollowers] = useState([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [peerProfile, setPeerProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [isPeerTyping, setIsPeerTyping] = useState(false);
-  const [activeList, setActiveList] = useState('conversations');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('conversations');
+  const [search, setSearch] = useState('');
+
   const selectedUserRef = useRef(null);
+  const draftRef = useRef('');
   const prefillAppliedRef = useRef(false);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
   const typingStopTimeoutRef = useRef(null);
   const typingHeartbeatRef = useRef(null);
   const peerTypingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
-  const shouldReconnectRef = useRef(true);
   const messagesCacheRef = useRef({});
   const loadRequestIdRef = useRef(0);
+  const sendRef = useRef(() => false);
 
-  useEffect(() => {
-    loadConversations();
-    loadFollowers();
-  }, [user?.id]);
+  const currentUserId = user?.id;
 
-  useEffect(() => {
-    shouldReconnectRef.current = true;
-    const websocket = connectWebSocket();
-    return () => {
-      shouldReconnectRef.current = false;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (typingStopTimeoutRef.current) {
-        clearTimeout(typingStopTimeoutRef.current);
-      }
-      if (typingHeartbeatRef.current) {
-        clearInterval(typingHeartbeatRef.current);
-      }
-      if (peerTypingTimeoutRef.current) {
-        clearTimeout(peerTypingTimeoutRef.current);
-      }
-      if (websocket && websocket.readyState < WebSocket.CLOSING) {
-        websocket.close();
-      }
-      wsRef.current = null;
-    };
-  }, [user?.id]);
+  /* ---------------------------------------------------------------- lists */
 
-  // Hosts without WebSocket support (e.g. Vercel): poll the REST API instead.
-  useEffect(() => {
-    if (REALTIME_ENABLED) return undefined;
-
-    const intervalId = setInterval(async () => {
-      loadConversations();
-
-      const activeUserId = Number(selectedUserRef.current);
-      if (!activeUserId) return;
-
-      try {
-        const response = await chatAPI.getMessages(activeUserId);
-        if (Number(selectedUserRef.current) !== activeUserId) return;
-
-        const rawMessages = response.data.results || response.data || [];
-        const sanitizedMessages = rawMessages.filter(
-          (message) => (message.content && String(message.content).trim()) || message.media_url,
-        );
-        messagesCacheRef.current[activeUserId] = sanitizedMessages;
-        setMessages((prev) =>
-          prev.length === sanitizedMessages.length &&
-          prev[prev.length - 1]?.id === sanitizedMessages[sanitizedMessages.length - 1]?.id
-            ? prev
-            : sanitizedMessages,
-        );
-      } catch (error) {
-        // Ignore transient polling errors.
-      }
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  const appendMessageIfNew = (message) => {
-    if (!message) return;
-    setMessages((prev) => {
-      if (message.id && prev.some((item) => item.id === message.id)) {
-        return prev;
-      }
-      return [...prev, message];
-    });
-  };
-
-  useEffect(() => {
-    if (chatUserId) {
-      loadMessages(chatUserId);
-    }
-  }, [chatUserId]);
-
-  useEffect(() => {
-    // Allow per-link prefill each time the target chat user changes.
-    prefillAppliedRef.current = false;
-  }, [chatUserId]);
-
-  useEffect(() => {
-    const starterMessage = searchParams.get('message');
-    if (!chatUserId || !starterMessage || prefillAppliedRef.current) return;
-    setNewMessage(starterMessage);
-    prefillAppliedRef.current = true;
-  }, [chatUserId, searchParams]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const response = await chatAPI.getConversations();
       const items = response.data.results || response.data;
@@ -145,22 +70,24 @@ const Chat = () => {
         last_message:
           item.last_message ||
           item.content ||
-          (item.media_url
-            ? (isVideoUrl(item.media_url) ? 'Sent a video' : 'Sent a photo')
-            : ''),
+          (item.media_url ? (isVideoUrl(item.media_url) ? 'Sent a video' : 'Sent a photo') : ''),
         last_message_time: item.last_message_time || item.created_at,
         unread_count: item.unread_count || 0,
       }));
       setConversations(normalized.filter((item) => item.id));
+      setListError(false);
     } catch (error) {
       console.error('Error loading conversations:', error);
+      setListError(true);
+    } finally {
+      setListLoading(false);
     }
-  };
+  }, []);
 
-  const loadFollowers = async () => {
-    if (!user?.id) return;
+  const loadFollowers = useCallback(async () => {
+    if (!currentUserId) return;
     try {
-      const response = await userAPI.getFollowers(user.id);
+      const response = await userAPI.getFollowers(currentUserId);
       const items = response.data.results || response.data || [];
       const normalized = items.map((item) => ({
         id: item.user_id || item.id,
@@ -171,170 +98,132 @@ const Chat = () => {
     } catch (error) {
       console.error('Error loading followers:', error);
     }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    loadConversations();
+    loadFollowers();
+  }, [loadConversations, loadFollowers]);
+
+  /* ------------------------------------------------------------- messages */
+
+  const appendMessageIfNew = (message) => {
+    if (!message) return;
+    setMessages((prev) => {
+      if (message.id && prev.some((item) => item.id === message.id)) return prev;
+      const next = [...prev, message];
+      const peerId = Number(selectedUserRef.current);
+      if (peerId) messagesCacheRef.current[peerId] = next;
+      return next;
+    });
   };
 
-  const loadMessages = async (userId) => {
+  const loadMessages = useCallback(async (userId, { silent = false } = {}) => {
     const normalizedUserId = Number(userId);
     const requestId = ++loadRequestIdRef.current;
 
-    setSelectedUser(normalizedUserId);
-    selectedUserRef.current = normalizedUserId;
-    setIsSidebarOpen(false);
-
-    const cachedMessages = messagesCacheRef.current[normalizedUserId];
-    if (Array.isArray(cachedMessages)) {
-      setMessages(cachedMessages);
+    if (!silent) {
+      setSelectedUser(normalizedUserId);
+      selectedUserRef.current = normalizedUserId;
+      const cached = messagesCacheRef.current[normalizedUserId];
+      setMessages(Array.isArray(cached) ? cached : []);
+      setLoading(true);
     }
 
-    setLoading(true);
     try {
       const response = await chatAPI.getMessages(normalizedUserId);
+      if (requestId !== loadRequestIdRef.current) return;
 
-      if (requestId !== loadRequestIdRef.current) {
-        return;
-      }
-
-      const rawMessages = response.data.results || response.data || [];
-      const sanitizedMessages = rawMessages.filter(
-        (message) => (message.content && String(message.content).trim()) || message.media_url,
+      const sanitized = (response.data.results || response.data || []).filter(hasContent);
+      messagesCacheRef.current[normalizedUserId] = sanitized;
+      setMessages((prev) =>
+        silent &&
+        prev.length === sanitized.length &&
+        prev[prev.length - 1]?.id === sanitized[sanitized.length - 1]?.id &&
+        prev.every((item, index) => item.is_read === sanitized[index]?.is_read)
+          ? prev
+          : sanitized,
       );
-      setMessages(sanitizedMessages);
-      messagesCacheRef.current[normalizedUserId] = sanitizedMessages;
-    } catch (error) {
-      if (requestId !== loadRequestIdRef.current) {
-        return;
-      }
 
-      // Keep already-loaded history visible when a fetch fails.
-      const fallbackMessages = messagesCacheRef.current[normalizedUserId];
-      if (Array.isArray(fallbackMessages)) {
-        setMessages(fallbackMessages);
-      } else {
-        setMessages([]);
-      }
+      // Fetching a thread marks incoming messages as read on the server.
+      setConversations((prev) =>
+        prev.map((item) => (item.id === normalizedUserId ? { ...item, unread_count: 0 } : item)),
+      );
+      window.dispatchEvent(new Event('counts:refresh'));
+    } catch (error) {
+      if (requestId !== loadRequestIdRef.current || silent) return;
 
       const statusCode = error?.response?.status;
       const errorMessage = error?.response?.data?.error;
-      if (statusCode === 403) {
-        toast.error(errorMessage || 'Messaging is not allowed with this user');
-      } else {
-        toast.error(errorMessage || 'Failed to load previous messages');
-      }
+      toast.error(
+        statusCode === 403
+          ? errorMessage || 'Messaging is not allowed with this user'
+          : errorMessage || 'Failed to load previous messages',
+      );
     } finally {
-      if (requestId === loadRequestIdRef.current) {
-        setLoading(false);
-      }
+      if (!silent && requestId === loadRequestIdRef.current) setLoading(false);
     }
-  };
+  }, []);
 
-  const connectWebSocket = () => {
-    if (!REALTIME_ENABLED) return null;
+  useEffect(() => {
+    if (chatUserId) loadMessages(chatUserId);
+  }, [chatUserId, loadMessages]);
 
-    const token = localStorage.getItem('accessToken');
-    if (!token) return null;
+  useEffect(() => {
+    prefillAppliedRef.current = false;
+  }, [chatUserId]);
 
-    const existingSocket = wsRef.current;
-    if (existingSocket && existingSocket.readyState < WebSocket.CLOSING) {
-      existingSocket.close();
-    }
+  useEffect(() => {
+    const starterMessage = searchParams.get('message');
+    if (!chatUserId || !starterMessage || prefillAppliedRef.current) return;
+    setNewMessage(starterMessage);
+    draftRef.current = starterMessage;
+    prefillAppliedRef.current = true;
+  }, [chatUserId, searchParams]);
 
-    const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${encodeURIComponent(token)}`;
-    const websocket = new WebSocket(wsUrl);
-    wsRef.current = websocket;
+  // Who is on the other end? Prefer data we already have, otherwise ask the API.
+  const knownPeer =
+    conversations.find((item) => item.id === selectedUser) ||
+    followers.find((item) => item.id === selectedUser) ||
+    null;
 
-    websocket.onopen = () => {
-      console.log('WebSocket connected');
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
+  useEffect(() => {
+    if (!selectedUser || knownPeer) return undefined;
+    let cancelled = false;
+    userAPI
+      .getProfile(selectedUser)
+      .then((response) => {
+        if (cancelled) return;
+        setPeerProfile({
+          id: selectedUser,
+          name: response.data?.name,
+          profile_picture: response.data?.profile_picture,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
+  }, [selectedUser, knownPeer]);
 
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const activeUserId = Number(selectedUserRef.current);
-      if (data.type === 'chat_message') {
-        const message = data.message;
-        const isRenderable =
-          message && ((message.content && String(message.content).trim()) || message.media_url);
-        if (isRenderable && (Number(message.sender_id) === activeUserId || Number(message.receiver_id) === activeUserId)) {
-          appendMessageIfNew(message);
-        }
-        if (Number(message.sender_id) === activeUserId) {
-          setIsPeerTyping(false);
-        }
-        loadConversations();
-        return;
-      }
+  const peer =
+    knownPeer || (peerProfile?.id === selectedUser ? peerProfile : { id: selectedUser });
 
-      if (data.type === 'message_sent') {
-        const message = data.message;
-        const isRenderable =
-          message && ((message.content && String(message.content).trim()) || message.media_url);
-        if (isRenderable && Number(message.receiver_id) === activeUserId) {
-          appendMessageIfNew(message);
-        }
-        loadConversations();
-        return;
-      }
+  /* --------------------------------------------------------------- typing */
 
-      if (data.type === 'typing') {
-        if (Number(data.sender_id) !== activeUserId) {
-          return;
-        }
-
-        if (data.is_typing) {
-          setIsPeerTyping(true);
-          if (peerTypingTimeoutRef.current) {
-            clearTimeout(peerTypingTimeoutRef.current);
-          }
-          peerTypingTimeoutRef.current = setTimeout(() => {
-            setIsPeerTyping(false);
-          }, 2000);
-        } else {
-          setIsPeerTyping(false);
-        }
-      }
-    };
-
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    websocket.onclose = () => {
-      console.log('WebSocket disconnected');
-      if (!shouldReconnectRef.current || wsRef.current !== websocket) {
-        return;
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      reconnectTimeoutRef.current = setTimeout(() => {
-        if (shouldReconnectRef.current && localStorage.getItem('accessToken')) {
-          connectWebSocket();
-        }
-      }, 2000);
-    };
-
-    return websocket;
+  const clearPeerTyping = () => {
+    if (peerTypingTimeoutRef.current) clearTimeout(peerTypingTimeoutRef.current);
+    setIsPeerTyping(false);
   };
 
   const sendTypingState = (isTyping) => {
-    const activeSocket = wsRef.current;
-    if (!selectedUser || !activeSocket || activeSocket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    activeSocket.send(JSON.stringify({
-      type: 'typing',
-      receiver_id: selectedUser,
-      is_typing: isTyping,
-    }));
+    const receiver = selectedUserRef.current;
+    if (!receiver) return;
+    sendRef.current({ type: 'typing', receiver_id: receiver, is_typing: isTyping });
   };
 
   const stopTyping = () => {
-    if (typingStopTimeoutRef.current) {
-      clearTimeout(typingStopTimeoutRef.current);
-    }
+    if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
     if (typingHeartbeatRef.current) {
       clearInterval(typingHeartbeatRef.current);
       typingHeartbeatRef.current = null;
@@ -345,110 +234,161 @@ const Chat = () => {
     }
   };
 
-  const startTypingHeartbeat = () => {
-    if (typingHeartbeatRef.current) {
-      return;
-    }
-
-    typingHeartbeatRef.current = setInterval(() => {
-      if (!isTypingRef.current || !newMessage.trim()) {
-        if (typingHeartbeatRef.current) {
-          clearInterval(typingHeartbeatRef.current);
-          typingHeartbeatRef.current = null;
-        }
-        return;
-      }
-      sendTypingState(true);
-    }, 1000);
-  };
-
-  const handleInputChange = (e) => {
-    const value = e.target.value;
+  const handleInputChange = (event) => {
+    const value = event.target.value;
     setNewMessage(value);
-    setIsSidebarOpen(false);
+    draftRef.current = value;
 
-    if (!selectedUser) {
+    if (!selectedUserRef.current) return;
+    if (!value.trim()) {
+      stopTyping();
       return;
     }
 
-    if (value.trim() && !isTypingRef.current) {
+    if (!isTypingRef.current) {
       isTypingRef.current = true;
       sendTypingState(true);
-      startTypingHeartbeat();
-    } else if (value.trim() && isTypingRef.current) {
-      startTypingHeartbeat();
-    } else if (!value.trim()) {
-      stopTyping();
+    }
+    // The receiver treats typing as expired after ~2s, so keep refreshing it.
+    if (!typingHeartbeatRef.current) {
+      typingHeartbeatRef.current = setInterval(() => {
+        if (!isTypingRef.current || !draftRef.current.trim()) {
+          stopTyping();
+          return;
+        }
+        sendTypingState(true);
+      }, TYPING_HEARTBEAT_MS);
+    }
+    if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+    typingStopTimeoutRef.current = setTimeout(stopTyping, TYPING_IDLE_MS);
+  };
+
+  useEffect(() => {
+    clearPeerTyping();
+    stopTyping();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUser]);
+
+  /* ------------------------------------------------------------ websocket */
+
+  const handleSocketEvent = (data) => {
+    const activeUserId = Number(selectedUserRef.current);
+
+    switch (data.type) {
+      case 'socket_open':
+        if (data.reconnected) {
+          // Catch up on anything that arrived while the connection was down.
+          loadConversations();
+          if (activeUserId) loadMessages(activeUserId, { silent: true });
+        }
+        break;
+
+      case 'chat_message': {
+        const { message } = data;
+        if (!message) break;
+        const fromActivePeer = Number(message.sender_id) === activeUserId;
+        if (hasContent(message) && (fromActivePeer || Number(message.receiver_id) === activeUserId)) {
+          appendMessageIfNew(message);
+        }
+        if (fromActivePeer) {
+          setIsPeerTyping(false);
+          // The thread is open, so tell the sender it was read.
+          if (message.id) {
+            sendRef.current({ type: 'read_message', message_id: message.id, sender_id: message.sender_id });
+          }
+        }
+        loadConversations();
+        break;
+      }
+
+      case 'message_sent': {
+        const { message } = data;
+        if (hasContent(message) && Number(message.receiver_id) === activeUserId) {
+          appendMessageIfNew(message);
+        }
+        loadConversations();
+        break;
+      }
+
+      case 'message_read':
+        setMessages((prev) =>
+          prev.map((item) => (item.id === data.message_id ? { ...item, is_read: true } : item)),
+        );
+        break;
+
+      case 'typing':
+        if (Number(data.sender_id) !== activeUserId) break;
+        if (data.is_typing) {
+          setIsPeerTyping(true);
+          if (peerTypingTimeoutRef.current) clearTimeout(peerTypingTimeoutRef.current);
+          peerTypingTimeoutRef.current = setTimeout(() => setIsPeerTyping(false), PEER_TYPING_EXPIRY_MS);
+        } else {
+          setIsPeerTyping(false);
+        }
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const { status: socketStatus, send } = useChatSocket({
+    userId: currentUserId,
+    onEvent: handleSocketEvent,
+  });
+  sendRef.current = send;
+
+  useEffect(
+    () => () => {
+      if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+      if (typingHeartbeatRef.current) clearInterval(typingHeartbeatRef.current);
+      if (peerTypingTimeoutRef.current) clearTimeout(peerTypingTimeoutRef.current);
+    },
+    [],
+  );
+
+  // Hosts without WebSocket support (e.g. Vercel): poll the REST API instead.
+  useEffect(() => {
+    if (REALTIME_ENABLED) return undefined;
+    const intervalId = setInterval(() => {
+      loadConversations();
+      const activeUserId = Number(selectedUserRef.current);
+      if (activeUserId) loadMessages(activeUserId, { silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [loadConversations, loadMessages]);
+
+  /* -------------------------------------------------------------- sending */
+
+  const handleSendMessage = async () => {
+    const content = newMessage.trim();
+    if (!content || !selectedUser) return;
+
+    stopTyping();
+
+    const sentLive = send({ type: 'chat_message', content: newMessage, receiver_id: selectedUser });
+    if (sentLive) {
+      setNewMessage('');
+      draftRef.current = '';
       return;
     }
 
-    if (typingStopTimeoutRef.current) {
-      clearTimeout(typingStopTimeoutRef.current);
-    }
-
-    typingStopTimeoutRef.current = setTimeout(() => {
-      stopTyping();
-    }, 900);
-  };
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedUser) return;
-
-    stopTyping();
-    setIsSidebarOpen(false);
-
+    // Socket unavailable: fall back to the REST API so the message still goes out.
     try {
-      const activeSocket = wsRef.current;
-      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
-        activeSocket.send(JSON.stringify({
-          type: 'chat_message',
-          content: newMessage,
-          receiver_id: selectedUser,
-        }));
-        setNewMessage('');
-      } else {
-        // Fallback to REST API
-        await chatAPI.sendMessage({
-          receiver_id: selectedUser,
-          content: newMessage,
-        });
-        setNewMessage('');
-        loadMessages(selectedUser);
-      }
+      await chatAPI.sendMessage({ receiver_id: selectedUser, content: newMessage });
+      setNewMessage('');
+      draftRef.current = '';
+      loadMessages(selectedUser, { silent: true });
+      loadConversations();
     } catch (error) {
       toast.error('Failed to send message');
     }
   };
 
-  useEffect(() => {
-    setIsPeerTyping(false);
-    stopTyping();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUser]);
-
-  const resolveMediaUrl = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-    if (url.startsWith('/')) {
-      return `${API_ORIGIN}${url}`;
-    }
-    return `${API_ORIGIN}/${url}`;
-  };
-
-  const isVideoUrl = (url) => {
-    if (!url) return false;
-    const clean = url.split('?')[0].toLowerCase();
-    return clean.endsWith('.mp4') || clean.endsWith('.mov') || clean.endsWith('.avi') || clean.endsWith('.wmv');
-  };
-
-  const handleMediaUpload = async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
+  const handleMediaUpload = async (event) => {
+    const file = event.target.files[0];
+    event.target.value = '';
     if (!file) return;
-    setIsSidebarOpen(false);
     if (!selectedUser) {
       toast.error('Select a conversation first');
       return;
@@ -477,6 +417,7 @@ const Chat = () => {
     formData.append(isImage ? 'image' : 'video', file);
     formData.append('receiver_id', selectedUser);
 
+    setUploading(true);
     try {
       const response = isImage
         ? await chatAPI.uploadImage(formData)
@@ -488,201 +429,105 @@ const Chat = () => {
         return;
       }
 
-      const activeSocket = wsRef.current;
-      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
-        activeSocket.send(JSON.stringify({
-          type: 'chat_message',
-          receiver_id: selectedUser,
-          content: '',
-          media_url: mediaUrl,
-        }));
-      } else {
-        await chatAPI.sendMessage({
-          receiver_id: selectedUser,
-          content: '',
-          media_url: mediaUrl,
-        });
-        loadMessages(selectedUser);
+      const sentLive = send({
+        type: 'chat_message',
+        receiver_id: selectedUser,
+        content: '',
+        media_url: mediaUrl,
+      });
+      if (!sentLive) {
+        await chatAPI.sendMessage({ receiver_id: selectedUser, content: '', media_url: mediaUrl });
+        loadMessages(selectedUser, { silent: true });
       }
       toast.success(isImage ? 'Image sent!' : 'Video sent!');
     } catch (error) {
-      const message = error.response?.data?.error || 'Failed to send media';
-      toast.error(message);
+      toast.error(error.response?.data?.error || 'Failed to send media');
+    } finally {
+      setUploading(false);
     }
   };
 
+  /* ----------------------------------------------------------- navigation */
+
+  const handleBack = () => {
+    loadRequestIdRef.current += 1;
+    selectedUserRef.current = null;
+    setSelectedUser(null);
+    setMessages([]);
+    setNewMessage('');
+    draftRef.current = '';
+    if (chatUserId) navigate('/chat');
+  };
+
+  // On phones an open conversation takes over the whole screen.
+  useEffect(() => {
+    document.body.classList.toggle('chat-thread-open', Boolean(selectedUser));
+    return () => document.body.classList.remove('chat-thread-open');
+  }, [selectedUser]);
+
+  const showReconnectBanner =
+    isOnline && REALTIME_ENABLED && (socketStatus === 'reconnecting' || socketStatus === 'disconnected');
+
   return (
-    <div className="app-layout">
+    <div className="app-layout chat-page">
       <Navbar />
       <div className="main-content">
-        <div className="chat-container">
-          {isSidebarOpen && (
-            <div
-              className="chat-sidebar-backdrop"
-              onClick={() => setIsSidebarOpen(false)}
-              aria-hidden="true"
-            />
-          )}          <div className={`conversations-sidebar ${isSidebarOpen ? 'open' : ''}`}>
-            <h3>Messages</h3>
-            <div className="chat-list-toggle">
-              <button
-                className={activeList === 'conversations' ? 'active' : ''}
-                onClick={() => setActiveList('conversations')}
-                type="button"
-              >
-                Conversations
-              </button>
-              <button
-                className={activeList === 'followers' ? 'active' : ''}
-                onClick={() => setActiveList('followers')}
-                type="button"
-              >
-                Followers
-              </button>
-            </div>
-            <div className="conversations-list">
-              {activeList === 'conversations' ? (
-                conversations.length === 0 ? (
-                  <p>No conversations yet</p>
-                ) : (
-                  conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`conversation-item ${selectedUser === conv.id ? 'active' : ''}`}
-                      onClick={() => loadMessages(conv.id)}
-                    >
-                      <img
-                        src={resolveMediaUrl(conv.profile_picture) || '/default-avatar.svg'}
-                        alt={conv.name}
-                        className="avatar-small"
-                      />
-                      <div className="conversation-info">
-                        <h4>{conv.name}</h4>
-                        <p className="last-message">{conv.last_message}</p>
-                      </div>
-                      {conv.unread_count > 0 && (
-                        <span className="unread-badge">{conv.unread_count}</span>
-                      )}
-                    </div>
-                  ))
-                )
-              ) : followers.length === 0 ? (
-                <p>No followers yet</p>
-              ) : (
-                followers.map((follower) => (
-                  <div
-                    key={follower.id}
-                    className={`conversation-item ${selectedUser === follower.id ? 'active' : ''}`}
-                    onClick={() => loadMessages(follower.id)}
-                  >
-                    <img
-                      src={resolveMediaUrl(follower.profile_picture) || '/default-avatar.svg'}
-                      alt={follower.name}
-                      className="avatar-small"
-                    />
-                    <div className="conversation-info">
-                      <h4>{follower.name}</h4>
-                      <p className="last-message">Start a chat</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+        <div className={`chat-shell ${selectedUser ? 'chat-shell--thread' : ''}`}>
+          <ConversationList
+            conversations={conversations}
+            followers={followers}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            search={search}
+            onSearchChange={setSearch}
+            selectedId={selectedUser}
+            onSelect={loadMessages}
+            loading={listLoading}
+            error={listError}
+            onRetry={() => {
+              setListLoading(true);
+              loadConversations();
+            }}
+          />
 
-          <div className="chat-main">
-            <div className="chat-header-actions">
-              <button
-                className="sidebar-toggle-btn"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                type="button"
-                aria-label="Toggle conversations"
-              >
-                {isSidebarOpen ? <FaTimes /> : <FaBars />}
-              </button>
-            </div>
+          <section className="chat-thread" aria-label="Conversation">
             {!selectedUser ? (
-              <div className="no-chat-selected">
-                <p>Select a conversation to start messaging</p>
+              <div className="chat-placeholder">
+                <FaRegCommentDots aria-hidden="true" />
+                <h2>Your messages</h2>
+                <p>Pick a conversation, or choose a follower to start a new one.</p>
               </div>
             ) : (
               <>
-                <div className="messages-container">
-                  {loading ? (
-                    <div className="loading">Loading messages...</div>
-                  ) : (
-                    <>
-                      {messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`message ${message.sender_id === user.id ? 'sent' : 'received'}`}
-                        >
-                          <div className="message-content">
-                            {message.media_url && (
-                              isVideoUrl(message.media_url) ? (
-                                <video
-                                  src={resolveMediaUrl(message.media_url)}
-                                  className="message-video"
-                                  controls
-                                />
-                              ) : (
-                                <img
-                                  src={resolveMediaUrl(message.media_url)}
-                                  alt="attachment"
-                                  className="message-image"
-                                />
-                              )
-                            )}
-                            {message.content ? (
-                              <p>{message.content}</p>
-                            ) : message.media_url ? (
-                              <p className="media-caption-placeholder">
-                                {isVideoUrl(message.media_url) ? 'Video' : 'Photo'}
-                              </p>
-                            ) : null}
-                            <span className="message-time">
-                              {moment(message.created_at).format('HH:mm')}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                      {isPeerTyping && (
-                        <div className="message received typing-row">
-                          <div className="typing-bubble" aria-label="Typing">
-                            <span />
-                            <span />
-                            <span />
-                          </div>
-                        </div>
-                      )}
-                      <div ref={messagesEndRef} />
-                    </>
-                  )}
-                </div>
-
-                <form onSubmit={handleSendMessage} className="message-input-form">
-                  <label className="upload-btn">
-                    <FaImage />
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      onChange={handleMediaUpload}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Type a message..."
-                    value={newMessage}
-                    onChange={handleInputChange}
-                  />
-                  <button type="submit" disabled={!newMessage.trim()}>
-                    <FaPaperPlane />
-                  </button>
-                </form>
+                <ChatHeader
+                  peer={peer}
+                  isTyping={isPeerTyping}
+                  connectionStatus={socketStatus}
+                  onBack={handleBack}
+                />
+                {showReconnectBanner && (
+                  <div className="chat-banner" role="status">
+                    Live connection lost. Reconnecting… your messages will still be delivered.
+                  </div>
+                )}
+                <MessageList
+                  messages={messages}
+                  currentUserId={currentUserId}
+                  loading={loading}
+                  isPeerTyping={isPeerTyping}
+                  peerName={peer?.name}
+                  threadKey={selectedUser}
+                />
+                <MessageComposer
+                  value={newMessage}
+                  onChange={handleInputChange}
+                  onSubmit={handleSendMessage}
+                  onAttach={handleMediaUpload}
+                  uploading={uploading}
+                />
               </>
             )}
-          </div>
+          </section>
         </div>
       </div>
     </div>
