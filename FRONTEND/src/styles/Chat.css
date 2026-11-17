@@ -4,14 +4,14 @@
    ========================================================================== */
 
 .chat-page .main-content {
-  padding: calc(var(--navbar-height) + 24px) 16px 16px;
+  padding: calc(var(--navbar-height) + 20px) 16px 16px;
 }
 
 .chat-shell {
   display: grid;
   grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-  height: calc(100vh - var(--navbar-height) - 44px);
-  height: calc(100dvh - var(--navbar-height) - 44px);
+  height: calc(100vh - var(--navbar-height) - 36px);
+  height: calc(100dvh - var(--navbar-height) - 36px);
   min-height: 420px;
   max-width: 1320px;
   margin: 0 auto;
@@ -768,13 +768,13 @@ video.chat-media + .chat-text {
 
 @media (max-width: 768px) {
   .chat-page .main-content {
-    padding: 76px 0 0;
+    padding: var(--navbar-height) 0 0;
   }
 
   .chat-shell {
     grid-template-columns: minmax(0, 1fr);
-    height: calc(100vh - 76px - var(--bottom-nav-height));
-    height: calc(100dvh - 76px - var(--bottom-nav-height) - env(safe-area-inset-bottom));
+    height: calc(100vh - var(--navbar-height) - var(--bottom-nav-height));
+    height: calc(100dvh - var(--navbar-height) - var(--bottom-nav-height) - env(safe-area-inset-bottom));
     border: 0;
     border-radius: 0;
     box-shadow: none;

@@ -413,6 +413,7 @@ const Profile = () => {
       closeEditModal();
       await loadProfile();
       toast.success('Profile updated successfully!');
+      window.dispatchEvent(new Event('profile:updated'));
     } catch (error) {
       const message = error?.response?.data?.error || error?.response?.data?.message || 'Failed to update profile';
       toast.error(message);
@@ -432,6 +433,7 @@ const Profile = () => {
       const response = await userAPI.uploadProfilePicture(formData);
       setProfile({ ...profile, profile_picture: response.data.profile_picture });
       toast.success('Profile picture updated!');
+      window.dispatchEvent(new Event('profile:updated'));
     } catch (error) {
       toast.error('Failed to upload image');
     }

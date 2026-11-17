@@ -892,7 +892,7 @@
   }
 
   .group-tabs {
-    top: 78px;
+    top: calc(var(--navbar-height) + 8px);
   }
 
   .member-row {
