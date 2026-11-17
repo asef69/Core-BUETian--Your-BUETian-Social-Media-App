@@ -445,7 +445,7 @@ const Profile = () => {
               <div className="profile-info">
                 <div className="profile-avatar-container">
                   <img
-                    src={profile.profile_picture || '/default-avatar.png'}
+                    src={profile.profile_picture || '/default-avatar.svg'}
                     alt={profile.name}
                     className="profile-avatar"
                   />
@@ -658,7 +658,7 @@ const Profile = () => {
                         <div className="follower-row" key={follower.user_id}>
                           <div className="follower-info">
                             <img
-                              src={follower.profile_picture || '/default-avatar.png'}
+                              src={follower.profile_picture || '/default-avatar.svg'}
                               alt={follower.name || 'Follower'}
                               className="follower-avatar"
                             />

@@ -55,7 +55,7 @@ const Marketplace = () => {
     if (Array.isArray(product?.images) && product.images.length > 0) {
       return product.images[0];
     }
-    return product?.image || '/default-product.png';
+    return product?.image || '/default-product.svg';
   };
 
   const loadProducts = async (status = browseStatusFilter) => {

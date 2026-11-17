@@ -384,11 +384,11 @@ const CommentSection = ({ postId, onCommentAdded, onCommentRemoved, readOnly = f
       >
         <div className="comment">
           <img
-            src={comment.user_profile_picture || "/default-avatar.png"}
+            src={comment.user_profile_picture || "/default-avatar.svg"}
             alt={comment.user_name || "User"}
             className="comment-avatar"
             onError={(e) => {
-              e.target.src = "/default-avatar.png";
+              e.target.src = "/default-avatar.svg";
             }}
           />
 

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" width="320" height="160" role="img" aria-label="Default group cover">
+  <rect width="320" height="160" fill="#dbeafe"/>
+  <circle cx="110" cy="70" r="18" fill="#93c5fd"/>
+  <circle cx="160" cy="62" r="22" fill="#60a5fa"/>
+  <circle cx="210" cy="70" r="18" fill="#93c5fd"/>
+  <path d="M82 124c0-20 13-34 28-34s28 14 28 34zM132 124c0-24 13-40 28-40s28 16 28 40zM182 124c0-20 13-34 28-34s28 14 28 34z" fill="#93c5fd"/>
+</svg>

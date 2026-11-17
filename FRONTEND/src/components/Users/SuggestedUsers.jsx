@@ -47,7 +47,7 @@ const SuggestedUsers = () => {
             <div key={user.id} className="suggested-user">
               <Link to={`/profile/${user.id}`} className="user-info">
                 <img
-                  src={user.profile_picture || '/default-avatar.png'}
+                  src={user.profile_picture || '/default-avatar.svg'}
                   alt={user.name}
                   className="avatar-small"
                 />

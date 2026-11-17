@@ -59,13 +59,27 @@ _force_env_values_from_file(
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
+def _csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-u2g)okxo6hr2hioar+stp*&)u&*j6%ij7ed*0f8!out2&d@ds2'
+# Set SECRET_KEY in the environment (Vercel project settings) for production.
+SECRET_KEY = config(
+    'SECRET_KEY',
+    default='django-insecure-dev-only-key-change-me-in-production',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = _csv(config('ALLOWED_HOSTS', default='*'))
+
+# Needed for the Django admin / session login on https origins (e.g. Vercel).
+CSRF_TRUSTED_ORIGINS = _csv(config('CSRF_TRUSTED_ORIGINS', default='https://*.vercel.app'))
+
+# Vercel terminates TLS in front of the function.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -83,7 +97,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'drf_yasg',
-    'debug_toolbar',
     'chat',
     'users',
     'posts',
@@ -93,8 +106,12 @@ INSTALLED_APPS = [
     'forums',
 ]
 
+if DEBUG:
+    INSTALLED_APPS.append('debug_toolbar')
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -102,8 +119,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
+
+if DEBUG:
+    MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
 
 ROOT_URLCONF = 'core_buetians.urls'
 
@@ -127,24 +146,47 @@ WSGI_APPLICATION = 'core_buetians.wsgi.application'
 ASGI_APPLICATION = 'core_buetians.asgi.application'
 
 # Channels configuration
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer' 
-    },
-}
+# In-memory layer is fine for a single process (local dev). Set REDIS_URL to
+# share chat events between processes/servers.
+_REDIS_URL = config('REDIS_URL', default='')
+if _REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {'hosts': [_REDIS_URL]},
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 
-# Database
+# Database (Supabase PostgreSQL)
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# On Vercel use Supabase's *connection pooler* (Project Settings -> Database ->
+# Connection pooling, port 6543, user "postgres.<project-ref>"). The direct
+# "db.<ref>.supabase.co" host is IPv6-only and not reachable from Vercel.
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
+        'NAME': config('DB_NAME', default='postgres'),
         'USER': config('DB_USER'),
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
+        'PORT': config('DB_PORT', default='5432'),
+        # Serverless functions are short-lived and the pooler multiplexes
+        # connections, so do not keep connections open between requests.
+        'CONN_MAX_AGE': 0,
+        # Required with pgbouncer/Supavisor in transaction mode.
+        'DISABLE_SERVER_SIDE_CURSORS': True,
+        'OPTIONS': {
+            'sslmode': config('DB_SSLMODE', default='prefer'),
+        },
     }
 }
 
@@ -179,8 +221,39 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# WhiteNoise serves the admin / Swagger assets straight from the installed
+# apps, so no collectstatic step is needed on serverless hosts.
+WHITENOISE_USE_FINDERS = True
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
+
+# Local-disk media is only used in development when Cloudinary is not
+# configured (see utils/file_upload.py). Serverless filesystems are read-only.
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Cloudinary (image / video storage).
+# Either set CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
+# or the three individual variables below.
+CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='')
+CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY', default='')
+CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET', default='')
+CLOUDINARY_URL = config('CLOUDINARY_URL', default='')
+CLOUDINARY_FOLDER = config('CLOUDINARY_FOLDER', default='buetian')
+
+if CLOUDINARY_URL:
+    # The cloudinary SDK reads CLOUDINARY_URL from the environment itself.
+    os.environ.setdefault('CLOUDINARY_URL', CLOUDINARY_URL)
+CLOUDINARY_ENABLED = bool(
+    CLOUDINARY_URL
+    or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+)
+
+# Profile picture stored for users who do not upload one. Empty means NULL;
+# the frontend then shows its bundled default avatar.
+DEFAULT_PROFILE_PICTURE_URL = config('DEFAULT_PROFILE_PICTURE_URL', default='')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -210,11 +283,15 @@ SWAGGER_SETTINGS = {
     },
     'USE_SESSION_AUTH': False,
 }
-CORS_ALLOW_ALL_ORIGINS = True
+# Auth uses a JWT in the Authorization header (no cookies), so open CORS is
+# acceptable, but production should list the frontend origin(s) explicitly:
+#   CORS_ALLOWED_ORIGINS=https://my-frontend.vercel.app
+_cors_origins_env = _csv(config('CORS_ALLOWED_ORIGINS', default=''))
+CORS_ALLOW_ALL_ORIGINS = not _cors_origins_env
 
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOWED_ORIGINS = _cors_origins_env or [
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:8000",

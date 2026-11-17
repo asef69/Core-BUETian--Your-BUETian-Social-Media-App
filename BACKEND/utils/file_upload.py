@@ -3,6 +3,12 @@ import uuid
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 
+
+class MediaUploadError(ValueError):
+    """Raised when a file cannot be stored (subclasses ValueError so existing
+    ``except ValueError`` handlers in the views turn it into a 400 response)."""
+
+
 class FileUploadHandler:
     """
     Utility class for handling file uploads with validation.
@@ -82,56 +88,81 @@ class FileUploadHandler:
     @staticmethod
     def upload_file(file, folder='uploads'):
         """
-        Upload file to media storage with UUID-based filename.
-        
+        Store an uploaded file and return the URL to save in the database.
+
+        Storage backend:
+            - Cloudinary when configured (CLOUDINARY_URL or the three
+              CLOUDINARY_CLOUD_NAME / _API_KEY / _API_SECRET variables).
+              Returns the absolute ``https://res.cloudinary.com/...`` URL.
+            - Local disk (MEDIA_ROOT) otherwise, for development only.
+              Returns a relative ``/media/<folder>/<uuid>.<ext>`` path.
+
         Args:
             file: Django UploadedFile object from request.FILES
-            folder (str): Subdirectory within MEDIA_ROOT (default: 'uploads')
-                Common folders:
-                - 'profile_pictures': User avatars
-                - 'chat_images': Chat message images
-                - 'post_images': Post images
-                - 'post_videos': Post videos
-        
-        Returns:
-            str: Relative URL path to uploaded file
-                Format: "media/<folder>/<uuid>.<ext>"
-                Example: "media/profile_pictures/abc123def456.jpg"
-        
-        Process:
-            1. Extract file extension from original filename
-            2. Generate unique filename using UUID4
-            3. Create folder if it doesn't exist
-            4. Save file using Django's FileSystemStorage
-            5. Return URL path (not absolute filesystem path)
-        
-        Storage Location:
-            Filesystem: MEDIA_ROOT/<folder>/<uuid>.<ext>
-            URL: MEDIA_URL/<folder>/<uuid>.<ext>
-        
-        Example:
-            file = request.FILES['profile_picture']
-            url = FileUploadHandler.upload_file(file, folder='profile_pictures')
-            # url = "media/profile_pictures/abc123.jpg"
-            
-            # Save to database
-            user.profile_picture = url
-            
-            # Access via browser
-            # http://localhost:8000/media/profile_pictures/abc123.jpg
-        
+            folder (str): Logical folder, e.g. 'profile_pictures',
+                'post_images', 'post_videos', 'chat_images', 'chat_videos',
+                'marketplace_images', 'group_covers'.
+
+        Raises:
+            MediaUploadError (a ValueError): storage is not configured or the
+                upload failed.
+
         Note:
-            - Does not validate file (call validate_file first)
-            - Creates folder automatically if missing
-            - Files are stored with random names to prevent conflicts
-            - Original filename is not preserved
+            Does not validate the file (call validate_file first).
         """
+        if getattr(settings, 'CLOUDINARY_ENABLED', False):
+            return FileUploadHandler._upload_to_cloudinary(file, folder)
+
+        if os.environ.get('VERCEL'):
+            # Serverless filesystems are read-only/ephemeral: refuse rather
+            # than silently losing the file.
+            raise MediaUploadError(
+                'Media storage is not configured. Set the CLOUDINARY_* '
+                'environment variables.'
+            )
+
+        return FileUploadHandler._upload_to_disk(file, folder)
+
+    @staticmethod
+    def _upload_to_cloudinary(file, folder):
+        import cloudinary
+        import cloudinary.uploader
+
+        if settings.CLOUDINARY_CLOUD_NAME:
+            cloudinary.config(
+                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+                api_key=settings.CLOUDINARY_API_KEY,
+                api_secret=settings.CLOUDINARY_API_SECRET,
+                secure=True,
+            )
+
+        try:
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"{settings.CLOUDINARY_FOLDER}/{folder}",
+                public_id=uuid.uuid4().hex,
+                # 'auto' lets Cloudinary detect image vs. video.
+                resource_type='auto',
+                overwrite=False,
+            )
+        except Exception as exc:  # cloudinary.exceptions.Error, network errors
+            raise MediaUploadError(f'Failed to upload file to cloud storage: {exc}') from exc
+
+        url = result.get('secure_url') or result.get('url')
+        if not url:
+            raise MediaUploadError('Cloud storage did not return a file URL')
+        return url
+
+    @staticmethod
+    def _upload_to_disk(file, folder):
         ext = file.name.split('.')[-1]
         filename = f"{uuid.uuid4().hex}.{ext}"
-        
+
         folder_path = os.path.join(settings.MEDIA_ROOT, folder)
         os.makedirs(folder_path, exist_ok=True)
-        
+
         fs = FileSystemStorage(location=folder_path)
         saved_filename = fs.save(filename, file)
 

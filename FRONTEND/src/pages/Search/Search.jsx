@@ -58,7 +58,7 @@ const Search = () => {
           {users.map(user => (
             <Link key={user.id} to={`/profile/${user.id}`} className="search-result-card user-card">
               <img
-                src={user.profile_picture || '/default-avatar.png'}
+                src={user.profile_picture || '/default-avatar.svg'}
                 alt={user.name}
                 className="result-avatar"
               />
@@ -82,7 +82,7 @@ const Search = () => {
             <div key={post.id} className="search-result-post">
               <div className="post-header">
                 <img
-                  src={post.author_picture || '/default-avatar.png'}
+                  src={post.author_picture || '/default-avatar.svg'}
                   alt={post.author_name}
                   className="result-avatar-sm"
                 />
@@ -121,7 +121,7 @@ const Search = () => {
             return (
               <Link key={groupId} to={groupPath} className="search-result-card group-card group-result-card">
                 <img
-                  src={group.cover_image || '/default-group.png'}
+                  src={group.cover_image || '/default-group.svg'}
                   alt={group.name}
                   className="group-result-cover"
                 />

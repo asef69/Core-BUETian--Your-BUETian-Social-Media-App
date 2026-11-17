@@ -6,10 +6,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
+from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
-
-
-DEFAULT_PROFILE_PICTURE_URL = '/media/profile_pictures/default_pfp.jpg'
 
 
 class RegisterView(APIView):
@@ -102,7 +100,8 @@ class RegisterView(APIView):
         
         hashed_password = make_password(data['password'])
         
-        profile_picture_url = DEFAULT_PROFILE_PICTURE_URL
+        # None -> NULL; the frontend falls back to its bundled default avatar.
+        profile_picture_url = settings.DEFAULT_PROFILE_PICTURE_URL or None
         if 'profile_picture' in request.FILES:
             try:
                 profile_file = request.FILES['profile_picture']
