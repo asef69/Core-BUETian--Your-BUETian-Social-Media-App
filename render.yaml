@@ -1,0 +1,51 @@
+# Render Blueprint: hosts the Django backend with WebSocket (Channels) support.
+# Vercel cannot hold WebSocket connections, so real-time chat needs a host like
+# this. Database stays on Supabase and media on Cloudinary.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repository.
+# Variables marked `sync: false` are prompted for during setup; values never
+# live in git. See BACKEND/.env.example for what each one means.
+services:
+  - type: web
+    name: buetian-api-ws
+    runtime: python
+    rootDir: BACKEND
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # Daphne serves HTTP and WebSockets (/ws/chat/) from one process.
+    startCommand: daphne -b 0.0.0.0 -p $PORT core_buetians.asgi:application
+    healthCheckPath: /swagger/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://*.onrender.com,https://*.vercel.app
+      # Frontend origin(s), e.g. https://buetian-web.vercel.app
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # Supabase *pooler* values (Project Settings -> Database)
+      - key: DB_NAME
+        value: postgres
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "6543"
+      - key: DB_SSLMODE
+        value: require
+      # Cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

@@ -76,7 +76,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = _csv(config('ALLOWED_HOSTS', default='*'))
 
 # Needed for the Django admin / session login on https origins (e.g. Vercel).
-CSRF_TRUSTED_ORIGINS = _csv(config('CSRF_TRUSTED_ORIGINS', default='https://*.vercel.app'))
+CSRF_TRUSTED_ORIGINS = _csv(config('CSRF_TRUSTED_ORIGINS', default='https://*.vercel.app,https://*.onrender.com'))
 
 # Vercel terminates TLS in front of the function.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

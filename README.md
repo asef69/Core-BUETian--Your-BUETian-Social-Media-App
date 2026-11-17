@@ -525,10 +525,30 @@ Known limitations on Vercel:
 
 - Serverless functions cannot hold WebSocket connections, so with
   `VITE_ENABLE_WEBSOCKET=false` chat uses the REST endpoints and polls every 5 s
-  (no live typing indicator). Real-time chat needs a host that supports
-  WebSockets (run `daphne core_buetians.asgi:application` plus `REDIS_URL`).
+  (no live typing indicator). For real-time chat, host the backend on Render
+  instead (next section).
 - Vercel limits a request body to about 4.5 MB, so uploads are effectively
   capped at that size regardless of the 5 MB / 50 MB limits in the app.
+
+### Real-time chat: backend on Render
+
+[`render.yaml`](render.yaml) is a Render Blueprint that runs the backend with
+Daphne, which serves HTTP and WebSockets (`/ws/chat/`) from one process. The
+database stays on Supabase and media on Cloudinary.
+
+1. Render dashboard -> **New -> Blueprint** -> select this repository.
+2. Fill in the prompted variables (Supabase pooler `DB_USER` / `DB_PASSWORD` /
+   `DB_HOST`, the three `CLOUDINARY_*` values, and `CORS_ALLOWED_ORIGINS` set to
+   your frontend URL). `SECRET_KEY` is generated for you.
+3. In the Vercel **frontend** project set
+   `VITE_API_URL=https://<your-service>.onrender.com/api` and
+   `VITE_ENABLE_WEBSOCKET=true`, then redeploy the frontend.
+
+Notes: the free Render plan sleeps after ~15 min idle (the first request, and
+the socket, take about a minute to wake) and drops connections when it
+restarts; use a paid plan for always-on chat. Run a single instance, or set
+`REDIS_URL` so several instances can share chat events. Do not also keep the
+Vercel API as the frontend's target - point the frontend at one backend only.
 
 ## Runtime Endpoints
 
