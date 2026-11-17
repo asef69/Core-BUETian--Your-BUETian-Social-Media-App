@@ -11,6 +11,10 @@ services:
     runtime: python
     rootDir: BACKEND
     plan: free
+    # Keep this in the SAME region as the Supabase database (Singapore for
+    # aws-*-ap-southeast-1). Every request makes several DB round trips, so a
+    # cross-ocean hop (e.g. Oregon -> Singapore) makes the whole app slow.
+    region: singapore
     buildCommand: pip install -r requirements.txt
     # Daphne serves HTTP and WebSockets (/ws/chat/) from one process.
     startCommand: daphne -b 0.0.0.0 -p $PORT core_buetians.asgi:application

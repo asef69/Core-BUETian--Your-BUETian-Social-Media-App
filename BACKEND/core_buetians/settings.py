@@ -179,9 +179,18 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT', default='5432'),
-        # Serverless functions are short-lived and the pooler multiplexes
-        # connections, so do not keep connections open between requests.
-        'CONN_MAX_AGE': 0,
+        # Opening a connection to Supabase (TCP + TLS + auth) costs several
+        # network round trips, which dominated every request when it was done
+        # per request. Long-running servers (Render, local) therefore reuse
+        # connections; short-lived serverless functions (Vercel) must not.
+        # Override with DB_CONN_MAX_AGE (seconds).
+        'CONN_MAX_AGE': config(
+            'DB_CONN_MAX_AGE',
+            default=0 if os.environ.get('VERCEL') else 600,
+            cast=int,
+        ),
+        # Drop and replace a reused connection the pooler has closed.
+        'CONN_HEALTH_CHECKS': True,
         # Required with pgbouncer/Supavisor in transaction mode.
         'DISABLE_SERVER_SIDE_CURSORS': True,
         'OPTIONS': {
