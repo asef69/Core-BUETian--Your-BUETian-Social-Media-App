@@ -90,7 +90,7 @@ class ErrorBoundary extends React.Component {
 
             {this.state.errorCount > 3 && (
               <div className="error-warning">
-                <p>⚠️ Multiple errors detected. Please refresh the page or contact support if the issue persists.</p>
+                <p>Multiple errors detected. Please refresh the page or contact support if the issue persists.</p>
               </div>
             )}
           </div>

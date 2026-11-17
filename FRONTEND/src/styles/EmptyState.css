@@ -21,7 +21,6 @@
   margin-bottom: var(--space-lg);
   color: var(--muted-color);
   opacity: 0.6;
-  animation: float 3s ease-in-out infinite;
 }
 
 .empty-state-icon svg {

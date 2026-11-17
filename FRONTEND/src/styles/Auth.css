@@ -45,17 +45,6 @@
   mask-image: radial-gradient(120% 90% at 20% 35%, #000 25%, transparent 85%);
 }
 
-.auth-brand::after {
-  content: '';
-  position: absolute;
-  z-index: -2;
-  right: -20%;
-  bottom: -30%;
-  width: 90%;
-  height: 80%;
-  background: radial-gradient(closest-side, rgba(63, 81, 214, 0.55), transparent);
-}
-
 .auth-logo {
   display: inline-flex;
   align-items: center;
@@ -97,9 +86,9 @@
 }
 
 .auth-brand-copy ul {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -107,38 +96,24 @@
 
 .auth-brand-copy li {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: baseline;
+  gap: 14px;
+  color: #d5d9fb;
+  font-size: var(--text-base);
 }
 
-.auth-feature-icon {
+.auth-brand-copy li::before {
+  content: '';
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(170, 182, 255, 0.4);
-  border-radius: var(--radius-sm);
-  color: #ffb347;
-  font-size: 0.9rem;
-}
-
-.auth-brand-copy li > span:last-child {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  width: 7px;
+  height: 7px;
+  background: #ffb347;
+  transform: translateY(-1px);
 }
 
 .auth-brand-copy strong {
-  font-size: var(--text-sm);
+  color: #fff;
   font-weight: 700;
-}
-
-.auth-brand-copy li > span:last-child > span {
-  color: #aab3e6;
-  font-size: var(--text-xs);
-  line-height: 1.45;
 }
 
 .auth-brand-foot {

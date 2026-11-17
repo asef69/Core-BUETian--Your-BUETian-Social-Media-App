@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+  background: var(--bg-primary);
   padding: var(--space-lg);
 }
 
@@ -17,19 +17,12 @@
 .error-code {
   font-size: 8rem;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--primary-color);
   margin-bottom: var(--space-md);
-  animation: float-large 4s ease-in-out infinite;
 }
 
 .error-code-500 {
-  background: linear-gradient(135deg, var(--danger-color), var(--warning-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--danger-color);
 }
 
 .error-page-content h1 {
@@ -116,7 +109,6 @@
   border-radius: 50%;
   font-size: 4rem;
   color: var(--primary-color);
-  animation: pulse-scale 2s ease-in-out infinite;
 }
 
 .illustration-error {

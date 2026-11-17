@@ -6,19 +6,18 @@
   right: 0;
   z-index: 9999;
   padding: var(--space-sm) var(--space-lg);
-  background: linear-gradient(135deg, var(--danger-color), #ff3d5b);
+  background: #c0392b;
   color: white;
   text-align: center;
   animation: slideDown 0.3s ease-out;
-  box-shadow: 0 2px 12px rgba(255, 93, 118, 0.3);
 }
 
 .connection-status.offline {
-  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  background: #c0392b;
 }
 
 .connection-status.online {
-  background: linear-gradient(135deg, var(--secondary-color), #2ecc71);
+  background: #1f8a64;
 }
 
 .connection-status-content {

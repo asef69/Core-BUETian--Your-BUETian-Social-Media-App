@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { forumAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
-import { FaTint, FaBook, FaPlus, FaFilter, FaExclamationCircle } from 'react-icons/fa';
+import { FaTint, FaBook, FaPlus, FaFilter, FaExclamationCircle, FaTimes } from 'react-icons/fa';
 import BloodRequestCard from '../../components/forums/BloodRequestCard';
 import TuitionCard from '../../components/forums/TuitionCard';
 import '../../styles/Forums.css';
@@ -764,8 +764,9 @@ const Forums = () => {
                       <button
                         type="button"
                         className="remove-btn"
+                        aria-label={`Remove ${subj}`}
                         onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
-                      >&times;</button>
+                      ><FaTimes aria-hidden="true" /></button>
                     </span>
                   ))}
                 </div>
@@ -935,8 +936,9 @@ const Forums = () => {
                       <button
                         type="button"
                         className="remove-btn"
+                        aria-label={`Remove ${subj}`}
                         onClick={() => setTuitionData({ ...tuitionData, subjects: tuitionData.subjects.filter(s => s !== subj) })}
-                      >&times;</button>
+                      ><FaTimes aria-hidden="true" /></button>
                     </span>
                   ))}
                 </div>

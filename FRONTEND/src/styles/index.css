@@ -30,7 +30,7 @@ html {
   --border-color: rgba(224, 232, 246, 0.14);
   --shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
   --shadow-hover: 0 12px 28px rgba(0, 0, 0, 0.3);
-  --shadow-glow: 0 0 0 1px rgba(63, 81, 214, 0.45), 0 0 24px rgba(63, 81, 214, 0.24);
+  --shadow-glow: 0 0 0 3px rgba(63, 81, 214, 0.28);
   --bg-accent-1: rgba(63, 81, 214, 0.2);
   --bg-accent-2: rgba(66, 184, 131, 0.16);
   --navbar-bg: rgba(20, 24, 46, 0.92);
@@ -42,7 +42,7 @@ html {
   --logout-color: #ffc0cc;
   --logout-hover-color: #ffe4e9;
   --logout-hover-bg: rgba(255, 95, 127, 0.22);
-  --auth-card-bg: linear-gradient(160deg, rgba(18, 31, 52, 0.86), rgba(12, 21, 37, 0.86));
+  --auth-card-bg: var(--surface-solid);
   --spinner-track: rgba(255, 255, 255, 0.15);
   --modal-overlay-bg: rgba(4, 10, 18, 0.72);
   --radius-sm: 8px;
@@ -106,7 +106,7 @@ body[data-theme='light'] {
   --border-color: rgba(64, 80, 106, 0.18);
   --shadow: 0 6px 18px rgba(31, 43, 64, 0.11);
   --shadow-hover: 0 12px 28px rgba(31, 43, 64, 0.16);
-  --shadow-glow: 0 0 0 1px rgba(63, 81, 214, 0.22), 0 0 20px rgba(63, 81, 214, 0.16);
+  --shadow-glow: 0 0 0 3px rgba(63, 81, 214, 0.28);
   --bg-accent-1: rgba(63, 81, 214, 0.09);
   --bg-accent-2: rgba(66, 184, 131, 0.08);
   --navbar-bg: rgba(255, 255, 255, 0.92);
@@ -118,7 +118,7 @@ body[data-theme='light'] {
   --logout-color: #d35370;
   --logout-hover-color: #b43f5b;
   --logout-hover-bg: rgba(213, 83, 112, 0.15);
-  --auth-card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(244, 249, 255, 0.95));
+  --auth-card-bg: var(--surface-solid);
   --spinner-track: rgba(28, 43, 69, 0.14);
   --modal-overlay-bg: rgba(18, 35, 62, 0.3);
 }
@@ -178,8 +178,6 @@ a {
   background: var(--surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
 }
 
@@ -358,9 +356,7 @@ body select optgroup {
   border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 16px;
-  margin-bottom: 14px;
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow);
+  margin-bottom: 14px;box-shadow: var(--shadow);
 }
 
 .card:hover {

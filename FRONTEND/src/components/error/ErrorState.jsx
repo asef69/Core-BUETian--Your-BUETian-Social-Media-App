@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiAlertCircle, FiRefreshCw, FiCheck, FiX } from 'react-icons/fi';
 import '../../styles/ErrorState.css';
 
 /**
@@ -64,7 +64,7 @@ export const ValidationErrorState = ({ errors = [], onDismiss = null }) => (
       </div>
       <h4>Please fix the following errors:</h4>
       {onDismiss && (
-        <button onClick={onDismiss} className="validation-error-dismiss">×</button>
+        <button onClick={onDismiss} className="validation-error-dismiss" aria-label="Dismiss"><FiX aria-hidden="true" /></button>
       )}
     </div>
     <ul className="validation-error-list">
@@ -118,7 +118,7 @@ export const InlineErrorMessage = ({ message = 'An error occurred', onDismiss = 
     <FiAlertCircle size={20} />
     <span>{message}</span>
     {onDismiss && (
-      <button onClick={onDismiss} className="error-message-dismiss">×</button>
+      <button onClick={onDismiss} className="error-message-dismiss" aria-label="Dismiss"><FiX aria-hidden="true" /></button>
     )}
   </div>
 );
@@ -128,10 +128,10 @@ export const InlineErrorMessage = ({ message = 'An error occurred', onDismiss = 
  */
 export const InlineSuccessMessage = ({ message = 'Success!', onDismiss = null }) => (
   <div className="success-message-inline">
-    <span>✓</span>
+    <FiCheck aria-hidden="true" />
     <span>{message}</span>
     {onDismiss && (
-      <button onClick={onDismiss} className="error-message-dismiss">×</button>
+      <button onClick={onDismiss} className="error-message-dismiss" aria-label="Dismiss"><FiX aria-hidden="true" /></button>
     )}
   </div>
 );
@@ -144,7 +144,7 @@ export const InlineWarningMessage = ({ message = 'Warning!', onDismiss = null })
     <FiAlertCircle size={20} />
     <span>{message}</span>
     {onDismiss && (
-      <button onClick={onDismiss} className="error-message-dismiss">×</button>
+      <button onClick={onDismiss} className="error-message-dismiss" aria-label="Dismiss"><FiX aria-hidden="true" /></button>
     )}
   </div>
 );

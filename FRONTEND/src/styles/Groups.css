@@ -98,11 +98,16 @@
   object-fit: cover;
 }
 
-.group-cover-fallback.v0 { background: linear-gradient(135deg, #2a3499, #5b6cf0); }
-.group-cover-fallback.v1 { background: linear-gradient(135deg, #0f766e, #3f51d6); }
-.group-cover-fallback.v2 { background: linear-gradient(135deg, #334155, #4f61e6); }
-.group-cover-fallback.v3 { background: linear-gradient(135deg, #b45309, #be185d); }
-.group-cover-fallback.v4 { background: linear-gradient(135deg, #047857, #0e7490); }
+.group-cover-fallback {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.group-cover-fallback.v0 { background-color: #2a3499; }
+.group-cover-fallback.v1 { background-color: #0f6b63; }
+.group-cover-fallback.v2 { background-color: #3b4560; }
+.group-cover-fallback.v3 { background-color: #8f4a14; }
+.group-cover-fallback.v4 { background-color: #0b6a4d; }
 
 /* ---------- Group card ---------- */
 
@@ -522,8 +527,6 @@
   color: var(--muted-color);
   font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .side-card .text-muted {

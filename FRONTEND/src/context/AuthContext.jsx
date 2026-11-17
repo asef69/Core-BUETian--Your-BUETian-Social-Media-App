@@ -44,7 +44,6 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await authAPI.login({ email, password });
-      console.log('📥 Login response:', response.data);
       
       
       const { tokens, user: userData } = response.data;
@@ -53,10 +52,6 @@ export const AuthProvider = ({ children }) => {
      
       localStorage.setItem('accessToken', access);
       localStorage.setItem('refreshToken', refresh);
-      
-      console.log('✅ Tokens saved to localStorage');
-      console.log('Access token:', access ? access.substring(0, 20) + '...' : 'UNDEFINED');
-      console.log('Refresh token:', refresh ? refresh.substring(0, 20) + '...' : 'UNDEFINED');
       
       
       setUser({

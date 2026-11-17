@@ -1,13 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { FaComments, FaUsers, FaStore, FaTint } from 'react-icons/fa';
 import '../../styles/Auth.css';
 
 const FEATURES = [
-  [FaComments, 'Real-time chat', 'Message batchmates and seniors instantly.'],
-  [FaUsers, 'Groups and forums', 'Your batch, hall and clubs in one place.'],
-  [FaStore, 'Campus marketplace', 'Buy and sell books, gear and hostel items.'],
-  [FaTint, 'Blood and tuition boards', 'Find donors and tutors within the community.'],
+  ['Real-time chat', 'with batchmates and seniors'],
+  ['Groups and forums', 'for your batch, hall and clubs'],
+  ['A campus marketplace', 'for books, gear and hostel items'],
+  ['Blood and tuition boards', 'to find donors and tutors'],
 ];
 
 /** Shared frame for the login and registration screens. */
@@ -23,14 +22,10 @@ const AuthLayout = ({ title, subtitle, children, wide = false }) => (
         <h2>Where all BUETians align.</h2>
         <p>One home for everything that happens around campus.</p>
         <ul>
-          {FEATURES.map(([Icon, name, text]) => (
+          {FEATURES.map(([name, text]) => (
             <li key={name}>
-              <span className="auth-feature-icon" aria-hidden="true">
-                <Icon />
-              </span>
               <span>
-                <strong>{name}</strong>
-                <span>{text}</span>
+                <strong>{name}</strong> {text}
               </span>
             </li>
           ))}

@@ -32,10 +32,6 @@ export const NotFound = () => {
             <FiArrowLeft /> Go Back
           </button>
         </div>
-
-        <div className="error-page-illustration">
-          <div className="illustration-404">?</div>
-        </div>
       </div>
     </div>
   );
@@ -70,10 +66,6 @@ export const ServerError = () => {
           >
             <FiHome /> Go to Home
           </button>
-        </div>
-
-        <div className="error-page-illustration">
-          <div className="illustration-error">⚠️</div>
         </div>
       </div>
     </div>

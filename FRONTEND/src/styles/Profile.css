@@ -20,9 +20,9 @@
 /* A designed banner: the API has no cover image, so this is generated from the brand palette. */
 .profile-cover {
   height: 180px;
-  background:
-    radial-gradient(120% 140% at 85% -20%, rgba(139, 155, 255, 0.55), transparent 55%),
-    linear-gradient(135deg, #2a3499 0%, #3f51d6 55%, #5b6cf0 100%);
+  background-color: #232c78;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .profile-info {

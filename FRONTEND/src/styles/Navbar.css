@@ -6,10 +6,8 @@
   z-index: 120;
   border-radius: 18px;
   border: 1px solid var(--border-color);
-  background: var(--navbar-bg);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -48,8 +46,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: var(--primary-color);
-  color: #fff;
+  background: #ffb347;
+  color: #0d1445;
   font-family: 'Sora', 'Segoe UI', sans-serif;
   font-size: 0.9rem;
   font-weight: 800;
@@ -76,8 +74,7 @@
 .navbar-brand-copy span {
   font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--muted-color);
   margin-top: 2px;
 }
@@ -144,7 +141,7 @@
     transform var(--transition-fast),
     box-shadow var(--transition-fast),
     border-color var(--transition-fast);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+  background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
   font-size: 0.74rem;
@@ -156,9 +153,8 @@
 .nav-link:hover,
 .nav-link.active {
   color: var(--brand-color);
-  background: linear-gradient(180deg, rgba(63, 81, 214, 0.15), rgba(63, 81, 214, 0.08));
+  background: rgba(63, 81, 214, 0.14);
   border-color: rgba(63, 81, 214, 0.36);
-  box-shadow: 0 10px 24px rgba(63, 81, 214, 0.12);
 }
 
 .nav-link:focus-visible,
@@ -209,14 +205,13 @@
   color: var(--logout-color);
   min-width: 92px;
   padding-inline: 14px;
-  background: linear-gradient(145deg, rgba(255, 93, 118, 0.16), rgba(255, 93, 118, 0.08));
+  background: rgba(255, 93, 118, 0.12);
   border-color: rgba(255, 93, 118, 0.28);
-  box-shadow: 0 10px 24px rgba(255, 93, 118, 0.08);
 }
 
 .logout-btn:hover {
   color: var(--logout-hover-color);
-  background: linear-gradient(145deg, rgba(255, 93, 118, 0.25), rgba(255, 93, 118, 0.14));
+  background: rgba(255, 93, 118, 0.2);
   border-color: rgba(255, 93, 118, 0.44);
 }
 
@@ -230,12 +225,8 @@
 
 body[data-theme='light'] .navbar {
   border-color: rgba(63, 81, 214, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 255, 0.92));
-  box-shadow: 0 14px 34px rgba(31, 43, 64, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-
-body[data-theme='light'] .navbar::before {
-  background: linear-gradient(90deg, rgba(63, 81, 214, 0.05), transparent 30%, transparent 70%, rgba(66, 184, 131, 0.05));
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
 }
 
 body[data-theme='light'] .navbar-brand {

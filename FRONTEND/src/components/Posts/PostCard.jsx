@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { postAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
-import { FaHeart, FaRegHeart, FaRegComment, FaEllipsisH, FaShareAlt, FaGlobeAmericas, FaUserFriends, FaLock } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaRegComment, FaEllipsisH, FaShareAlt, FaTimes, FaGlobeAmericas, FaUserFriends, FaLock } from 'react-icons/fa';
 import Avatar from '../common/Avatar';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
@@ -479,11 +479,12 @@ const PostCard = ({ post, onLike, onDelete, readOnly = false }) => {
                       <button
                         type="button"
                         className="post-edit-media-remove"
+                        aria-label="Remove photo"
                         onClick={() => {
                           setEditMediaToDelete((prev) => [...prev, media.url]);
                         }}
                       >
-                        ✕
+                        <FaTimes aria-hidden="true" />
                       </button>
                     </div>
                   ))}
@@ -522,8 +523,9 @@ const PostCard = ({ post, onLike, onDelete, readOnly = false }) => {
                           type="button"
                           onClick={() => setEditMediaFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
                           className="post-edit-preview-remove"
+                          aria-label="Remove file"
                         >
-                          ×
+                          <FaTimes aria-hidden="true" />
                         </button>
                       </div>
                     ))}

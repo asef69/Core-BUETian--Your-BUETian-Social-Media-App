@@ -24,7 +24,6 @@
   justify-content: center;
   margin-bottom: var(--space-lg);
   color: var(--danger-color);
-  animation: pulse 2s infinite;
 }
 
 .error-boundary-content h1 {

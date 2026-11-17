@@ -10,15 +10,13 @@
   place-items: center;
   padding: 20px;
   background: rgba(3, 8, 18, 0.58);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .confirm-dialog-card {
   width: min(440px, 94vw);
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: linear-gradient(170deg, rgba(17, 25, 41, 0.96), rgba(11, 18, 32, 0.96));
+  background: var(--surface-solid);
   box-shadow: 0 24px 60px rgba(2, 6, 18, 0.45);
   color: var(--light-color);
   padding: 20px;
@@ -137,7 +135,7 @@ body[data-theme='light'] .confirm-dialog-overlay {
 }
 
 body[data-theme='light'] .confirm-dialog-card {
-  background: linear-gradient(170deg, #ffffff, #f8fbff);
+  background: var(--surface-solid);
   border-color: rgba(18, 26, 41, 0.08);
   box-shadow: 0 22px 54px rgba(16, 24, 40, 0.18);
 }
