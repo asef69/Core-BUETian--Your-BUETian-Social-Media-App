@@ -7,6 +7,7 @@ import moment from 'moment';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
+import { toAbsoluteMediaUrl, MEDIA_BASE_URL } from '../../config';
 
 const PostCard = ({ post, onLike, readOnly = false }) => {
   const { user } = useAuth();
@@ -153,26 +154,18 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
     }
   };
 
-  const MEDIA_BASE_URL = 'http://localhost:8000';
+  const toAbsoluteUrl = toAbsoluteMediaUrl;
 
-  const toAbsoluteUrl = (url) => {
-    if (!url) return url;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (url.startsWith('//')) return `${window.location.protocol}${url}`;
-    const normalized = url.startsWith('/') ? url : `/${url}`;
-    return `${MEDIA_BASE_URL}${normalized}`;
-  };
-
+  // Convert a displayed URL back to the value stored in the database.
+  // Only files served by our own API (legacy /media/... uploads) are stored as
+  // paths; external URLs such as Cloudinary must be kept exactly as they are.
   const toMediaPath = (url) => {
     if (!url) return url;
-    try {
-      const parsed = new URL(url, MEDIA_BASE_URL);
-      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    } catch {
-      return url.startsWith('http://') || url.startsWith('https://')
-        ? url.replace(MEDIA_BASE_URL, '')
-        : (url.startsWith('/') ? url : `/${url}`);
+    if (url.startsWith(MEDIA_BASE_URL)) {
+      return url.slice(MEDIA_BASE_URL.length) || '/';
     }
+    if (/^(https?:)?\/\//i.test(url)) return url;
+    return url.startsWith('/') ? url : `/${url}`;
   };
 
   const inferMediaType = (url, fallbackType) => {
@@ -358,7 +351,7 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
   }, [post.media_urls, post.media_urls_list, post.media_url, post.image, post.video]);
   const visibleMediaItems = displayMediaItems.filter((media) => !editMediaToDelete.includes(media.url));
   const authorName = post.user_name || post.author_name || post.owner_name || post.created_by_name || 'Unknown User';
-  const authorPicture = toAbsoluteUrl(post.profile_picture || post.author_picture || post.owner_picture) || '/default-avatar.png';
+  const authorPicture = toAbsoluteUrl(post.profile_picture || post.author_picture || post.owner_picture) || '/default-avatar.svg';
   const canOpenProfile = Boolean(post.user_id);
 
   return (
@@ -370,7 +363,7 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
               src={authorPicture}
               alt={authorName}
               className="avatar"
-              onError={(e) => { e.target.src = '/default-avatar.png'; }}
+              onError={(e) => { e.target.src = '/default-avatar.svg'; }}
             />
             <div className="author-info">
               <h4>{authorName}</h4>
@@ -385,7 +378,7 @@ const PostCard = ({ post, onLike, readOnly = false }) => {
               src={authorPicture}
               alt={authorName}
               className="avatar"
-              onError={(e) => { e.target.src = '/default-avatar.png'; }}
+              onError={(e) => { e.target.src = '/default-avatar.svg'; }}
             />
             <div className="author-info">
               <h4>{authorName}</h4>

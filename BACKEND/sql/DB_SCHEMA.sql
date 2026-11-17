@@ -112,7 +112,7 @@ CREATE TABLE marketplace_products(
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-ALTER TABLE marketplace_products ADD COLUMN buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
 
 --table for marketplace product images

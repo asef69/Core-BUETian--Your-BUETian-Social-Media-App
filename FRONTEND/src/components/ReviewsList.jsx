@@ -88,7 +88,7 @@ const ReviewsList = ({ sellerId, sellerName, productId = null, refreshToken = 0 
                 <div className="review-header">
                   <div className="reviewer-info">
                     <img
-                      src={review.buyer_picture || '/default-avatar.png'}
+                      src={review.buyer_picture || '/default-avatar.svg'}
                       alt={review.buyer_name}
                       className="reviewer-avatar"
                     />

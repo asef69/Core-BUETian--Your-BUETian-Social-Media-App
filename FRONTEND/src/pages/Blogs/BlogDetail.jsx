@@ -251,7 +251,7 @@ const BlogDetail = () => {
       <div key={commentId} className="comment-thread" style={{ marginLeft: depth > 0 ? `${Math.min(depth, 4) * 18}px` : 0 }}>
         <div className="comment">
           <img
-            src={comment.user_picture || '/default-avatar.png'}
+            src={comment.user_picture || '/default-avatar.svg'}
             alt={comment.user_name || 'User'}
             className="comment-avatar"
           />

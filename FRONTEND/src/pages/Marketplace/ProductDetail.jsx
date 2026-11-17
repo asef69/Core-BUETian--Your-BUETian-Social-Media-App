@@ -223,7 +223,7 @@ const ProductDetail = () => {
             <div className="product-images">
               <div className="main-image">
                 <img
-                  src={product.images?.[selectedImage] || '/default-product.png'}
+                  src={product.images?.[selectedImage] || '/default-product.svg'}
                   alt={product.title}
                 />
               </div>

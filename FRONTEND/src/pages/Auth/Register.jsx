@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/Auth.css';
 
-const DEFAULT_PROFILE_PICTURE = '/media/profile_pictures/default_pfp.jpg';
+const DEFAULT_PROFILE_PICTURE = '/default-avatar.svg';
 
 const Register = () => {
   const navigate = useNavigate();

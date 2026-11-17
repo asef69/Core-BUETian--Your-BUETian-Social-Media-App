@@ -263,7 +263,7 @@ const Groups = () => {
                           className="group-card"
                         >
                           <img
-                            src={group.cover_image || "/default-group.png"}
+                            src={group.cover_image || "/default-group.svg"}
                             alt={group.name}
                             className="group-cover"
                           />
@@ -300,7 +300,7 @@ const Groups = () => {
                       return (
                         <div key={groupId} className="group-card">
                           <img
-                            src={group.cover_image || "/default-group.png"}
+                            src={group.cover_image || "/default-group.svg"}
                             alt={group.name}
                             className="group-cover"
                           />

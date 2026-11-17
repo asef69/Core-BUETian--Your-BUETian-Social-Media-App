@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { FaUsers, FaSignOutAlt, FaImage, FaVideo, FaTimes, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
+import { toAbsoluteMediaUrl } from '../../config';
 
 const GroupDetail = () => {
   const { groupId } = useParams();
@@ -46,15 +47,7 @@ const GroupDetail = () => {
     loadGroupData();
   }, [groupId]);
 
-  const MEDIA_BASE_URL = 'http://localhost:8000';
-
-  const toAbsoluteUrl = (url) => {
-    if (!url) return url;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (url.startsWith('//')) return `${window.location.protocol}${url}`;
-    const normalized = url.startsWith('/') ? url : `/${url}`;
-    return `${MEDIA_BASE_URL}${normalized}`;
-  };
+  const toAbsoluteUrl = toAbsoluteMediaUrl;
 
   const setFallbackOnce = (event, fallbackSrc) => {
     if (event.currentTarget.dataset.fallbackApplied) return;
@@ -548,10 +541,10 @@ const GroupDetail = () => {
             <div className="group-header">
               <div className="group-cover-wrapper">
                 <img
-                  src={toAbsoluteUrl(group.cover_image) || '/default-group.png'}
+                  src={toAbsoluteUrl(group.cover_image) || '/default-group.svg'}
                   alt={group.name}
                   className="group-cover-large"
-                  onError={(e) => setFallbackOnce(e, '/default-group.png')}
+                  onError={(e) => setFallbackOnce(e, '/default-group.svg')}
                 />
                 <div className="group-cover-overlay" aria-hidden="true" />
               </div>
@@ -724,10 +717,10 @@ const GroupDetail = () => {
                     {pendingMembers.map((member) => (
                       <div key={member.user_id} className="member-item pending">
                         <img
-                          src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                          src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
                           alt={member.name || 'User'}
                           className="avatar"
-                          onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                          onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                         />
                         <div className="member-info">
                           <h4>{member.name}</h4>
@@ -761,10 +754,10 @@ const GroupDetail = () => {
                       invitedMembers.map((member) => (
                         <div key={member.user_id} className="member-item pending">
                           <img
-                            src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                            src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
                             alt={member.name || 'User'}
                             className="avatar"
-                            onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                            onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                           />
                           <div className="member-info">
                             <h4>{member.name}</h4>
@@ -793,10 +786,10 @@ const GroupDetail = () => {
                       pagedFollowers.map((person) => (
                         <div key={person.user_id} className="member-item pending">
                           <img
-                            src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.png'}
+                            src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.svg'}
                             alt={person.name || 'User'}
                             className="avatar"
-                            onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                            onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                           />
                           <div className="member-info">
                             <h4>{person.name}</h4>
@@ -851,10 +844,10 @@ const GroupDetail = () => {
                     {pagedSearchCandidates.map((person) => (
                       <div key={person.user_id} className="member-item pending">
                         <img
-                          src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.png'}
+                          src={toAbsoluteUrl(person.profile_picture) || '/default-avatar.svg'}
                           alt={person.name || 'User'}
                           className="avatar"
-                          onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                          onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                         />
                         <div className="member-info">
                           <h4>{person.name}</h4>
@@ -896,10 +889,10 @@ const GroupDetail = () => {
                   {members.map((member) => (
                     <div key={member.user_id} className="member-item">
                       <img
-                        src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.png'}
+                        src={toAbsoluteUrl(member.profile_picture) || '/default-avatar.svg'}
                         alt={member.name || 'User'}
                         className="avatar"
-                        onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                        onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                       />
                       <div className="member-info">
                         <h4>{member.name}</h4>

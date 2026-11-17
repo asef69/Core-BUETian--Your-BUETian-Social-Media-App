@@ -417,8 +417,11 @@ class PostDetailView(APIView):
             return media_url
         from urllib.parse import urlparse
         parsed = urlparse(str(media_url))
-        if parsed.scheme or parsed.netloc:
-            return parsed.path or str(media_url)
+        # Legacy local uploads are stored as "/media/..." paths, so strip the
+        # host from URLs pointing at them. Anything else (e.g. Cloudinary's
+        # https://res.cloudinary.com/...) must be stored exactly as given.
+        if (parsed.scheme or parsed.netloc) and parsed.path.startswith('/media/'):
+            return parsed.path
         return str(media_url)
 
     @staticmethod

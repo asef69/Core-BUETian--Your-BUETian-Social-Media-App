@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import api from '../../services/api';
 import { chatAPI, userAPI } from '../../services/apiService';
+import { API_ORIGIN, WS_BASE_URL, REALTIME_ENABLED } from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import { toast } from 'react-toastify';
@@ -62,6 +62,40 @@ const Chat = () => {
       }
       wsRef.current = null;
     };
+  }, [user?.id]);
+
+  // Hosts without WebSocket support (e.g. Vercel): poll the REST API instead.
+  useEffect(() => {
+    if (REALTIME_ENABLED) return undefined;
+
+    const intervalId = setInterval(async () => {
+      loadConversations();
+
+      const activeUserId = Number(selectedUserRef.current);
+      if (!activeUserId) return;
+
+      try {
+        const response = await chatAPI.getMessages(activeUserId);
+        if (Number(selectedUserRef.current) !== activeUserId) return;
+
+        const rawMessages = response.data.results || response.data || [];
+        const sanitizedMessages = rawMessages.filter(
+          (message) => (message.content && String(message.content).trim()) || message.media_url,
+        );
+        messagesCacheRef.current[activeUserId] = sanitizedMessages;
+        setMessages((prev) =>
+          prev.length === sanitizedMessages.length &&
+          prev[prev.length - 1]?.id === sanitizedMessages[sanitizedMessages.length - 1]?.id
+            ? prev
+            : sanitizedMessages,
+        );
+      } catch (error) {
+        // Ignore transient polling errors.
+      }
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const appendMessageIfNew = (message) => {
@@ -194,6 +228,8 @@ const Chat = () => {
   };
 
   const connectWebSocket = () => {
+    if (!REALTIME_ENABLED) return null;
+
     const token = localStorage.getItem('accessToken');
     if (!token) return null;
 
@@ -202,10 +238,7 @@ const Chat = () => {
       existingSocket.close();
     }
 
-    const wsBase = API_ORIGIN.startsWith('https:')
-      ? API_ORIGIN.replace('https:', 'wss:')
-      : API_ORIGIN.replace('http:', 'ws:');
-    const wsUrl = `${wsBase}/ws/chat/?token=${token}`;
+    const wsUrl = `${WS_BASE_URL}/ws/chat/?token=${encodeURIComponent(token)}`;
     const websocket = new WebSocket(wsUrl);
     wsRef.current = websocket;
 
@@ -388,14 +421,6 @@ const Chat = () => {
     }
   };
 
-  const API_ORIGIN = (() => {
-    try {
-      return new URL(api.defaults.baseURL).origin;
-    } catch (error) {
-      return window.location.origin;
-    }
-  })();
-
   useEffect(() => {
     setIsPeerTyping(false);
     stopTyping();
@@ -527,7 +552,7 @@ const Chat = () => {
                       onClick={() => loadMessages(conv.id)}
                     >
                       <img
-                        src={resolveMediaUrl(conv.profile_picture) || '/default-avatar.png'}
+                        src={resolveMediaUrl(conv.profile_picture) || '/default-avatar.svg'}
                         alt={conv.name}
                         className="avatar-small"
                       />
@@ -551,7 +576,7 @@ const Chat = () => {
                     onClick={() => loadMessages(follower.id)}
                   >
                     <img
-                      src={resolveMediaUrl(follower.profile_picture) || '/default-avatar.png'}
+                      src={resolveMediaUrl(follower.profile_picture) || '/default-avatar.svg'}
                       alt={follower.name}
                       className="avatar-small"
                     />

@@ -444,20 +444,28 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Create `BACKEND/.env`:
+Create `BACKEND/.env` (see [`BACKEND/.env.example`](BACKEND/.env.example) for every option):
 
 ```env
-DB_NAME=your_database_name
+DEBUG=True
+DB_NAME=postgres
 DB_USER=your_database_user
 DB_PASSWORD=your_database_password
 DB_HOST=localhost
 DB_PORT=5432
+
+# Optional locally (files are saved to BACKEND/media); required in production
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 ```
 
-Run backend:
+The app talks to PostgreSQL through hand-written SQL, so there are no Django
+migrations. Initialise a fresh database once (tables, functions, procedures,
+triggers, views and indexes), then run the backend:
 
 ```powershell
-python manage.py migrate
+python scripts/setup_database.py      # add --dry-run to test without committing
 python manage.py runserver 8000
 ```
 
@@ -481,6 +489,47 @@ npm run dev
 python run_fullstack.py
 ```
 
+## Deployment (Vercel + Supabase + Cloudinary)
+
+| Concern | Service |
+| --- | --- |
+| Hosting | Vercel - two projects from this repo (`BACKEND` and `FRONTEND` root directories) |
+| Database | Supabase PostgreSQL |
+| Images / videos | Cloudinary |
+
+**Supabase.** Use the *connection pooler* credentials (Project Settings ->
+Database -> Connection pooling, transaction mode, port `6543`, user
+`postgres.<project-ref>`). The direct `db.<ref>.supabase.co` host is IPv6-only
+and is not reachable from Vercel. Initialise the schema once with
+`python scripts/setup_database.py`.
+
+**Backend project** (root directory `BACKEND`) - environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `SECRET_KEY` | long random string |
+| `DEBUG` | `False` |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Supabase pooler values |
+| `DB_SSLMODE` | `require` |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | from the Cloudinary dashboard |
+| `CORS_ALLOWED_ORIGINS` | the frontend URL, e.g. `https://my-frontend.vercel.app` |
+
+**Frontend project** (root directory `FRONTEND`, framework Vite) - environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_URL` | `https://<backend-project>.vercel.app/api` |
+| `VITE_ENABLE_WEBSOCKET` | `false` |
+
+Known limitations on Vercel:
+
+- Serverless functions cannot hold WebSocket connections, so with
+  `VITE_ENABLE_WEBSOCKET=false` chat uses the REST endpoints and polls every 5 s
+  (no live typing indicator). Real-time chat needs a host that supports
+  WebSockets (run `daphne core_buetians.asgi:application` plus `REDIS_URL`).
+- Vercel limits a request body to about 4.5 MB, so uploads are effectively
+  capped at that size regardless of the 5 MB / 50 MB limits in the app.
+
 ## Runtime Endpoints
 
 - Frontend: `http://localhost:3000`
@@ -502,7 +551,6 @@ This project is structured to be presentation-ready for professional audiences:
 ## Notes
 
 - Runtime database target is PostgreSQL through environment configuration.
-- `BACKEND/db.sqlite3` exists in the repository, but deployment-grade usage should remain PostgreSQL.
 - CORS and proxy patterns are configured for local full-stack development.
 
 ## License

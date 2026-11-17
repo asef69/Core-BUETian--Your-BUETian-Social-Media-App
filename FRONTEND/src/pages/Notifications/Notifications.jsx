@@ -278,7 +278,7 @@ const Notifications = () => {
                       <div key={invite.group_id} className="pending-request-item">
                         <Link to={`/groups/${invite.group_id}/nonmember`} className="request-link">
                           <img
-                            src={invite.group_cover || '/default-group.png'}
+                            src={invite.group_cover || '/default-group.svg'}
                             alt={invite.group_name}
                             className="request-avatar"
                           />
@@ -328,7 +328,7 @@ const Notifications = () => {
                     >
                       <Link to={getNotificationLink(notif)} className="notification-link">
                         <img
-                          src={notif.actor_profile_picture || '/default-avatar.png'}
+                          src={notif.actor_profile_picture || '/default-avatar.svg'}
                           alt={notif.actor_name}
                           className="notification-avatar"
                         />

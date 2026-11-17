@@ -104,7 +104,7 @@ LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
 -- Mark a product as sold (seller only)
-DROP FUNCTION mark_product_sold;
+DROP FUNCTION IF EXISTS mark_product_sold;
 CREATE OR REPLACE FUNCTION mark_product_sold(
         p_product_id INTEGER,
         p_seller_id INTEGER,
@@ -122,7 +122,7 @@ SELECT FOUND;
 END;
 $$ LANGUAGE plpgsql;
 -- Reserve a product (set status to reserved)
-DROP FUNCTION reserve_product;
+DROP FUNCTION IF EXISTS reserve_product;
 CREATE OR REPLACE FUNCTION reserve_product(
         p_product_id INTEGER,
         p_user_id INTEGER,
@@ -204,7 +204,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 --MARKETPLACE PRODUCTS
-DROP FUNCTION get_product_details;
+DROP FUNCTION IF EXISTS get_product_details;
 CREATE OR REPLACE FUNCTION get_product_details(p_product_id INTEGER)
 RETURNS TABLE(
     product_id INTEGER,

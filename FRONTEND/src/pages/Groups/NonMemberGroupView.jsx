@@ -5,18 +5,11 @@ import Navbar from '../../components/Navbar';
 import PostCard from '../../components/Posts/PostCard';
 import { toast } from 'react-toastify';
 import { FaArrowLeft, FaUsers, FaLock, FaGlobe, FaUserPlus, FaPaperPlane, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { toAbsoluteMediaUrl } from '../../config';
 import '../../styles/Groups.css';
 
 
-const MEDIA_BASE_URL = 'http://localhost:8000';
-
-const toAbsoluteUrl = (url) => {
-    if (!url) return url;
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (url.startsWith('//')) return `${window.location.protocol}${url}`;
-    const normalized = url.startsWith('/') ? url : `/${url}`;
-    return `${MEDIA_BASE_URL}${normalized}`;
-};
+const toAbsoluteUrl = toAbsoluteMediaUrl;
 
 const setFallbackOnce = (event, fallbackSrc) => {
     if (event.currentTarget.dataset.fallbackApplied) return;
@@ -80,7 +73,7 @@ const NonMemberGroupView = () => {
                             p.author_profile_picture ||
                             author.profile_picture ||
                             author.avatar ||
-                            '/default-avatar.png';
+                            '/default-avatar.svg';
 
                         return {
                             ...p,
@@ -183,10 +176,10 @@ const NonMemberGroupView = () => {
                     <div className="group-header">
                         <div className="group-cover-wrapper">
                             <img
-                                src={group.cover_image || '/default-group.png'}
+                                src={group.cover_image || '/default-group.svg'}
                                 alt={group.name}
                                 className="group-cover-large"
-                                onError={(e) => { e.target.src = '/default-group.png'; }}
+                                onError={(e) => { e.target.src = '/default-group.svg'; }}
                             />
                             <div className="group-cover-overlay" />
                         </div>
@@ -231,10 +224,10 @@ const NonMemberGroupView = () => {
                                 {members.map((m) => (
                                     <div key={m.user_id || m.id} className="member-item">
                                         <img
-                                            src={toAbsoluteUrl(m.profile_picture) || '/default-avatar.png'}
+                                            src={toAbsoluteUrl(m.profile_picture) || '/default-avatar.svg'}
                                             alt={m.name || 'User'}
                                             className="avatar"
-                                            onError={(e) => setFallbackOnce(e, '/default-avatar.png')}
+                                            onError={(e) => setFallbackOnce(e, '/default-avatar.svg')}
                                         />
                                         <div className="member-info">
                                             <h4>{m.name}</h4>
