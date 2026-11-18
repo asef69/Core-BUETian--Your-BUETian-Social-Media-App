@@ -127,6 +127,10 @@ journey
 - Media-ready design: structured media directories for upload domains
 - SQL asset organization: dedicated schema/functions/procedures/triggers folders
 - Frontend/backend decoupling: Vite client with proxy-based local integration
+- Security by default: input validation on every write, per-user rate limits, login lockout,
+  rotating/revocable refresh tokens, privacy checks on every read (see [Security](#security-and-abuse-protection))
+- Tested end to end: a 700+ check QA suite runs the real app against a throw-away PostgreSQL
+  (see [Testing](#testing))
 
 ## Database Workflows
 
@@ -376,7 +380,9 @@ erDiagram
 - JWT auth via `djangorestframework_simplejwt`
 - PostgreSQL driver via `psycopg2-binary`
 - API documentation via `drf-yasg` (Swagger/ReDoc)
-- Redis channel layer support via `channels-redis`
+- Redis channel layer / shared rate-limit cache via `channels-redis` and `REDIS_URL`
+- Raw, parameterised SQL through `utils/database.py` (no ORM); shared validators in `utils/validators.py`
+  and `utils/params.py`, rate limits in `utils/throttles.py`
 
 ### Frontend Stack
 
@@ -399,8 +405,10 @@ CSB/
 │   ├── forums/               # Topic-focused forum domain
 │   ├── marketplace/          # Listings and marketplace domain
 │   ├── notification/         # Notification domain
-│   ├── sql/                  # DB schema, functions, triggers, procedures
-│   ├── utils/                # Shared auth/db/pagination/permission utilities
+│   ├── sql/                  # DB schema, functions, triggers, procedures (idempotent)
+│   ├── scripts/              # setup_database.py - applies / updates the SQL layer
+│   ├── utils/                # Shared auth/db/validation/throttle utilities
+│   ├── qa/                   # End-to-end security + feature + concurrency test suite
 │   └── media/                # Uploaded media by feature category
 ├── FRONTEND/
 │   ├── src/components/       # Reusable UI building blocks
@@ -424,7 +432,9 @@ CSB/
 - `/api/marketplace/`
 - `/api/forums/`
 - `/api/notifications/`
+- `/api/blogs/`
 - `/api/search/`
+- `/health/` (unauthenticated liveness probe)
 
 ## Local Development Setup
 
@@ -448,6 +458,7 @@ Create `BACKEND/.env` (see [`BACKEND/.env.example`](BACKEND/.env.example) for ev
 
 ```env
 DEBUG=True
+# SECRET_KEY is only optional while DEBUG=True; it is REQUIRED (the app refuses to start) when DEBUG is off
 DB_NAME=postgres
 DB_USER=your_database_user
 DB_PASSWORD=your_database_password
@@ -469,11 +480,14 @@ python scripts/setup_database.py      # add --dry-run to test without committing
 python manage.py runserver 8000
 ```
 
-Optional:
+`setup_database.py` is **idempotent**: tables are created only if missing and every
+function, procedure, trigger and view is dropped and recreated, so the same command is
+also how you **roll out SQL changes to an existing database without losing data**.
+Take a backup first and use `--dry-run` once to check that it applies cleanly.
 
-```powershell
-python manage.py createsuperuser
-```
+The Django admin (`/admin/`) is disabled unless `ADMIN_ENABLED=true`; the interactive API docs
+(`/swagger/`, `/redoc/`) are open in `DEBUG` mode and staff-only otherwise (`SWAGGER_PUBLIC=true`
+opens them).
 
 ### 2. Frontend Bootstrapping
 
@@ -500,19 +514,33 @@ python run_fullstack.py
 **Supabase.** Use the *connection pooler* credentials (Project Settings ->
 Database -> Connection pooling, transaction mode, port `6543`, user
 `postgres.<project-ref>`). The direct `db.<ref>.supabase.co` host is IPv6-only
-and is not reachable from Vercel. Initialise the schema once with
+and is not reachable from Vercel. Initialise the schema with
 `python scripts/setup_database.py`.
+
+**Updating an existing Supabase database** (after pulling new SQL): the script is safe to re-run and
+keeps your data - it only creates missing tables/columns and re-creates functions, procedures,
+triggers and views.
+
+```powershell
+cd BACKEND
+# BACKEND/.env must contain the Supabase pooler values (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_SSLMODE=require)
+python scripts/setup_database.py --dry-run     # applies everything, then rolls back
+python scripts/setup_database.py               # applies for real (one transaction)
+```
 
 **Backend project** (root directory `BACKEND`) - environment variables:
 
 | Variable | Value |
 | --- | --- |
-| `SECRET_KEY` | long random string |
+| `SECRET_KEY` | long random string - **required**; the app refuses to start without it when `DEBUG` is `False` |
 | `DEBUG` | `False` |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Supabase pooler values |
 | `DB_SSLMODE` | `require` |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | from the Cloudinary dashboard |
-| `CORS_ALLOWED_ORIGINS` | the frontend URL, e.g. `https://my-frontend.vercel.app` |
+| `CORS_ALLOWED_ORIGINS` | the frontend URL, e.g. `https://my-frontend.vercel.app` (unset = only `*.vercel.app` / `*.onrender.com`) |
+| `ALLOWED_HOSTS` | optional - add custom domains (default: localhost, `.vercel.app`, `.onrender.com`) |
+| `REDIS_URL` | optional - shares rate-limit / lockout counters between instances |
+| `THROTTLE_*`, `LOGIN_MAX_FAILURES`, `ALLOWED_MEDIA_HOSTS`, `ADMIN_ENABLED`, `SWAGGER_PUBLIC` | optional tuning, see [`BACKEND/.env.example`](BACKEND/.env.example) |
 
 **Frontend project** (root directory `FRONTEND`, framework Vite) - environment variables:
 
@@ -544,18 +572,50 @@ database stays on Supabase and media on Cloudinary.
    `VITE_API_URL=https://<your-service>.onrender.com/api` and
    `VITE_ENABLE_WEBSOCKET=true`, then redeploy the frontend.
 
-Notes: the free Render plan sleeps after ~15 min idle (the first request, and
+Render checks `/health/` to decide whether the service is up. Notes: the free Render plan sleeps after ~15 min idle (the first request, and
 the socket, take about a minute to wake) and drops connections when it
 restarts; use a paid plan for always-on chat. Run a single instance, or set
 `REDIS_URL` so several instances can share chat events. Do not also keep the
 Vercel API as the frontend's target - point the frontend at one backend only.
 
+## Security and Abuse Protection
+
+| Area | What is in place |
+| --- | --- |
+| Authentication | JWT bearer tokens; refresh tokens **rotate** on every refresh and are **revoked** on logout (`POST /api/users/logout/`); deactivated users are locked out of HTTP, refresh and live WebSockets |
+| Brute force | 20 login/register requests per minute per IP, plus a **per-account lockout** (8 wrong passwords -> 15 minutes) |
+| Rate limits | Per-user limits on every write endpoint (posts 30/min, comments 60/min, chat 120/min, contact-seller 10/min ...). Reads are never limited. Override with `THROTTLE_<SCOPE>=<n>/min`; set `REDIS_URL` so counters are shared between processes |
+| Privacy | Private posts, followers-only posts, group posts, blog drafts and private-group member lists are enforced on every endpoint; other users' emails are never returned |
+| Input | One validation layer (`utils/validators.py`): types, lengths, enums, NUL bytes, integer ranges, media URLs limited to your own storage (`ALLOWED_MEDIA_HOSTS`, default Cloudinary) |
+| Uploads | Extension **and** file-signature checks, size limits (4 MB on Vercel), max 10 files per post, nothing is silently dropped |
+| Injection | Every query is parameterised; `LIKE` wildcards are escaped; hashtags never reach the regex engine |
+| Transport | HSTS, secure cookies, `nosniff`, narrow CORS (set `CORS_ALLOWED_ORIGINS` in production), `ALLOWED_HOSTS` defaults to localhost + `*.vercel.app` + `*.onrender.com` |
+| Errors | Clean JSON errors; raw database messages and stack traces are never sent to clients |
+
+Known limitations: the JWT is kept in `localStorage` (httpOnly cookies would need cross-site cookies
+between a Vercel frontend and a Render API, which browsers block), and account lockout can be used to
+temporarily lock out a known email. See [`BACKEND/qa/README.md`](BACKEND/qa/README.md).
+
+## Testing
+
+The repository ships an end-to-end QA suite in [`BACKEND/qa`](BACKEND/qa). It starts the **real Django app**
+against a **throw-away embedded PostgreSQL** built from `BACKEND/sql` (it never touches Supabase) and
+checks JWT attacks, access control on every module, ~2,600 fuzzed requests, every upload endpoint,
+every feature, the frontend-to-backend contract, concurrency, rate limits and WebSockets.
+
+```powershell
+cd BACKEND
+pip install -r qa/requirements-qa.txt     # Python 3.10-3.12
+python qa/run_all.py                       # everything (~10 min); or: python qa/run_all.py auth regress
+```
+
 ## Runtime Endpoints
 
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/swagger/`
-- ReDoc: `http://localhost:8000/redoc/`
+- Swagger: `http://localhost:8000/swagger/` (DEBUG only, staff-only in production)
+- ReDoc: `http://localhost:8000/redoc/` (DEBUG only, staff-only in production)
+- Health check: `http://localhost:8000/health/`
 - WebSocket chat: `ws://localhost:8000/ws/chat/`
 
 ## Industry-Ready Positioning
