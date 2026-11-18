@@ -1,0 +1,188 @@
+/* ==========================================================================
+   Share dialog: copy a link or send it in chat
+   Uses the global .modal-* shell (index.css) and design tokens.
+   ========================================================================== */
+
+.share-modal {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.share-section + .share-section {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.share-heading {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--dark-color);
+}
+
+.share-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-link-input,
+.share-message-input,
+.share-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--dark-color);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.share-link-input {
+  text-overflow: ellipsis;
+}
+
+.share-link-input:focus-visible,
+.share-message-input:focus-visible,
+.share-search input:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+.share-copy-btn {
+  flex: none;
+  min-width: 118px;
+}
+
+.share-note {
+  min-height: 18px;
+  margin: 6px 2px 0;
+  color: var(--danger-color);
+  font-size: var(--text-xs);
+}
+
+.share-native {
+  margin-top: 2px;
+}
+
+.share-message-input {
+  margin-bottom: 8px;
+}
+
+.share-search {
+  position: relative;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.share-search svg {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--muted-color);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.share-search input {
+  padding-left: 34px;
+}
+
+.share-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.share-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-radius: var(--radius-md);
+}
+
+.share-person:hover {
+  background: var(--nav-hover-bg);
+}
+
+.share-person .avatar {
+  flex: none;
+}
+
+.share-person-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-person-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dark-color);
+  font-size: var(--text-sm);
+}
+
+.share-person-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-color);
+  font-size: var(--text-xs);
+}
+
+.share-person .btn {
+  flex: none;
+  min-width: 78px;
+}
+
+.share-empty {
+  margin: 8px 0 4px;
+  color: var(--muted-color);
+  font-size: var(--text-sm);
+}
+
+.share-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.share-skel-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.share-skel-line {
+  flex: 1;
+  height: 12px;
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 420px) {
+  .share-link-row {
+    flex-direction: column;
+  }
+
+  .share-copy-btn {
+    width: 100%;
+  }
+}

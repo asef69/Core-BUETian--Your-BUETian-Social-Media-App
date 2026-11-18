@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { FaCheck, FaCheckDouble } from 'react-icons/fa';
 import { toAbsoluteMediaUrl } from '../../config';
 import { formatTime } from '../../utils/time';
@@ -8,6 +9,33 @@ export const isVideoUrl = (url) => {
   const clean = url.split('?')[0].toLowerCase();
   return ['.mp4', '.mov', '.avi', '.wmv', '.webm'].some((ext) => clean.endsWith(ext));
 };
+
+const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
+
+// Turns links into clickable text. Links to this site (e.g. a shared post) open inside the
+// app; anything else opens in a new tab.
+const renderText = (text) =>
+  String(text).split(URL_PATTERN).map((part, index) => {
+    if (index % 2 === 0) return part;
+    let target = null;
+    try {
+      target = new URL(part);
+    } catch (error) {
+      return part;
+    }
+    if (target.origin === window.location.origin) {
+      return (
+        <Link key={index} to={`${target.pathname}${target.search}${target.hash}`} className="chat-link">
+          {part}
+        </Link>
+      );
+    }
+    return (
+      <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">
+        {part}
+      </a>
+    );
+  });
 
 const MessageBubble = ({ message, isOwn, isGroupStart, isNew }) => {
   const mediaUrl = message.media_url ? toAbsoluteMediaUrl(message.media_url) : '';
@@ -30,7 +58,7 @@ const MessageBubble = ({ message, isOwn, isGroupStart, isNew }) => {
             <img src={mediaUrl} alt="Shared photo" className="chat-media" loading="lazy" />
           </a>
         ))}
-        {message.content && <p className="chat-text">{message.content}</p>}
+        {message.content && <p className="chat-text">{renderText(message.content)}</p>}
         <span className="chat-meta">
           <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
           {isOwn && (

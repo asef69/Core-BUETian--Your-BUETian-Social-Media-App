@@ -248,7 +248,13 @@ class GroupDetailView(APIView):
             )
         if not result:
             return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(result[0])
+        group = result[0]
+        # Both shapes the frontend reads: SQL function (membership_status/user_role) and the
+        # older fallback query (member_status/is_member).
+        member_status = group.get('member_status') or group.get('membership_status') or 'none'
+        group.setdefault('member_status', member_status)
+        group.setdefault('is_member', member_status == 'accepted' or group.get('user_role') is not None)
+        return Response(group)
     
 class GroupMembersView(APIView):
     """

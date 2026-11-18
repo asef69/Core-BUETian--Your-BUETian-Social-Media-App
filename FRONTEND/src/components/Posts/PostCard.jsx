@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { postAPI } from '../../services/apiService';
 import { toast } from 'react-toastify';
 import { FaHeart, FaRegHeart, FaRegComment, FaEllipsisH, FaShareAlt, FaTimes, FaGlobeAmericas, FaUserFriends, FaLock } from 'react-icons/fa';
 import Avatar from '../common/Avatar';
+import ShareModal from '../common/ShareModal';
 import CommentSection from './CommentSection';
 import { useAuth } from '../../context/AuthContext';
 import { confirmDialog } from '../../utils/confirmDialog';
@@ -152,15 +153,10 @@ const PostCard = ({ post, onLike, onDelete, readOnly = false }) => {
     }
   };
 
-  const handleShare = async () => {
-    if (!postId) return;
-    const url = `${window.location.origin}/posts/${postId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success('Link copied');
-    } catch (error) {
-      toast.error('Could not copy the link');
-    }
+  const [showShare, setShowShare] = useState(false);
+  const closeShare = useCallback(() => setShowShare(false), []);
+  const handleShare = () => {
+    if (postId) setShowShare(true);
   };
 
   const toAbsoluteUrl = toAbsoluteMediaUrl;
@@ -598,11 +594,15 @@ const PostCard = ({ post, onLike, onDelete, readOnly = false }) => {
           <FaRegComment aria-hidden="true" />
           <span>{commentsCount > 0 ? commentsCount : 'Comment'}</span>
         </button>
-        <button type="button" className="action-btn" onClick={handleShare} aria-label="Copy link to post">
+        <button type="button" className="action-btn" onClick={handleShare} aria-haspopup="dialog" aria-label="Share post">
           <FaShareAlt aria-hidden="true" />
           <span>Share</span>
         </button>
       </div>
+
+      {showShare && (
+        <ShareModal url={`${window.location.origin}/posts/${postId}`} title="Share post" onClose={closeShare} />
+      )}
 
       {showComments && (
         <CommentSection

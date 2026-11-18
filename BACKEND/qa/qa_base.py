@@ -11,7 +11,7 @@ os.chdir(BACKEND)
 
 import pgserver, psycopg2
 
-PGDATA = HERE / ".pgdata"   # throw-away PostgreSQL cluster (git-ignored); delete it for a clean run
+PGDATA = pathlib.Path(os.environ.get("QA_PGDATA") or HERE / ".pgdata")   # throw-away PostgreSQL cluster (git-ignored); delete it for a clean run
 fresh = not PGDATA.exists()
 srv = pgserver.get_server(PGDATA, cleanup_mode="stop")
 URI = srv.get_uri()

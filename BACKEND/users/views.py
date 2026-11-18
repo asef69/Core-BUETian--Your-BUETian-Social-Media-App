@@ -421,6 +421,9 @@ class SuggestedUsersView(APIView):
                     fallback_query,
                     (request.user.id, request.user.id, limit)
                 )
+        for person in result:
+            # The frontend links and follows by `id`; the SQL function names it `user_id`.
+            person.setdefault('id', person.get('user_id'))
         return Response(result)
 
 

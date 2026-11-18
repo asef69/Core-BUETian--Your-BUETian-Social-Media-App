@@ -40,6 +40,9 @@ shape("product detail has id and product_id", "id" in r.data, "", "medium")
 r = A.get("/api/notifications/")
 shape("notification items have id", all("id" in x for x in r.data), "", "medium")
 r = A.get(f"/api/groups/{ids['group']}/")
+r2 = A.get("/api/users/suggestions/")
+shape("suggested users carry `id` (the Follow button and profile link use it)", all("id" in x for x in r2.data), str(r2.data)[:120], "high")
+shape("group detail exposes both is_member and member_status", "is_member" in r.data and "member_status" in r.data, str(sorted(r.data.keys())), "high")
 shape("group detail exposes is_member/member_status for the UI", ("is_member" in r.data or "membership_status" in r.data or "member_status" in r.data), str(sorted(r.data.keys())), "medium")
 
 

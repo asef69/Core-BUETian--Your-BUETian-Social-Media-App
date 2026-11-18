@@ -458,6 +458,14 @@
 .chat-text {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .chat-media-link {
