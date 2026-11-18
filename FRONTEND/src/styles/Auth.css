@@ -54,16 +54,15 @@
   font-weight: 700;
 }
 
-.auth-logo-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md);
-  background: #ffb347;
-  color: #0d1445;
-  font-size: var(--text-base);
+/* The wordmark colours work on the dark brand panel. */
+.auth-logo .brand-core {
+  color: rgba(238, 240, 255, 0.78);
+  font-weight: 500;
+}
+
+.auth-logo .brand-buet {
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .auth-brand-copy h2 {

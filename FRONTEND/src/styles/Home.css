@@ -7,14 +7,13 @@
 
 .home-layout {
   display: grid;
-  grid-template-columns: 248px minmax(0, 640px) 320px;
+  grid-template-columns: minmax(0, 640px) 320px;
   justify-content: center;
   gap: 24px;
   padding: 24px 0 32px;
   align-items: start;
 }
 
-.left-rail,
 .sidebar {
   position: sticky;
   top: calc(var(--navbar-height) + 24px);
@@ -27,8 +26,7 @@
   min-width: 0;
 }
 
-.sidebar-card,
-.left-rail-card {
+.sidebar-card {
   padding: 16px;
   background: var(--surface-solid);
   border: 1px solid var(--border-color);
@@ -58,83 +56,6 @@
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-/* ---------- Left rail ---------- */
-
-.left-rail-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-}
-
-.left-rail-profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  transition: background var(--transition-fast);
-}
-
-.left-rail-profile:hover {
-  background: var(--nav-hover-bg);
-}
-
-.left-rail-profile-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.left-rail-profile-text strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--dark-color);
-  font-size: var(--text-base);
-}
-
-.left-rail-profile-text span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted-color);
-  font-size: var(--text-xs);
-}
-
-.shortcut-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
-}
-
-.shortcut-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 0 10px;
-  border-radius: var(--radius-md);
-  color: var(--gray-color);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-decoration: none;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.shortcut-item:hover {
-  background: var(--nav-hover-bg);
-  color: var(--dark-color);
-}
-
-.shortcut-item svg {
-  width: 18px;
-  color: var(--brand-color);
 }
 
 /* ---------- Feed filters ---------- */
@@ -1230,7 +1151,7 @@
 
 @media (max-width: 1190px) {
   .home-layout {
-    grid-template-columns: 220px minmax(0, 640px);
+    grid-template-columns: minmax(0, 640px);
   }
 
   .sidebar {
@@ -1238,15 +1159,11 @@
   }
 }
 
-/* The bottom navigation replaces the left rail on phones and small tablets. */
+/* The bottom navigation replaces the account-menu shortcuts on phones and small tablets. */
 @media (max-width: 900px) {
   .home-layout {
     grid-template-columns: minmax(0, 1fr);
     padding-top: 12px;
-  }
-
-  .left-rail {
-    display: none;
   }
 }
 

@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { FaBookOpen, FaComments, FaHome, FaPenFancy, FaStore, FaUsers, FaRegNewspaper, FaExclamationCircle } from 'react-icons/fa';
+import { FaRegNewspaper, FaExclamationCircle } from 'react-icons/fa';
 import { postAPI, userAPI } from '../../services/apiService';
 import Navbar from '../../components/Navbar';
 import CreatePost from '../../components/Posts/CreatePost';
 import PostCard from '../../components/Posts/PostCard';
 import PostSkeleton from '../../components/Posts/PostSkeleton';
 import SuggestedUsers from '../../components/Users/SuggestedUsers';
-import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/Home.css';
 import { toTimestamp } from '../../utils/time';
@@ -242,44 +240,6 @@ const Home = () => {
       <div className="main-content">
         <div className="container">
           <div className="home-layout">
-            <aside className="left-rail" aria-label="Shortcuts">
-              <div className="left-rail-card">
-                <Link to={`/profile/${user?.id}`} className="left-rail-profile">
-                  <Avatar src={me?.profile_picture} name={me?.name} size={44} decorative />
-                  <span className="left-rail-profile-text">
-                    <strong>{me?.name || 'Your profile'}</strong>
-                    <span>{me?.department_name || 'View your profile'}</span>
-                  </span>
-                </Link>
-                <nav className="shortcut-list" aria-label="Sections">
-                  <Link to="/" className="shortcut-item">
-                    <FaHome />
-                    <span>News Feed</span>
-                  </Link>
-                  <Link to="/groups" className="shortcut-item">
-                    <FaUsers />
-                    <span>Groups</span>
-                  </Link>
-                  <Link to="/chat" className="shortcut-item">
-                    <FaComments />
-                    <span>Messages</span>
-                  </Link>
-                  <Link to="/marketplace" className="shortcut-item">
-                    <FaStore />
-                    <span>Marketplace</span>
-                  </Link>
-                  <Link to="/blogs" className="shortcut-item">
-                    <FaPenFancy />
-                    <span>Blogs</span>
-                  </Link>
-                  <Link to="/forums" className="shortcut-item">
-                    <FaBookOpen />
-                    <span>Forums</span>
-                  </Link>
-                </nav>
-              </div>
-            </aside>
-
             <main className="feed-section">
               <h1 className="sr-only">Home feed</h1>
               <div className="feed-filters" role="toolbar" aria-label="Feed filters">

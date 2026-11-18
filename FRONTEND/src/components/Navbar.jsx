@@ -10,6 +10,7 @@ import { chatAPI, notificationAPI, userAPI } from '../services/apiService';
 import { getNotificationLink } from '../utils/notifications';
 import { timeAgo } from '../utils/time';
 import Avatar from './common/Avatar';
+import Logo from './common/Logo';
 import '../styles/Navbar.css';
 
 // The signed-in user's profile (for the avatar) is fetched once and shared by every
@@ -35,6 +36,16 @@ const loadMyProfile = (userId, force = false) => {
 };
 
 const NOTIFICATION_PREVIEW_COUNT = 8;
+
+// Section shortcuts shown in the account menu.
+const ACCOUNT_LINKS = [
+  { to: '/', label: 'News Feed', Icon: FaHome, end: true },
+  { to: '/groups', label: 'Groups', Icon: FaUsers },
+  { to: '/chat', label: 'Messages', Icon: FaComments },
+  { to: '/marketplace', label: 'Marketplace', Icon: FaStore },
+  { to: '/blogs', label: 'Blogs', Icon: FaPenNib },
+  { to: '/forums', label: 'Forums', Icon: FaBullhorn },
+];
 
 const tabClass = ({ isActive }) => `navbar-tab ${isActive ? 'active' : ''}`;
 
@@ -200,8 +211,10 @@ const Navbar = () => {
       <header className="navbar">
         <div className="navbar-left">
           <Link to="/" className="navbar-brand" aria-label="Core BUETians home">
-            <span className="navbar-brand-mark">CB</span>
-            <span className="navbar-brand-name">Core BUETians</span>
+            <Logo size={40} />
+            <span className="navbar-brand-name">
+              <span className="brand-core">Core</span> <span className="brand-buet">BUETians</span>
+            </span>
           </Link>
 
           <form className="navbar-search" role="search" onSubmit={handleSearch}>
@@ -343,6 +356,25 @@ const Navbar = () => {
                     <span>{me?.department_name ? `${me.department_name}${me.batch ? ` · Batch ${me.batch}` : ''}` : 'View your profile'}</span>
                   </span>
                 </Link>
+
+                <div className="account-divider" role="separator" />
+                {ACCOUNT_LINKS.map(({ to, label, Icon, end }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    role="menuitem"
+                    className={({ isActive }) => `account-item ${isActive ? 'active' : ''}`}
+                  >
+                    <span className="account-item-icon"><Icon aria-hidden="true" /></span>
+                    {label}
+                    {to === '/chat' && unreadChats > 0 && (
+                      <span className="account-badge" aria-label={`${unreadChats} unread`}>{countLabel(unreadChats)}</span>
+                    )}
+                  </NavLink>
+                ))}
+                <div className="account-divider" role="separator" />
+
                 <button type="button" className="account-item" role="menuitem" onClick={toggleTheme}>
                   <span className="account-item-icon">{isDark ? <FaSun aria-hidden="true" /> : <FaMoon aria-hidden="true" />}</span>
                   {isDark ? 'Light mode' : 'Dark mode'}

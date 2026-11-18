@@ -42,24 +42,35 @@
   border-radius: var(--radius-md);
 }
 
-.navbar-brand-mark {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.brand-logo {
+  flex: none;
+  display: block;
   border-radius: var(--radius-md);
-  background: #ffb347;
-  color: #0d1445;
-  font-size: var(--text-base);
-  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(45, 59, 184, 0.35);
 }
 
 .navbar-brand-name {
   display: none;
   font-size: var(--text-lg);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
+}
+
+/* Wordmark: light "Core" next to bold "BUETians" */
+.brand-core {
+  font-weight: 500;
+  color: var(--gray-color);
+}
+
+.brand-buet {
+  font-weight: 800;
+  color: var(--dark-color);
+}
+
+@media (min-width: 1280px) {
+  .navbar-brand-name {
+    display: inline;
+  }
 }
 
 .navbar-search {
@@ -445,6 +456,38 @@ a.popover-item:hover {
 
 .account-item:hover {
   background: var(--nav-hover-bg);
+}
+
+a.account-item {
+  text-decoration: none;
+}
+
+.account-item.active {
+  background: var(--nav-hover-bg);
+  color: var(--brand-color);
+}
+
+.account-item.active .account-item-icon {
+  background: var(--brand-color);
+  color: #fff;
+}
+
+.account-divider {
+  height: 1px;
+  margin: 6px 6px;
+  background: var(--border-color);
+}
+
+.account-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--danger-color, #ff5d76);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-align: center;
 }
 
 .account-item-icon {

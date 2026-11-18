@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import Logo from '../common/Logo';
 import '../../styles/Auth.css';
 
 const FEATURES = [
@@ -14,8 +15,8 @@ const AuthLayout = ({ title, subtitle, children, wide = false }) => (
   <div className="auth-page">
     <aside className="auth-brand">
       <div className="auth-logo">
-        <span className="auth-logo-mark" aria-hidden="true">CB</span>
-        <span>Core BUETians</span>
+        <Logo size={44} />
+        <span><span className="brand-core">Core</span> <span className="brand-buet">BUETians</span></span>
       </div>
 
       <div className="auth-brand-copy">
@@ -38,8 +39,8 @@ const AuthLayout = ({ title, subtitle, children, wide = false }) => (
     <main className="auth-main">
       <div className="auth-mobile-hero">
         <div className="auth-logo">
-          <span className="auth-logo-mark" aria-hidden="true">CB</span>
-          <span>Core BUETians</span>
+          <Logo size={44} />
+          <span><span className="brand-core">Core</span> <span className="brand-buet">BUETians</span></span>
         </div>
         <p>Where all BUETians align.</p>
       </div>
