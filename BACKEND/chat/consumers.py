@@ -331,6 +331,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message': event['message']
         }))
     
+    async def message_edited(self, event):
+        """A message was edited over REST: show the new text."""
+        await self.send(text_data=json.dumps({'type': 'message_edited', 'message': event['message']}))
+
+    async def message_deleted(self, event):
+        """A message was deleted over REST: show the placeholder."""
+        await self.send(text_data=json.dumps({'type': 'message_deleted', 'message': event['message']}))
+
     async def typing_indicator(self, event):
         """
         Channel layer event handler for typing indicators.

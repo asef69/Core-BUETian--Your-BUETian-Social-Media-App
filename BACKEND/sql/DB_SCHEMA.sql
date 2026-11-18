@@ -356,3 +356,8 @@ CREATE TABLE IF NOT EXISTS revoked_tokens(
     revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);
+
+-- Edit / delete your own chat messages. Deleting keeps the row (so the thread keeps its
+-- shape) but wipes the text and media; "edited_at" marks edited messages.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;

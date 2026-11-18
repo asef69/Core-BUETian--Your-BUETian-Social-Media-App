@@ -5,7 +5,7 @@ from chat.message_view import MarkAsReadView
 from .views import (
     ConversationListView, MessageListView, SendMessageView,
     UploadChatImageView, UploadChatVideoView, SendMessageWithImageView,
-    ProductMessageListView, ContactSellerView
+    ProductMessageListView, ContactSellerView, EditMessageView, DeleteMessageView
 )
 from .message_view import (
     ConversationView, RecentConversationsView)
@@ -30,6 +30,8 @@ urlpatterns = [
     path('messages/conversation/<posint:user_id>/', ConversationView.as_view()),
     path('messages/conversations/', RecentConversationsView.as_view()),
     path('messages/<posint:message_id>/read/', MarkAsReadView.as_view()),
+    path('messages/<posint:message_id>/edit/', EditMessageView.as_view(), name='edit_message'),
+    path('messages/<posint:message_id>/delete/', DeleteMessageView.as_view(), name='delete_message'),
     
     path('unread/count/', UnreadMessagesCountView.as_view()),
     path('unread/total/', TotalUnreadMessagesView.as_view()),

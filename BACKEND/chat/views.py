@@ -1,3 +1,8 @@
+import logging
+from datetime import date, datetime
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -18,6 +23,30 @@ def _can_message(sender_id, receiver_id):
     return result[0]['can_message'] if result else False
 
 MAX_MESSAGE_LENGTH = 5000
+
+logger = logging.getLogger(__name__)
+
+MESSAGE_COLUMNS = (
+    "id, sender_id, receiver_id, product_id, content, media_url, is_read, created_at, edited_at, is_deleted"
+)
+DELETED_PLACEHOLDER = 'This message was deleted'
+
+
+def _jsonable(row):
+    return {k: (v.isoformat() if isinstance(v, (date, datetime)) else v) for k, v in row.items()}
+
+
+def _broadcast_message_event(event_type, message):
+    """Tell every open socket of both people (and the sender's other devices) about an edit/delete."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    payload = {'type': event_type, 'message': _jsonable(message)}
+    for user_id in {message['sender_id'], message['receiver_id']}:
+        try:
+            async_to_sync(layer.group_send)(f'user_{user_id}', payload)
+        except Exception:
+            logger.warning('Could not broadcast %s to user %s', event_type, user_id, exc_info=True)
 
 
 def validate_message_payload(data, sender_id):
@@ -115,6 +144,9 @@ class ConversationListView(APIView):
         """
         
         result = DatabaseManager.execute_query(query, (user_id, user_id, user_id, user_id))
+        for row in result:
+            if row.get('is_deleted'):
+                row['content'] = DELETED_PLACEHOLDER
         return Response(result or [])
 
 
@@ -615,3 +647,84 @@ class ContactSellerView(APIView):
             'product_id': product_id,
             'conversation_started': True
         }, status=status.HTTP_201_CREATED)
+
+
+@throttled('chat')
+class EditMessageView(APIView):
+    """
+    Edit the text of one of your own messages.
+
+    API Endpoint: PATCH /api/chat/messages/<message_id>/edit/
+    Body: {"content": "new text"}
+
+    - Only the sender can edit; anyone else gets 404 (the message is not revealed).
+    - Deleted messages cannot be edited.
+    - A photo/video message may only be edited into a caption, never into nothing.
+    - Both people's open chats are updated live over the WebSocket.
+    """
+
+    def patch(self, request, message_id):
+        content = clean_str(request.data.get('content'), 'content', MAX_MESSAGE_LENGTH) or ''
+
+        rows = DatabaseManager.execute_query(
+            "SELECT sender_id, content, media_url, is_deleted FROM messages WHERE id = %s", (message_id,)
+        )
+        if not rows or rows[0]['sender_id'] != request.user.id:
+            return Response({'error': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+        current = rows[0]
+        if current['is_deleted']:
+            return Response({'error': 'A deleted message cannot be edited'}, status=status.HTTP_400_BAD_REQUEST)
+        if not content and not current['media_url']:
+            return Response({'error': 'A message cannot be empty. Delete it instead.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if content == current['content']:
+            updated = DatabaseManager.execute_query(
+                f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE id = %s", (message_id,)
+            )
+        else:
+            updated = DatabaseManager.execute_query(
+                f"UPDATE messages SET content = %s, edited_at = NOW() "
+                f"WHERE id = %s AND sender_id = %s AND NOT is_deleted RETURNING {MESSAGE_COLUMNS}",
+                (content, message_id, request.user.id)
+            )
+            if updated:
+                _broadcast_message_event('message_edited', updated[0])
+        return Response({'message': 'Message updated', 'data': _jsonable(updated[0]) if updated else None})
+
+    def post(self, request, message_id):
+        return self.patch(request, message_id)
+
+
+@throttled('chat')
+class DeleteMessageView(APIView):
+    """
+    Delete one of your own messages for everyone.
+
+    API Endpoint: DELETE /api/chat/messages/<message_id>/delete/
+
+    The text and any photo/video link are wiped; the row stays as a "This message was
+    deleted" placeholder so the conversation keeps its shape. Deleting twice is harmless.
+    """
+
+    def delete(self, request, message_id):
+        rows = DatabaseManager.execute_query(
+            "SELECT sender_id, is_deleted FROM messages WHERE id = %s", (message_id,)
+        )
+        if not rows or rows[0]['sender_id'] != request.user.id:
+            return Response({'error': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if rows[0]['is_deleted']:
+            done = DatabaseManager.execute_query(f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE id = %s", (message_id,))
+        else:
+            done = DatabaseManager.execute_query(
+                f"UPDATE messages SET is_deleted = TRUE, content = '', media_url = NULL, edited_at = NULL "
+                f"WHERE id = %s AND sender_id = %s RETURNING {MESSAGE_COLUMNS}",
+                (message_id, request.user.id)
+            )
+            # The "sent you a message" notification no longer has anything to point at.
+            DatabaseManager.execute_update(
+                "DELETE FROM notifications WHERE notification_type = 'message' AND reference_id = %s", (message_id,)
+            )
+            if done:
+                _broadcast_message_event('message_deleted', done[0])
+        return Response({'message': 'Message deleted', 'data': _jsonable(done[0]) if done else None})

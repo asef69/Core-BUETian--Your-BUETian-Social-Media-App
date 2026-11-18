@@ -104,6 +104,8 @@ export const chatAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   markAsRead: (messageId) => api.post(`/chat/messages/${messageId}/read/`),
+  editMessage: (messageId, content) => api.patch(`/chat/messages/${messageId}/edit/`, { content }),
+  deleteMessage: (messageId) => api.delete(`/chat/messages/${messageId}/delete/`),
   markConversationRead: (userId) => api.post(`/chat/conversation/${userId}/read/`),
   deleteConversation: (userId) => api.delete(`/chat/conversation/${userId}/delete/`),
   getConversationParticipants: (userId) => api.get(`/chat/conversation/${userId}/participants/`),

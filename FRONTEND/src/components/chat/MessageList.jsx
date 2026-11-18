@@ -18,7 +18,7 @@ const MessagesSkeleton = () => (
   </div>
 );
 
-const MessageList = ({ messages, currentUserId, loading, isPeerTyping, peerName, threadKey }) => {
+const MessageList = ({ messages, currentUserId, loading, isPeerTyping, peerName, threadKey, onEditMessage, onDeleteMessage }) => {
   const scrollRef = useRef(null);
   const stickRef = useRef(true);
   const lastThreadRef = useRef(null);
@@ -137,6 +137,8 @@ const MessageList = ({ messages, currentUserId, loading, isPeerTyping, peerName,
               isOwn={Number(item.message.sender_id) === Number(currentUserId)}
               isGroupStart={item.isGroupStart}
               isNew={hasSeen && !seenIdsRef.current.has(item.message.id)}
+              onEdit={onEditMessage}
+              onDelete={onDeleteMessage}
             />
           ),
         )}

@@ -13,6 +13,7 @@ import ChatHeader from '../../components/chat/ChatHeader';
 import MessageList from '../../components/chat/MessageList';
 import MessageComposer from '../../components/chat/MessageComposer';
 import { isVideoUrl } from '../../components/chat/MessageBubble';
+import { confirmDialog } from '../../utils/confirmDialog';
 import '../../styles/Chat.css';
 
 const TYPING_HEARTBEAT_MS = 1000;
@@ -21,7 +22,7 @@ const PEER_TYPING_EXPIRY_MS = 2000;
 const POLL_INTERVAL_MS = 5000;
 
 const hasContent = (message) =>
-  Boolean(message && ((message.content && String(message.content).trim()) || message.media_url));
+  Boolean(message && (message.is_deleted || (message.content && String(message.content).trim()) || message.media_url));
 
 const Chat = () => {
   const { userId: chatUserId } = useParams();
@@ -118,6 +119,55 @@ const Chat = () => {
     });
   };
 
+  // Apply a change (edit / delete / read receipt) to one message in the open thread.
+  const patchMessage = (messageId, patch) => {
+    setMessages((prev) => {
+      if (!prev.some((item) => item.id === messageId)) return prev;
+      const next = prev.map((item) => (item.id === messageId ? { ...item, ...patch } : item));
+      const peerId = Number(selectedUserRef.current);
+      if (peerId) messagesCacheRef.current[peerId] = next;
+      return next;
+    });
+  };
+
+  const handleEditMessage = async (message, text) => {
+    try {
+      const response = await chatAPI.editMessage(message.id, text);
+      patchMessage(message.id, response.data?.data || { content: text, edited_at: new Date().toISOString() });
+      loadConversations();
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not edit the message');
+      return false;
+    }
+  };
+
+  const handleDeleteMessage = async (message) => {
+    const confirmed = await confirmDialog({
+      title: 'Delete message?',
+      message: 'It will be removed for everyone in this chat. This cannot be undone.',
+      confirmText: 'Delete',
+      confirmLoadingText: 'Deleting...',
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      const response = await chatAPI.deleteMessage(message.id);
+      patchMessage(message.id, { ...(response.data?.data || {}), is_deleted: true, content: '', media_url: null });
+      loadConversations();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not delete the message');
+    }
+  };
+
+  // MessageBubble is memoised, so give it handlers whose identity never changes.
+  const editHandlerRef = useRef(handleEditMessage);
+  const deleteHandlerRef = useRef(handleDeleteMessage);
+  editHandlerRef.current = handleEditMessage;
+  deleteHandlerRef.current = handleDeleteMessage;
+  const stableEdit = useCallback((message, text) => editHandlerRef.current(message, text), []);
+  const stableDelete = useCallback((message) => deleteHandlerRef.current(message), []);
+
   const loadMessages = useCallback(async (userId, { silent = false } = {}) => {
     const normalizedUserId = Number(userId);
     const requestId = ++loadRequestIdRef.current;
@@ -140,7 +190,13 @@ const Chat = () => {
         silent &&
         prev.length === sanitized.length &&
         prev[prev.length - 1]?.id === sanitized[sanitized.length - 1]?.id &&
-        prev.every((item, index) => item.is_read === sanitized[index]?.is_read)
+        prev.every(
+          (item, index) =>
+            item.is_read === sanitized[index]?.is_read &&
+            item.content === sanitized[index]?.content &&
+            item.edited_at === sanitized[index]?.edited_at &&
+            Boolean(item.is_deleted) === Boolean(sanitized[index]?.is_deleted),
+        )
           ? prev
           : sanitized,
       );
@@ -307,6 +363,16 @@ const Chat = () => {
           appendMessageIfNew(message);
         }
         loadConversations();
+        break;
+      }
+
+      case 'message_edited':
+      case 'message_deleted': {
+        const { message } = data;
+        if (message?.id) {
+          patchMessage(message.id, message);
+          loadConversations();
+        }
         break;
       }
 
@@ -517,6 +583,8 @@ const Chat = () => {
                   isPeerTyping={isPeerTyping}
                   peerName={peer?.name}
                   threadKey={selectedUser}
+                  onEditMessage={stableEdit}
+                  onDeleteMessage={stableDelete}
                 />
                 <MessageComposer
                   value={newMessage}

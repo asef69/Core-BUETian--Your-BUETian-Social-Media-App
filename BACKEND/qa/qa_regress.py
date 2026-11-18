@@ -90,4 +90,63 @@ check(AREA, "group post hidden from outsiders by direct id", C.get(f"/api/posts/
 check(AREA, "group post visible to its author", A.get(f"/api/posts/{gp}/").status_code == 200, "", "high")
 check(AREA, "post detail exposes media_urls", "media_urls" in A.get(f"/api/posts/{pid}/").data and "group_id" not in A.get(f"/api/posts/{pid}/").data, "", "low")
 
+# ---- edit / delete own chat messages
+E1 = mkuser("rg_e1"); E2 = mkuser("rg_e2"); E3 = mkuser("rg_e3"); befriend(E1, E2)
+mid = E1.post("/api/chat/send/", {"receiver_id": E2.id, "content": "typo mesage"}).data["data"]["id"]
+r = E1.patch(f"/api/chat/messages/{mid}/edit/", {"content": "fixed message"})
+check(AREA, "sender can edit own message", r.status_code == 200 and r.data["data"]["content"] == "fixed message" and r.data["data"]["edited_at"], getattr(r, "data", ""), "high")
+seen = [m for m in E2.get(f"/api/chat/messages/{E1.id}/").data if m["id"] == mid][0]
+check(AREA, "recipient sees the edited text and edited_at", seen["content"] == "fixed message" and seen["edited_at"] and not seen["is_deleted"], seen, "high")
+check(AREA, "recipient cannot edit someone else's message", E2.patch(f"/api/chat/messages/{mid}/edit/", {"content": "hijack"}).status_code == 404, "", "critical")
+check(AREA, "recipient cannot delete someone else's message", E2.delete(f"/api/chat/messages/{mid}/delete/").status_code == 404, "", "critical")
+check(AREA, "stranger cannot edit or delete", E3.patch(f"/api/chat/messages/{mid}/edit/", {"content": "x"}).status_code == 404 and E3.delete(f"/api/chat/messages/{mid}/delete/").status_code == 404, "", "critical")
+check(AREA, "blank edit rejected", E1.patch(f"/api/chat/messages/{mid}/edit/", {"content": "   "}).status_code == 400, "", "medium")
+check(AREA, "5001-char edit rejected", E1.patch(f"/api/chat/messages/{mid}/edit/", {"content": "x" * 5001}).status_code == 400, "", "medium")
+check(AREA, "non-string edit rejected", E1.patch(f"/api/chat/messages/{mid}/edit/", {"content": 5}).status_code == 400, "", "medium")
+check(AREA, "unknown message -> 404", E1.patch("/api/chat/messages/99999999/edit/", {"content": "x"}).status_code == 404, "", "low")
+check(AREA, "message text is untouched by a rejected edit", DM.execute_query("select content from messages where id=%s", (mid,))[0]["content"] == "fixed message", "", "medium")
+n_before = DM.execute_query("select count(*) c from notifications where notification_type='message' and reference_id=%s", (mid,))[0]["c"]
+r = E1.delete(f"/api/chat/messages/{mid}/delete/")
+row = DM.execute_query("select content, media_url, is_deleted from messages where id=%s", (mid,))[0]
+check(AREA, "delete wipes text and media but keeps the row", r.status_code == 200 and row["is_deleted"] and row["content"] == "" and row["media_url"] is None, row, "high")
+check(AREA, "deleting removes the 'sent you a message' notification", n_before >= 1 and DM.execute_query("select count(*) c from notifications where notification_type='message' and reference_id=%s", (mid,))[0]["c"] == 0, n_before, "medium")
+check(AREA, "deleting twice is harmless", E1.delete(f"/api/chat/messages/{mid}/delete/").status_code == 200, "", "low")
+check(AREA, "a deleted message cannot be edited", E1.patch(f"/api/chat/messages/{mid}/edit/", {"content": "revive"}).status_code == 400, "", "medium")
+seen = [m for m in E2.get(f"/api/chat/messages/{E1.id}/").data if m["id"] == mid][0]
+check(AREA, "recipient sees a deleted placeholder (no text)", seen["is_deleted"] is True and seen["content"] == "", seen, "high")
+check(AREA, "conversation list shows the placeholder as last message", any(c.get("last_message") == "This message was deleted" for c in E2.get("/api/chat/messages/conversations/").data), "", "medium")
+check(AREA, "search no longer finds deleted text", "typo" not in json.dumps(E2.get("/api/chat/search/?q=mesage").data, default=str), "", "high")
+unread = E2.get("/api/chat/unread/total/").data.get("total_unread")
+check(AREA, "unread count endpoint still works", isinstance(unread, int), unread, "low")
+# media message: can add a caption, cannot become empty
+mm = DM.execute_query("insert into messages(sender_id,receiver_id,content,media_url) values (%s,%s,'','https://res.cloudinary.com/demo/image/upload/a.png') returning id", (E1.id, E2.id))[0]["id"]
+check(AREA, "editing a media-only message to empty text is a harmless no-op", E1.patch(f"/api/chat/messages/{mm}/edit/", {"content": ""}).status_code == 200 and DM.execute_query("select media_url, edited_at from messages where id=%s", (mm,))[0]["media_url"] is not None, "", "low")
+check(AREA, "media message can get a caption", E1.patch(f"/api/chat/messages/{mm}/edit/", {"content": "nice view"}).status_code == 200, "", "low")
+E1.delete(f"/api/chat/messages/{mm}/delete/")
+check(AREA, "deleting a media message removes the media link", DM.execute_query("select media_url from messages where id=%s", (mm,))[0]["media_url"] is None, "", "high")
+
+# ---- live WebSocket delivery of edits/deletes
+import asyncio
+from channels.testing import WebsocketCommunicator
+from channels.db import database_sync_to_async as dsa
+from asgiref.sync import sync_to_async
+from chat.consumers import ChatConsumer
+from rest_framework_simplejwt.tokens import AccessToken
+live = E1.post("/api/chat/send/", {"receiver_id": E2.id, "content": "live one"}).data["data"]["id"]
+def _tok(i):
+    t = AccessToken(); t["user_id"] = i; return str(t)
+async def _live():
+    out = {}
+    c = WebsocketCommunicator(ChatConsumer.as_asgi(), f"/ws/chat/?token={_tok(E2.id)}")
+    await c.connect(); await c.receive_json_from()
+    await sync_to_async(E1.patch)(f"/api/chat/messages/{live}/edit/", {"content": "live edited"})
+    out["edit"] = await asyncio.wait_for(c.receive_json_from(), 5)
+    await sync_to_async(E1.delete)(f"/api/chat/messages/{live}/delete/")
+    out["delete"] = await asyncio.wait_for(c.receive_json_from(), 5)
+    await c.disconnect()
+    return out
+ev = asyncio.run(_live())
+check(AREA, "WS: recipient gets message_edited live", ev["edit"].get("type") == "message_edited" and ev["edit"]["message"]["content"] == "live edited", ev["edit"], "medium")
+check(AREA, "WS: recipient gets message_deleted live", ev["delete"].get("type") == "message_deleted" and ev["delete"]["message"]["is_deleted"] is True, ev["delete"], "medium")
+
 save_results()

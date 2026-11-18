@@ -92,6 +92,7 @@ CREATE OR REPLACE FUNCTION get_recent_conversations(p_user_id INTEGER) RETURNS T
         receiver_id,
         content,
         created_at,
+        is_deleted,
         CASE
         WHEN sender_id = p_user_id THEN receiver_id
         ELSE sender_id
@@ -108,7 +109,7 @@ CREATE OR REPLACE FUNCTION get_recent_conversations(p_user_id INTEGER) RETURNS T
 SELECT lm.other_user,
     u.name,
     u.profile_picture,
-    lm.content,
+    CASE WHEN lm.is_deleted THEN 'This message was deleted' ELSE lm.content END,
     lm.created_at,
     (
     SELECT COUNT(*)
@@ -699,6 +700,7 @@ WHERE (
     (m.sender_id = p_user_id AND NOT m.deleted_for_sender)
     OR (m.receiver_id = p_user_id AND NOT m.deleted_for_receiver)
     )
+    AND NOT m.is_deleted
     AND m.content ILIKE '%' || replace(replace(replace(p_search_term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
 ORDER BY m.created_at DESC
 LIMIT p_limit;
