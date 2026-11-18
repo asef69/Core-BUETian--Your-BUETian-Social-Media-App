@@ -73,12 +73,7 @@ class CustomJWTAuthentication(JWTAuthentication):
         Returns (user, token) tuple if valid.
         """
         try:
-            # Get the raw Authorization header for debugging
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            if auth_header:
-                token_preview = auth_header[:50] + '...' if len(auth_header) > 50 else auth_header
-                logger.debug(f'Authorization header received: {token_preview}')
-           
+            # Never log (any part of) the Authorization header: it holds the bearer token.
             result = super().authenticate(request)
             
             
@@ -94,10 +89,10 @@ class CustomJWTAuthentication(JWTAuthentication):
             raise
         except InvalidToken as e: # type: ignore
             logger.warning(f'Invalid token: {str(e)}')
-            raise AuthenticationFailed(f'Invalid token: {str(e)}')
+            raise AuthenticationFailed('Invalid token')
         except Exception as e:
             logger.error(f'Unexpected error during authentication: {str(e)}')
-            raise AuthenticationFailed(f'Authentication error: {str(e)}')
+            raise AuthenticationFailed('Authentication error')
     
     def get_user(self, validated_token): # type: ignore
         """
@@ -144,4 +139,4 @@ class CustomJWTAuthentication(JWTAuthentication):
             raise
         except Exception as e:
             logger.error(f'Authentication failed: {str(e)}')
-            raise AuthenticationFailed(f'Authentication failed: {str(e)}')
+            raise AuthenticationFailed('Authentication failed')

@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from utils.params import get_int_param, get_limit, get_offset
 
 
 def _normalize_media_url(url):
@@ -78,7 +79,7 @@ class UserFollowersView(APIView):
         Function: get_user_followers(user_id, limit)
     """
     def get(self, request, user_id):
-        limit = int(request.query_params.get('limit', 50))
+        limit = get_limit(request.query_params, 50)
         query = """
         SELECT
             u.id as user_id,
@@ -121,7 +122,7 @@ class UserFollowingView(APIView):
         Function: get_user_following(user_id, limit)
     """
     def get(self, request, user_id):
-        limit = int(request.query_params.get('limit', 50))
+        limit = get_limit(request.query_params, 50)
         query = """
         SELECT
             u.id as user_id,
@@ -360,9 +361,9 @@ class UserSearchView(APIView):
             or ''
         )
         department = request.query_params.get('department')
-        batch = request.query_params.get('batch')
+        batch = get_int_param(request.query_params, 'batch', None)
         blood_group = request.query_params.get('blood_group')
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         if not search_term:
             return Response(
@@ -376,6 +377,8 @@ class UserSearchView(APIView):
         )
         users = result or []
         for user in users:
+            # The SQL function returns `user_id`; the frontend links to profiles via `id`.
+            user.setdefault('id', user.get('user_id'))
             user['profile_picture'] = _normalize_media_url(user.get('profile_picture'))
         return Response({'results': users})
 
@@ -401,8 +404,8 @@ class UsersByDepartmentView(APIView):
         Function: get_users_by_department(department, batch, limit)
     """
     def get(self, request, department_name):
-        batch = request.query_params.get('batch')
-        limit = int(request.query_params.get('limit', 50))
+        batch = get_int_param(request.query_params, 'batch', None)
+        limit = get_limit(request.query_params, 50)
         
         result = DatabaseManager.execute_function(
             'get_users_by_department',
@@ -434,7 +437,7 @@ class UsersByBloodGroupView(APIView):
         Find potential blood donors in emergency situations
     """
     def get(self, request, blood_group):
-        limit = int(request.query_params.get('limit', 50))
+        limit = get_limit(request.query_params, 50)
         
         result = DatabaseManager.execute_function(
             'get_users_by_blood_group',
@@ -500,8 +503,8 @@ class UserPostsView(APIView):
         Function: get_user_posts(user_id, viewer_id, limit, offset)
     """
     def get(self, request, user_id):
-        limit = int(request.query_params.get('limit', 20))
-        offset = int(request.query_params.get('offset', 0))
+        limit = get_limit(request.query_params, 20)
+        offset = get_offset(request.query_params, 0)
         
         result = DatabaseManager.execute_function(
             'get_user_posts',

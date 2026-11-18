@@ -1,76 +1,72 @@
-from rest_framework.views import exception_handler
-from rest_framework.response import Response
+import logging
 
-def custom_exception_handler(exc,context):
+from django.db import DataError, IntegrityError, ProgrammingError, OperationalError
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import exception_handler
+
+logger = logging.getLogger(__name__)
+
+
+def _flatten(detail):
+    """Turn DRF error details into one human readable sentence."""
+    if isinstance(detail, dict):
+        parts = []
+        for key, value in detail.items():
+            text = _flatten(value)
+            if key in ('error', 'detail', 'non_field_errors'):
+                parts.append(text)
+            else:
+                parts.append(f'{key}: {text}')
+        return ' '.join(p for p in parts if p)
+    if isinstance(detail, (list, tuple)):
+        return ' '.join(_flatten(item) for item in detail)
+    return str(detail)
+
+
+def custom_exception_handler(exc, context):
     """
-    Custom exception handler for standardized error responses across the API.
-    
-    Configuration:
-        Add to settings.py:
-        REST_FRAMEWORK = {
-            'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler'
-        }
-    
-    Purpose:
-        - Wraps all DRF exceptions in consistent format
-        - Adds error flag for easy client-side detection
-        - Includes exception message and details
-    
-    Args:
-        exc (Exception): The exception that was raised
-        context (dict): Context information about the exception
-            {
-                'view': ViewClass instance,
-                'args': View args,
-                'kwargs': View kwargs,
-                'request': Request object
-            }
-    
-    Returns:
-        Response: DRF Response with standardized error format or None
-    
-    Standard Error Response Format:
+    Standardised error responses for the whole API.
+
+    Shape (always JSON):
         {
-            "error": true,
-            "message": "Error description",
-            "details": {
-                # Original DRF error details (field-specific errors, etc.)
-            }
+            "error":   "<readable message>",   # same text as "message"
+            "message": "<readable message>",
+            "details": { ...original DRF details... }
         }
-    
-    Example Error Responses:
-        Validation Error:
-        {
-            "error": true,
-            "message": "Invalid input",
-            "details": {
-                "email": ["This field is required."],
-                "password": ["Password must be at least 8 characters."]
-            }
-        }
-        
-        Authentication Error:
-        {
-            "error": true,
-            "message": "Authentication credentials were not provided.",
-            "details": {
-                "detail": "Authentication credentials were not provided."
-            }
-        }
-    
-    Notes:
-        - Only handles exceptions recognized by DRF
-        - Returns None for unhandled exceptions (500 errors)
-        - Client can check 'error' field to detect failures
+
+    ``error`` is a string (not a boolean) because the frontend shows
+    ``response.data.error`` directly in toasts / form errors.
+
+    Database errors that a view did not handle (bad value for a column, broken
+    foreign key, ...) are logged server-side and returned as a generic 400/500
+    JSON body. The raw PostgreSQL message is never sent to the client.
     """
-    response=exception_handler(exc,context)
+    response = exception_handler(exc, context)
 
     if response is not None:
-        custom_response={
-            'error':True,
-            'message':str(exc),
-            'details':response.data
+        message = _flatten(response.data)
+        response.data = {
+            'error': message,
+            'message': message,
+            'details': response.data,
         }
-        response.data=custom_response
+        return response
 
-    return response    
+    if isinstance(exc, (DataError, IntegrityError)):
+        logger.warning('Rejected by database constraint: %s', exc)
+        message = 'The submitted data is invalid or refers to something that does not exist.'
+        return Response(
+            {'error': message, 'message': message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if isinstance(exc, (ProgrammingError, OperationalError)):
+        logger.exception('Database error while handling request', exc_info=exc)
+        message = 'A server error occurred. Please try again later.'
+        return Response(
+            {'error': message, 'message': message},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    return None

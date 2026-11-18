@@ -1,13 +1,22 @@
+import logging
+
+from rest_framework.exceptions import ValidationError # type: ignore
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
 from rest_framework.permissions import IsAuthenticated, AllowAny # type: ignore
 from django.db.utils import ProgrammingError # type: ignore
 from utils.database import DatabaseManager
+from utils.params import get_float_param, get_limit, get_page
+from utils.validators import (
+    clean_choice, clean_decimal, clean_media_url, clean_str, safe_procedure_message,
+)
 from utils.file_upload import FileUploadHandler
 
 
 VALID_PRODUCT_STATUSES = {'available', 'sold', 'reserved'}
+PRODUCT_CONDITIONS = ('new', 'like_new', 'good', 'fair', 'poor')
+MAX_PRICE = 99999999.99
 
 
 def _normalize_media_url(url):
@@ -54,26 +63,16 @@ class CreateProductView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        import logging
         logger = logging.getLogger("marketplace.create_product")
         data = request.data
 
         try:
-            title = data.get('title')
-            price = data.get('price')
-            logger.info(f"Received data: {data}")
-
-            if not title or price in (None, ''):
-                logger.error(f"Missing title or price. Title: {title}, Price: {price}")
-                return Response(
-                    {'error': 'title and price are required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            try:
-                price = float(price)
-            except (TypeError, ValueError):
-                logger.error(f"Invalid price value: {price}")
-                return Response({'error': 'Invalid price value'}, status=status.HTTP_400_BAD_REQUEST)
+            title = clean_str(data.get('title'), 'title', 250, required=True, allow_blank=False)
+            price = clean_decimal(data.get('price'), 'price', required=True, minimum=0, maximum=MAX_PRICE)
+            description = clean_str(data.get('description'), 'description', 5000) or None
+            category = clean_str(data.get('category'), 'category', 100) or None
+            location = clean_str(data.get('location'), 'location', 250) or None
+            condition = clean_choice(data.get('condition') or 'good', 'condition', PRODUCT_CONDITIONS)
 
             raw_status = (data.get('status') or 'available')
             normalized_status = str(raw_status).strip().lower()
@@ -86,11 +85,8 @@ class CreateProductView(APIView):
                 try:
                     FileUploadHandler.validate_file(image_file, file_type='image')
                 except ValueError as e:
-                    logger.error(f"Image validation error: {e}")
                     return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-                url = FileUploadHandler.upload_file(image_file, folder='marketplace_images')
-                logger.info(f"Uploaded image file, got URL: {url}")
-                image_urls.append(url)
+                image_urls.append(FileUploadHandler.upload_file(image_file, folder='marketplace_images'))
 
             if hasattr(data, 'getlist'):
                 raw_images = data.getlist('images')
@@ -102,20 +98,19 @@ class CreateProductView(APIView):
 
             for img in raw_images:
                 if isinstance(img, str) and img.strip():
-                    logger.info(f"Appending raw image URL: {img.strip()}")
-                    image_urls.append(img.strip())
+                    image_urls.append(clean_media_url(img, 'images'))
 
-            logger.info(f"Final image_urls array: {image_urls}")
+            if len(image_urls) > 10:
+                return Response({'error': 'At most 10 images are allowed'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Prepare parameters for the procedure
             params = (
                 request.user.id,
                 title,
-                data.get('description'),
+                description,
                 price,
-                data.get('category'),
-                data.get('condition', 'good'),
-                data.get('location'),
+                category,
+                condition,
+                location,
                 normalized_status,
                 image_urls if image_urls else None,  # Pass as array or None
                 None,  # out_product_id (OUT)
@@ -123,32 +118,26 @@ class CreateProductView(APIView):
                 None   # out_message (OUT)
             )
 
-            logger.info(f"Calling procedure with params: {params}")
-            # Call the stored procedure
             result = DatabaseManager.execute_procedure('create_product_with_images', params)
-            logger.info(f"Procedure result: {result}")
 
-            # The result should be a list with one dict containing the OUT params
             if result and isinstance(result, list) and len(result) > 0:
                 proc_out = result[0]
                 if proc_out.get('out_success'):
-                    logger.info(f"Product created successfully: {proc_out}")
                     return Response({
                         'message': proc_out.get('out_message', 'Product created successfully'),
                         'product_id': proc_out.get('out_product_id')
                     }, status=status.HTTP_201_CREATED)
-                else:
-                    logger.error(f"Procedure failed: {proc_out}")
-                    return Response({
-                        'error': proc_out.get('out_message', 'Product creation failed'),
-                        'debug': proc_out
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                logger.error(f"Procedure returned no result: {result}")
-                return Response({'error': 'Product creation failed', 'debug': str(result)}, status=status.HTTP_400_BAD_REQUEST)
+                logger.error(f"create_product_with_images failed: {proc_out.get('out_message')}")
+                return Response({
+                    'error': safe_procedure_message(proc_out.get('out_message'), 'Product creation failed'),
+                }, status=status.HTTP_400_BAD_REQUEST)
+            logger.error("create_product_with_images returned no result")
+            return Response({'error': 'Product creation failed'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError:
+            raise
         except Exception as ex:
             logger.exception(f"Exception in CreateProductView.post: {ex}")
-            return Response({'error': 'Internal server error', 'exception': str(ex)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ProductDetailView(APIView):
     """
@@ -262,25 +251,25 @@ class ProductDetailView(APIView):
         
         if 'status' in data:
             update_fields.append("status = %s")
-            params.append(data['status'])
+            params.append(clean_choice(data['status'], 'status', tuple(sorted(VALID_PRODUCT_STATUSES)), required=True))
         if 'price' in data:
             update_fields.append("price = %s")
-            params.append(data['price'])
+            params.append(clean_decimal(data['price'], 'price', required=True, minimum=0, maximum=MAX_PRICE))
         if 'title' in data:
             update_fields.append("title = %s")
-            params.append(data['title'])
+            params.append(clean_str(data['title'], 'title', 250, required=True, allow_blank=False))
         if 'description' in data:
             update_fields.append("description = %s")
-            params.append(data['description'])
+            params.append(clean_str(data['description'], 'description', 5000))
         if 'condition' in data:
             update_fields.append("condition = %s")
-            params.append(data['condition'])
+            params.append(clean_choice(data['condition'], 'condition', PRODUCT_CONDITIONS, required=True))
         if 'location' in data:
             update_fields.append("location = %s")
-            params.append(data['location'])
+            params.append(clean_str(data['location'], 'location', 250))
         if 'category' in data:
             update_fields.append("category = %s")
-            params.append(data['category'])
+            params.append(clean_str(data['category'], 'category', 100))
         
         if update_fields:
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
@@ -363,8 +352,8 @@ class ProductListView(APIView):
         min_price = request.query_params.get('min_price')
         max_price = request.query_params.get('max_price')
         search = request.query_params.get('search')
-        page = int(request.query_params.get('page', 1))
-        limit = int(request.query_params.get('limit', 20))
+        page = get_page(request.query_params, 1)
+        limit = get_limit(request.query_params, 20)
         offset = (page - 1) * limit
         
         query = """
@@ -408,11 +397,11 @@ class ProductListView(APIView):
         
         if min_price:
             query += " AND p.price >= %s"
-            params.append(float(min_price)) # type: ignore
+            params.append(get_float_param(request.query_params, 'min_price'))
         
         if max_price:
             query += " AND p.price <= %s"
-            params.append(float(max_price)) # type: ignore
+            params.append(get_float_param(request.query_params, 'max_price'))
         
         if search:
             query += " AND (p.title ILIKE %s OR p.description ILIKE %s)"
@@ -475,8 +464,8 @@ class UserProductsView(APIView):
 
     def get(self, request, user_id):
         status_filter = request.query_params.get('status')
-        page = int(request.query_params.get('page', 1))
-        limit = int(request.query_params.get('limit', 20))
+        page = get_page(request.query_params, 1)
+        limit = get_limit(request.query_params, 20)
         offset = (page - 1) * limit
         
         query = """
@@ -556,8 +545,8 @@ class MyProductsView(APIView):
     
     def get(self, request):
         status_filter = request.query_params.get('status')
-        page = int(request.query_params.get('page', 1))
-        limit = int(request.query_params.get('limit', 20))
+        page = get_page(request.query_params, 1)
+        limit = get_limit(request.query_params, 20)
         offset = (page - 1) * limit
         
         query = """
@@ -744,8 +733,8 @@ class SearchProductsView(APIView):
         min_price = request.query_params.get('min_price')
         max_price = request.query_params.get('max_price')
         location = request.query_params.get('location')
-        page = int(request.query_params.get('page', 1))
-        limit = int(request.query_params.get('limit', 20))
+        page = get_page(request.query_params, 1)
+        limit = get_limit(request.query_params, 20)
         offset = (page - 1) * limit
         
         # Build a shared FROM/WHERE clause once, then derive SELECT and COUNT queries.
@@ -775,11 +764,11 @@ class SearchProductsView(APIView):
 
         if min_price:
             base_from += " AND p.price >= %s"
-            where_params.append(float(min_price)) # type: ignore
+            where_params.append(get_float_param(request.query_params, 'min_price'))
 
         if max_price:
             base_from += " AND p.price <= %s"
-            where_params.append(float(max_price)) # type: ignore
+            where_params.append(get_float_param(request.query_params, 'max_price'))
 
         if location:
             base_from += " AND p.location ILIKE %s"
@@ -857,7 +846,7 @@ class SimilarProductsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, product_id):
-        limit = int(request.query_params.get('limit', 5))
+        limit = get_limit(request.query_params, 5)
         result = DatabaseManager.execute_function('get_similar_products', (product_id, limit))
         return Response(result)
 
@@ -901,7 +890,7 @@ class TrendingProductsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        limit = int(request.query_params.get('limit', 10))
+        limit = get_limit(request.query_params, 10)
         result = DatabaseManager.execute_function('get_trending_products', (limit,))
         return Response(result)
 
@@ -1041,7 +1030,7 @@ class DepartmentProductsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         result = DatabaseManager.execute_function('get_department_products', (request.user.id, limit))
         return Response(result)
 
@@ -1105,7 +1094,7 @@ class MarkProductSoldView(APIView):
             (product_id, request.user.id, buyer_id)
         )
         
-        if result and result[0].get('mark_product_sold'):
+        if result and result[0].get('success'):
             return Response({'message': 'Product marked as sold'})
 
         # Idempotency/race-safe fallback: another near-simultaneous request may have
@@ -1377,8 +1366,8 @@ class SellerReviewsView(APIView):
     permission_classes = [AllowAny]
     
     def get(self, request, seller_id):
-        page = int(request.query_params.get('page', 1))
-        limit = int(request.query_params.get('limit', 10))
+        page = get_page(request.query_params, 1)
+        limit = get_limit(request.query_params, 10)
         product_id = request.query_params.get('product_id')
         offset = (page - 1) * limit
         filter_by_product = product_id is not None and str(product_id).strip() != ''

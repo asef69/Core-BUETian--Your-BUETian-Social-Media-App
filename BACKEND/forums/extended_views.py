@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from utils.params import get_float_param, get_limit
+from utils.validators import clean_choice
 
 class UpdateBloodRequestStatusView(APIView):
     """
@@ -39,7 +41,7 @@ class UpdateBloodRequestStatusView(APIView):
         Function: update_blood_request_status(request_id, new_status)
     """
     def patch(self, request, request_id):
-        new_status = request.data.get('status')
+        new_status = clean_choice(request.data.get('status'), 'status', ('active', 'fulfilled', 'cancelled'), required=True)
         
         if not new_status:
             return Response(
@@ -85,7 +87,7 @@ class SearchBloodRequestsByLocationView(APIView):
     def get(self, request):
         location = request.query_params.get('location', '')
         blood_group = request.query_params.get('blood_group')
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         if not location:
             return Response(
@@ -154,7 +156,7 @@ class UpdateTuitionPostStatusView(APIView):
         Function: update_tuition_post_status(post_id, new_status)
     """
     def patch(self, request, post_id):
-        new_status = request.data.get('status')
+        new_status = clean_choice(request.data.get('status'), 'status', ('active', 'completed', 'cancelled'), required=True)
         
         if not new_status:
             return Response(
@@ -201,10 +203,10 @@ class SearchTuitionPostsView(APIView):
     """
     def get(self, request):
         location = request.query_params.get('location')
-        min_salary = request.query_params.get('min_salary')
-        max_salary = request.query_params.get('max_salary')
+        min_salary = get_float_param(request.query_params, 'min_salary')
+        max_salary = get_float_param(request.query_params, 'max_salary')
         post_type = request.query_params.get('post_type')
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function(
             'search_tuition_posts',

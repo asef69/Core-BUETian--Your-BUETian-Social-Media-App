@@ -1,8 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 from utils.database import DatabaseManager
+from utils.params import get_limit, get_offset
+from utils.validators import clean_int, clean_media_url, clean_str
 from utils.file_upload import FileUploadHandler
 
 
@@ -12,6 +15,40 @@ def _can_message(sender_id, receiver_id):
         (sender_id, receiver_id)
     )
     return result[0]['can_message'] if result else False
+
+MAX_MESSAGE_LENGTH = 5000
+
+
+def validate_message_payload(data, sender_id):
+    """Validate receiver / content / media / product of an outgoing message.
+
+    Returns (receiver_id, content, media_url, product_id) or raises
+    ValidationError (-> 400). Also rejects unknown receivers and products so
+    the database never sees a broken foreign key.
+    """
+    receiver_id = clean_int(data.get('receiver_id'), 'receiver_id', required=True, minimum=1)
+    content = clean_str(data.get('content'), 'content', MAX_MESSAGE_LENGTH) or ''
+    media_url = clean_media_url(data.get('media_url'), 'media_url')
+    product_id = clean_int(data.get('product_id'), 'product_id', minimum=1)
+
+    if not content and not media_url:
+        raise ValidationError({'error': 'Message cannot be empty'})
+    if receiver_id == sender_id:
+        raise ValidationError({'receiver_id': 'You cannot message yourself.'})
+
+    receiver = DatabaseManager.execute_query(
+        "SELECT 1 FROM users WHERE id = %s AND is_active = TRUE", (receiver_id,)
+    )
+    if not receiver:
+        raise NotFound('Recipient not found')
+    if product_id is not None:
+        product = DatabaseManager.execute_query(
+            "SELECT 1 FROM marketplace_products WHERE id = %s", (product_id,)
+        )
+        if not product:
+            raise NotFound('Product not found')
+    return receiver_id, content, media_url, product_id
+
 
 class ConversationListView(APIView):
     """
@@ -127,8 +164,8 @@ class MessageListView(APIView):
     """
     def get(self, request, other_user_id):
         user_id = request.user.id
-        limit = int(request.query_params.get('limit', 50))
-        offset = int(request.query_params.get('offset', 0))
+        limit = get_limit(request.query_params, 50)
+        offset = get_offset(request.query_params, 0)
 
         if not _can_message(user_id, other_user_id):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
@@ -197,22 +234,7 @@ class SendMessageView(APIView):
     def post(self, request):
         data = request.data
         sender_id = request.user.id
-        receiver_id = data.get('receiver_id')
-        content = (data.get('content') or '').strip()
-        media_url = data.get('media_url')
-        product_id = data.get('product_id')
-        
-        if not receiver_id:
-            return Response(
-                {'error': 'receiver_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not content and not media_url:
-            return Response(
-                {'error': 'Message cannot be empty'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        receiver_id, content, media_url, product_id = validate_message_payload(data, sender_id)
 
         if not _can_message(sender_id, receiver_id):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
@@ -302,7 +324,7 @@ class UploadChatImageView(APIView):
             )
         except Exception as e:
             return Response(
-                {'error': f'Failed to upload image: {str(e)}'},
+                {'error': 'Failed to upload image'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -359,7 +381,7 @@ class UploadChatVideoView(APIView):
             )
         except Exception as e:
             return Response(
-                {'error': f'Failed to upload video: {str(e)}'},
+                {'error': 'Failed to upload video'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -415,22 +437,7 @@ class SendMessageWithImageView(APIView):
     def post(self, request):
         data = request.data
         sender_id = request.user.id
-        receiver_id = data.get('receiver_id')
-        content = (data.get('content') or '').strip()
-        media_url = data.get('media_url')
-        product_id = data.get('product_id')
-        
-        if not receiver_id:
-            return Response(
-                {'error': 'receiver_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not content and not media_url:
-            return Response(
-                {'error': 'Message cannot be empty'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        receiver_id, content, media_url, product_id = validate_message_payload(data, sender_id)
 
         if not _can_message(sender_id, receiver_id):
             return Response({'error': 'Messaging not allowed'}, status=status.HTTP_403_FORBIDDEN)
@@ -463,8 +470,8 @@ class ProductMessageListView(APIView):
     """
     def get(self, request, other_user_id, product_id):
         user_id = request.user.id
-        limit = int(request.query_params.get('limit', 50))
-        offset = int(request.query_params.get('offset', 0))
+        limit = get_limit(request.query_params, 50)
+        offset = get_offset(request.query_params, 0)
         
         query = """
         SELECT 
@@ -479,8 +486,10 @@ class ProductMessageListView(APIView):
         JOIN users sender ON sender.id = m.sender_id
         JOIN users receiver ON receiver.id = m.receiver_id
         JOIN marketplace_products p ON p.id = m.product_id
-        WHERE (m.sender_id = %s AND m.receiver_id = %s)
-           OR (m.sender_id = %s AND m.receiver_id = %s)
+        WHERE (
+                (m.sender_id = %s AND m.receiver_id = %s)
+             OR (m.sender_id = %s AND m.receiver_id = %s)
+        )
         AND m.product_id = %s
         ORDER BY m.created_at DESC
         LIMIT %s OFFSET %s
@@ -529,14 +538,8 @@ class ContactSellerView(APIView):
     def post(self, request):
         data = request.data
         buyer_id = request.user.id
-        product_id = data.get('product_id')
-        message_text = (data.get('message') or '').strip()
-        
-        if not product_id:
-            return Response(
-                {'error': 'product_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        product_id = clean_int(data.get('product_id'), 'product_id', required=True, minimum=1)
+        message_text = clean_str(data.get('message'), 'message', MAX_MESSAGE_LENGTH) or ''
         
         # Get product and seller info
         product_query = "SELECT seller_id, title FROM marketplace_products WHERE id = %s"

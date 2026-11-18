@@ -141,7 +141,7 @@ const Register = () => {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Create a password"
+              placeholder="At least 8 characters"
               autoComplete="new-password"
             />
             <PasswordField

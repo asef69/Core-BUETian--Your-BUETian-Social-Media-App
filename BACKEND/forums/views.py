@@ -1,8 +1,56 @@
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
+import logging
+from datetime import date
+
+from rest_framework.exceptions import ValidationError # type: ignore
+
 from utils.database import DatabaseManager
+from utils.params import get_float_param
+from utils.validators import (
+    BLOOD_GROUPS, clean_choice, clean_str, safe_procedure_message,
+)
 from decimal import Decimal, InvalidOperation
+
+logger = logging.getLogger(__name__)
+
+URGENCY_LEVELS = ('low', 'moderate', 'urgent')
+BLOOD_REQUEST_STATUSES = ('active', 'fulfilled', 'cancelled')
+TUITION_POST_TYPES = ('seeking_tutor', 'offering_tuition')
+TUITION_GENDERS = ('male', 'female', 'any')
+
+
+def _clean_date(value, field):
+    if value in (None, ''):
+        return None
+    try:
+        return date.fromisoformat(str(value).strip()).isoformat()
+    except ValueError:
+        raise ValidationError({field: 'Must be a date in YYYY-MM-DD format.'})
+
+
+def _clean_blood_fields(data, partial):
+    """Validated column values for blood_donation_posts keyed by column name."""
+    spec = {
+        'blood_group': lambda v: clean_choice(v, 'blood_group', BLOOD_GROUPS, required=True),
+        'urgency': lambda v: clean_choice(v or 'moderate', 'urgency', URGENCY_LEVELS),
+        'patient_name': lambda v: clean_str(v, 'patient_name', 100, required=True, allow_blank=False),
+        'hospital_name': lambda v: clean_str(v, 'hospital_name', 250, required=True, allow_blank=False),
+        'hospital_address': lambda v: clean_str(v, 'hospital_address', 1000) or None,
+        'contact_number': lambda v: clean_str(v, 'contact_number', 15, required=True, allow_blank=False),
+        'needed_date': lambda v: _clean_date(v, 'needed_date'),
+        'description': lambda v: clean_str(v, 'description', 2000) or None,
+        'status': lambda v: clean_choice(v, 'status', BLOOD_REQUEST_STATUSES, required=True),
+    }
+    cleaned = {}
+    for field, cleaner in spec.items():
+        if partial:
+            if field in data:
+                cleaned[field] = cleaner(data[field])
+        elif field != 'status':
+            cleaned[field] = cleaner(data.get(field))
+    return cleaned
 
 
 def _validate_tuition_constraints(data):
@@ -32,6 +80,31 @@ def _validate_tuition_constraints(data):
             return 'Hours per day must be a valid number'
         if duration_value <= 0 or duration_value > Decimal('24'):
             return 'Hours per day must be greater than 0 and at most 24'
+
+    salary_max = data.get('salary_max')
+    if salary_max not in (None, ''):
+        try:
+            salary_max_value = Decimal(str(salary_max))
+        except (InvalidOperation, ValueError):
+            return 'Max salary must be a valid number'
+        if salary_max_value < 0 or salary_max_value >= Decimal('100000000'):
+            return 'Max salary is out of range'
+        if salary_min not in (None, '') and salary_max_value < Decimal(str(salary_min)):
+            return 'Max salary cannot be less than min salary'
+
+    if data.get('post_type') not in (None, '') and data.get('post_type') not in TUITION_POST_TYPES:
+        return 'post_type must be one of: ' + ', '.join(TUITION_POST_TYPES)
+    if data.get('preferred_gender') not in (None, '') and data.get('preferred_gender') not in TUITION_GENDERS:
+        return 'preferred_gender must be one of: ' + ', '.join(TUITION_GENDERS)
+    for field, limit in (('class_level', 50), ('location', 250), ('contact_number', 15)):
+        value = data.get(field)
+        if value not in (None, '') and (not isinstance(value, str) or len(value) > limit):
+            return f'{field} must be text of at most {limit} characters'
+    subjects = data.get('subjects')
+    if isinstance(subjects, list) and (
+        len(subjects) > 20 or any(not isinstance(item, str) or len(item) > 100 for item in subjects)
+    ):
+        return 'subjects must be a list of at most 20 short strings'
 
     return None
 
@@ -70,6 +143,7 @@ class CreateBloodRequestView(APIView):
     """
     def post(self, request):
         data = request.data
+        fields = _clean_blood_fields(data, partial=False)
         query = """
         INSERT INTO blood_donation_posts (
             user_id, blood_group, urgency, patient_name,
@@ -78,14 +152,14 @@ class CreateBloodRequestView(APIView):
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """
-        
+
         request_id = DatabaseManager.execute_insert(
             query,
-            (request.user.id, data['blood_group'], data.get('urgency', 'moderate'),
-             data['patient_name'], data['hospital_name'], data.get('hospital_address'),
-             data['contact_number'], data.get('needed_date'), data.get('description'))
+            (request.user.id, fields['blood_group'], fields['urgency'],
+             fields['patient_name'], fields['hospital_name'], fields['hospital_address'],
+             fields['contact_number'], fields['needed_date'], fields['description'])
         )
-        
+
         return Response({
             'message': 'Blood request created successfully',
             'request_id': request_id
@@ -143,20 +217,9 @@ class BloodRequestDetailView(APIView):
         update_fields = []
         params = []
 
-        for field in [
-            'blood_group',
-            'urgency',
-            'patient_name',
-            'hospital_name',
-            'hospital_address',
-            'contact_number',
-            'needed_date',
-            'description',
-            'status'
-        ]:
-            if field in data:
-                update_fields.append(f"{field} = %s")
-                params.append(data[field])
+        for field, value in _clean_blood_fields(data, partial=True).items():
+            update_fields.append(f"{field} = %s")
+            params.append(value)
 
         if not update_fields:
             return Response({'error': 'No fields to update'}, status=status.HTTP_400_BAD_REQUEST)
@@ -349,13 +412,16 @@ class CreateTuitionPostView(APIView):
             result = DatabaseManager.execute_procedure('create_tuition_post_with_subjects', params)
             if not result or not result[0].get('out_success'):
                 error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
-                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({
                 'message': result[0]['out_message'],
                 'tuition_id': result[0]['out_tuition_id']
             }, status=status.HTTP_201_CREATED)
-        except Exception as ex:
-            return Response({'error': f'Failed to create tuition post: {str(ex)}'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Failed to create tuition post')
+            return Response({'error': 'Failed to create tuition post'}, status=status.HTTP_400_BAD_REQUEST)
 
 class TuitionPostDetailView(APIView):
     """
@@ -439,7 +505,7 @@ class TuitionPostDetailView(APIView):
         result = DatabaseManager.execute_procedure('update_tuition_post_with_subjects', params)
         if not result or not result[0].get('out_success'):
             error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
-            return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'message': result[0]['out_message']})
 
     def delete(self, request, post_id):
@@ -500,8 +566,8 @@ class ActiveTuitionPostsView(APIView):
     def get(self, request):
         post_type = request.query_params.get('type')
         subject = request.query_params.get('subject')
-        min_salary = request.query_params.get('min_salary')
-        max_salary = request.query_params.get('max_salary')
+        min_salary = get_float_param(request.query_params, 'min_salary')
+        max_salary = get_float_param(request.query_params, 'max_salary')
         preferred_gender = request.query_params.get('preferred_gender')
 
         query = """
@@ -543,11 +609,11 @@ class ActiveTuitionPostsView(APIView):
             query += " AND EXISTS (SELECT 1 FROM tution_post_subjects tps WHERE tps.tution_post_id = t.id AND tps.subject_name = %s)"
             params.append(subject)
 
-        if min_salary:
+        if min_salary is not None:
             query += " AND t.salary_max >= %s"
             params.append(min_salary)
 
-        if max_salary:
+        if max_salary is not None:
             query += " AND t.salary_min <= %s"
             params.append(max_salary)
 

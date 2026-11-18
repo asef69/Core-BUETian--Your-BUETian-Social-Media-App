@@ -2,7 +2,16 @@ from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
 from rest_framework.permissions import IsAuthenticated # type: ignore
+import logging
+
+from rest_framework.exceptions import ValidationError  # type: ignore
+
 from utils.database import DatabaseManager
+from utils.validators import (
+    clean_datetime, clean_int, clean_str, clean_tags, parse_bool, safe_procedure_message,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_blog_comment_extensions():
@@ -48,28 +57,16 @@ class CreateBlogPostView(APIView):
 
     def post(self, request):
         data = request.data
-        # Explicitly cast types for PostgreSQL procedure
-        def cast_or_none(val, typ):
-            if val is None:
-                return None
-            if typ == 'str':
-                return str(val)
-            if typ == 'bool':
-                return bool(val)
-            if typ == 'list':
-                return list(val) if isinstance(val, (list, tuple)) else [val]
-            return val
-
         params = (
             int(request.user.id),
-            cast_or_none(data.get('title'), 'str'),
-            cast_or_none(data.get('content'), 'str'),
-            cast_or_none(data.get('excerpt'), 'str'),
-            cast_or_none(data.get('cover_image'), 'str'),
-            cast_or_none(data.get('category'), 'str'),
-            cast_or_none(data.get('is_published', True), 'bool'),
-            cast_or_none(data.get('tags', []), 'list'),
-            cast_or_none(data.get('scheduled_publish_at'), 'str'),
+            clean_str(data.get('title'), 'title', 250, required=True, allow_blank=False),
+            clean_str(data.get('content'), 'content', 100000, required=True, allow_blank=False),
+            clean_str(data.get('excerpt'), 'excerpt', 1000) or None,
+            clean_str(data.get('cover_image'), 'cover_image', 500) or None,
+            clean_str(data.get('category'), 'category', 100) or None,
+            parse_bool(data.get('is_published'), True),
+            clean_tags(data.get('tags')) or [],
+            clean_datetime(data.get('scheduled_publish_at'), 'scheduled_publish_at'),
             None,  # out_blog_id
             None,  # out_success
             None   # out_message
@@ -78,10 +75,13 @@ class CreateBlogPostView(APIView):
             result=DatabaseManager.execute_procedure('create_blog_post_with_tags', params)
             if not result or not result[0].get('out_success'):
                 error_message=result[0].get('out_message','Unknown error') if result else 'Unknown error'
-                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'message': result[0]['out_message']   , 'blog_id': result[0]['out_blog_id']},status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)        
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Blog request failed')
+            return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BlogPostDetailView(APIView):
     def get(self, request, blog_id):
@@ -215,7 +215,8 @@ class PublishedBlogsView(APIView):
         # Special logic for drafts tab: show both drafts and scheduled (future) posts for the user
         if mine == 'true' and drafts_tab == 'true':
             query = (
-                "SELECT b.*, u.name as author_name, u.profile_picture as author_picture "
+                "SELECT b.*, u.name as author_name, u.profile_picture as author_picture, "
+                "ARRAY(SELECT bt.tag_name FROM blog_post_tags bt WHERE bt.blog_post_id = b.id ORDER BY bt.id) AS tags "
                 "FROM blog_posts b INNER JOIN users u ON b.author_id = u.id "
                 "WHERE b.author_id = %s AND (b.is_published = false OR (b.is_published = true AND b.scheduled_publish_at > NOW())) "
                 "ORDER BY b.created_at DESC LIMIT 50"
@@ -225,7 +226,6 @@ class PublishedBlogsView(APIView):
             return Response(_attach_edit_delete_flags(result))
 
         # ...existing code...
-        base_table = 'published_blogs'
         use_blog_posts = False
         if is_published is not None and is_published.lower() == 'false':
             use_blog_posts = True
@@ -235,7 +235,11 @@ class PublishedBlogsView(APIView):
         params = []
         if table == 'blog_posts':
             # Always join users for drafts/scheduled
-            query = f"SELECT b.*, u.name as author_name, u.profile_picture as author_picture FROM blog_posts b INNER JOIN users u ON b.author_id = u.id WHERE 1=1"
+            query = (
+                "SELECT b.*, u.name as author_name, u.profile_picture as author_picture, "
+                "ARRAY(SELECT bt.tag_name FROM blog_post_tags bt WHERE bt.blog_post_id = b.id ORDER BY bt.id) AS tags "
+                "FROM blog_posts b INNER JOIN users u ON b.author_id = u.id WHERE 1=1"
+            )
         else:
             # Only show published and scheduled posts that are due
             query = f"SELECT * FROM published_blogs WHERE (scheduled_publish_at IS NULL OR scheduled_publish_at <= NOW()) AND is_published = true"
@@ -256,8 +260,9 @@ class PublishedBlogsView(APIView):
             if table == 'blog_posts':
                 query += (
                     " AND EXISTS ("
-                    "SELECT 1 FROM unnest(b.tags) AS t(tag_name) "
-                    "WHERE lower(regexp_replace(t.tag_name, '^#', '')) = lower(regexp_replace(%s, '^#', ''))"
+                    "SELECT 1 FROM blog_post_tags bt2 "
+                    "WHERE bt2.blog_post_id = b.id "
+                    "AND lower(regexp_replace(bt2.tag_name, '^#', '')) = lower(regexp_replace(%s, '^#', ''))"
                     ")"
                 )
             else:
@@ -302,14 +307,15 @@ class UpdateBlogPostView(APIView):
         params = (
             int(blog_id),
             int(request.user.id),
-            cast_or_none(data.get('title'), 'str'),
-            cast_or_none(data.get('content'), 'str'),
-            cast_or_none(data.get('excerpt'), 'str'),
-            cast_or_none(data.get('cover_image'), 'str'),
-            cast_or_none(data.get('category'), 'str'),
-            cast_or_none(data.get('is_published'), 'bool'),
-            cast_or_none(data.get('tags', []), 'list'),
-            cast_or_none(data.get('scheduled_publish_at'), 'str'),
+            clean_str(data.get('title'), 'title', 250, allow_blank=False),
+            clean_str(data.get('content'), 'content', 100000, allow_blank=False),
+            clean_str(data.get('excerpt'), 'excerpt', 1000),
+            clean_str(data.get('cover_image'), 'cover_image', 500),
+            clean_str(data.get('category'), 'category', 100),
+            parse_bool(data.get('is_published')),
+            # None (field absent) leaves the existing tags untouched; a list replaces them.
+            clean_tags(data.get('tags')),
+            clean_datetime(data.get('scheduled_publish_at'), 'scheduled_publish_at'),
             None,  # out_success
             None   # out_message
         )
@@ -317,10 +323,13 @@ class UpdateBlogPostView(APIView):
             result = DatabaseManager.execute_procedure('update_blog_post_with_tags', params)
             if not result or not result[0].get('out_success'):
                 error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
-                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'message': result[0]['out_message']})
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Blog request failed')
+            return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def patch(self, request, blog_id):
         return self.put(request, blog_id)
@@ -345,10 +354,13 @@ class DeleteBlogPostView(APIView):
             result = DatabaseManager.execute_procedure('delete_blog_post', params)
             if not result or not result[0].get('out_success'):
                 error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
-                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'message': result[0]['out_message']})
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Blog request failed')
+            return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class LikeBlogView(APIView):
     def post(self, request, blog_id):
         resolved_blog_id = _resolve_blog_id(blog_id)
@@ -410,8 +422,11 @@ class LikeBlogView(APIView):
                 'likes_count': result[0]['out_likes_count'],
                 'blog_id': resolved_blog_id
             })
-        except Exception as e:
-            return Response({'error': f'Internal error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Blog request failed')
+            return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class LikeBlogCommentView(APIView):
@@ -431,15 +446,18 @@ class LikeBlogCommentView(APIView):
             result = DatabaseManager.execute_procedure('toggle_blog_comment_like_with_notification', params)
             if not result or not result[0].get('out_success'):
                 error_message = result[0].get('out_message', 'Unknown error') if result else 'Unknown error'
-                return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': safe_procedure_message(error_message)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({
                 'liked': result[0]['out_liked'],
                 'likes_count': result[0]['out_likes_count'],
                 'comment_id': comment_id,
                 'message': result[0]['out_message']
             })
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValidationError:
+            raise
+        except Exception:
+            logger.exception('Blog request failed')
+            return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BlogCommentsView(APIView):
     def get(self, request, blog_id):
@@ -481,16 +499,15 @@ class BlogCommentsView(APIView):
 
         data = request.data
 
-        parent_comment_id = data.get('parent_comment_id')
-        if parent_comment_id in ('', None):
-            parent_comment_id = None
+        parent_comment_id = clean_int(data.get('parent_comment_id'), 'parent_comment_id', minimum=1)
+        comment_text = clean_str(data.get('content'), 'content', 2000, required=True, allow_blank=False)
 
         # Use the stored procedure for comment creation and notification
         params = (
             int(request.user.id),
             int(resolved_blog_id),
-            data['content'],
-            int(parent_comment_id) if parent_comment_id is not None else None,
+            comment_text,
+            parent_comment_id,
             None,  # out_comment_id
             None,  # out_success
             None   # out_message

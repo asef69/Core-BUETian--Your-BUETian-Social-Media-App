@@ -1,4 +1,4 @@
-﻿DROP FUNCTION IF EXISTS get_user_posts;
+DROP FUNCTION IF EXISTS get_user_posts;
 CREATE OR REPLACE FUNCTION get_user_posts(
     p_user_id INTEGER,
     p_viewer_id INTEGER DEFAULT NULL,
@@ -144,7 +144,8 @@ $$ LANGUAGE plpgsql;
 DROP FUNCTION IF EXISTS get_user_liked_posts;
 CREATE OR REPLACE FUNCTION get_user_liked_posts(
     p_user_id INTEGER,
-    p_limit INTEGER DEFAULT 20
+    p_limit INTEGER DEFAULT 20,
+    p_viewer_id INTEGER DEFAULT NULL
     ) RETURNS TABLE(
     post_id INTEGER,
     content TEXT,
@@ -184,6 +185,25 @@ FROM likes l
     INNER JOIN users u ON u.id = p.user_id
     LEFT JOIN media_urls m ON m.post_id = p.id
 WHERE l.user_id = p_user_id
+    AND (
+    p.user_id = p_viewer_id
+    OR (
+        p.group_id IS NULL
+        AND (
+        p.visibility = 'public'
+        OR (
+            p.visibility = 'followers'
+            AND EXISTS (
+            SELECT 1
+            FROM follows f
+            WHERE f.follower_id = p_viewer_id
+                AND f.following_id = p.user_id
+                AND f.status = 'accepted'
+            )
+        )
+        )
+    )
+    )
 GROUP BY p.id,
     u.id,
     u.name,

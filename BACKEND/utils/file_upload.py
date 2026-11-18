@@ -40,6 +40,41 @@ class FileUploadHandler:
     MAX_IMAGE_SIZE=5*1024*1024  # 5MB in bytes
     MAX_VIDEO_SIZE=50*1024*1024  # 50MB in bytes
 
+    # Vercel rejects request bodies over 4.5MB before Django ever sees them, so
+    # advertise (and enforce) a limit that can actually succeed there.
+    if os.environ.get('VERCEL'):
+        MAX_IMAGE_SIZE = 4 * 1024 * 1024
+        MAX_VIDEO_SIZE = 4 * 1024 * 1024
+
+    @staticmethod
+    def _matches_signature(file, ext):
+        """Check the file's leading bytes against its claimed type.
+
+        The extension alone is trivial to fake, so confirm the content really is
+        an image / video container before it is stored.
+        """
+        try:
+            file.seek(0)
+            head = file.read(16)
+            file.seek(0)
+        except Exception:
+            return False
+        if ext in ('jpg', 'jpeg'):
+            return head.startswith(b'\xff\xd8\xff')
+        if ext == 'png':
+            return head.startswith(b'\x89PNG\r\n\x1a\n')
+        if ext == 'gif':
+            return head.startswith((b'GIF87a', b'GIF89a'))
+        if ext == 'webp':
+            return head[:4] == b'RIFF' and head[8:12] == b'WEBP'
+        if ext in ('mp4', 'mov'):
+            return head[4:8] in (b'ftyp', b'moov', b'mdat', b'wide', b'free', b'skip')
+        if ext == 'avi':
+            return head[:4] == b'RIFF' and head[8:12] == b'AVI '
+        if ext == 'wmv':
+            return head.startswith(b'\x30\x26\xb2\x75\x8e\x66\xcf\x11')
+        return False
+
     @staticmethod
     def validate_file(file,file_type='image'):
         """
@@ -76,13 +111,19 @@ class FileUploadHandler:
             if ext not in FileUploadHandler.ALLOWED_IMAGE_EXTENSIONS:
                 raise ValueError(f"Invalid image format. Allowed: {', '.join(FileUploadHandler.ALLOWED_IMAGE_EXTENSIONS)}")
             if file.size > FileUploadHandler.MAX_IMAGE_SIZE:
-                raise ValueError("Image size exceeds 5MB limit")
+                raise ValueError(f"Image size exceeds {FileUploadHandler.MAX_IMAGE_SIZE // (1024 * 1024)}MB limit")
         elif file_type == 'video':
             if ext not in FileUploadHandler.ALLOWED_VIDEO_EXTENSIONS:
                 raise ValueError(f"Invalid video format. Allowed: {', '.join(FileUploadHandler.ALLOWED_VIDEO_EXTENSIONS)}")
             if file.size > FileUploadHandler.MAX_VIDEO_SIZE:
-                raise ValueError("Video size exceeds 50MB limit")
-        
+                raise ValueError(f"Video size exceeds {FileUploadHandler.MAX_VIDEO_SIZE // (1024 * 1024)}MB limit")
+        else:
+            raise ValueError("Unsupported file type")
+
+        # The extension is trivial to fake, so also confirm the content matches it.
+        if not FileUploadHandler._matches_signature(file, ext):
+            raise ValueError(f"The file content does not look like a valid .{ext} file")
+
         return True
     
     @staticmethod

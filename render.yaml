@@ -18,7 +18,7 @@ services:
     buildCommand: pip install -r requirements.txt
     # Daphne serves HTTP and WebSockets (/ws/chat/) from one process.
     startCommand: daphne -b 0.0.0.0 -p $PORT core_buetians.asgi:application
-    healthCheckPath: /swagger/
+    healthCheckPath: /health/
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
@@ -27,7 +27,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
-        value: "*"
+        value: ".onrender.com,.vercel.app,localhost,127.0.0.1"
       - key: CSRF_TRUSTED_ORIGINS
         value: https://*.onrender.com,https://*.vercel.app
       # Frontend origin(s), e.g. https://buetian-web.vercel.app

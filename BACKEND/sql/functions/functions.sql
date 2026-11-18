@@ -1,4 +1,4 @@
-﻿--mutual followers 
+--mutual followers 
 DROP FUNCTION IF EXISTS get_mutual_followers(INTEGER);
 CREATE OR REPLACE FUNCTION get_mutual_followers(p_user_id INTEGER) RETURNS TABLE(
     user_id INTEGER,
@@ -258,14 +258,14 @@ WHERE u.id != p_user_id
     )
     AND (
     u.department_name = (
-        SELECT department_name
-        FROM users
-        WHERE id = p_user_id
+        SELECT me.department_name
+        FROM users me
+        WHERE me.id = p_user_id
     )
     OR u.batch = (
-        SELECT batch
-        FROM users
-        WHERE id = p_user_id
+        SELECT me2.batch
+        FROM users me2
+        WHERE me2.id = p_user_id
     )
     )
 ORDER BY mutual_count DESC,
@@ -427,18 +427,18 @@ SELECT u.id AS user_id,
     u.batch,
     (
     SELECT COUNT(*)
-    FROM posts
-    WHERE user_id = u.id
+    FROM posts px
+    WHERE px.user_id = u.id
     ) AS posts_count,
     (
     SELECT COUNT(*)
-    FROM comments
-    WHERE user_id = u.id
+    FROM comments cx
+    WHERE cx.user_id = u.id
     ) AS comments_count,
     (
     SELECT COUNT(*)
-    FROM likes
-    WHERE user_id = u.id
+    FROM likes lx
+    WHERE lx.user_id = u.id
     ) AS likes_given,
     (
     SELECT COALESCE(SUM(p.likes_count), 0)
@@ -622,13 +622,13 @@ SELECT (
                 SELECT 1
                 FROM blood_donation_posts bd
                 WHERE bd.status = 'active'
-                    AND bd.user_id IN (p_sender_id, p_receiver_id)
+                    AND bd.user_id = p_receiver_id
         )
         OR EXISTS(
                 SELECT 1
                 FROM tution_posts tp
                 WHERE tp.status = 'active'
-                    AND tp.user_id IN (p_sender_id, p_receiver_id)
+                    AND tp.user_id = p_receiver_id
         )
     ) AS can_message;
 END;
@@ -996,21 +996,20 @@ CREATE OR REPLACE FUNCTION accept_follow_request(
     p_follow_id INTEGER,
     p_user_id INTEGER
     ) RETURNS TABLE(
-    follow_id INTEGER,
-    follower_id INTEGER,
-    following_id INTEGER,
+    out_follow_id INTEGER,
+    out_follower_id INTEGER,
+    out_following_id INTEGER,
     accepted_at TIMESTAMP
-    ) AS $$ BEGIN
-UPDATE follows
-SET status = 'accepted',
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = p_follow_id
-    AND following_id = p_user_id
-    AND status = 'pending'
-RETURNING id,
-    follower_id,
-    following_id,
-    updated_at AS accepted_at;
+    ) AS $$ BEGIN RETURN QUERY
+UPDATE follows f
+SET status = 'accepted'
+WHERE f.id = p_follow_id
+    AND f.following_id = p_user_id
+    AND f.status = 'pending'
+RETURNING f.id,
+    f.follower_id,
+    f.following_id,
+    CURRENT_TIMESTAMP::TIMESTAMP;
 END;
 $$ LANGUAGE plpgsql;
 

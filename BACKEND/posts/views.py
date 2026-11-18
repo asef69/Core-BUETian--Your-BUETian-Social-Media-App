@@ -3,9 +3,14 @@ import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from utils.database import DatabaseManager
+from utils.params import get_limit, get_offset
 from utils.file_upload import FileUploadHandler
+from utils.validators import (
+    POST_MEDIA_TYPES, POST_VISIBILITIES, clean_choice, clean_int, clean_media_url, clean_str,
+)
 
 
 def _is_group_member(group_id, user_id):
@@ -70,6 +75,37 @@ def _get_post_owner_and_visibility(post_id):
         return None
     return result[0]
 
+
+MAX_POST_LENGTH = 10000
+
+
+def _validate_post_input(content, visibility, media_type, raw_group_id, media_urls):
+    """Validate the user-controlled parts of a new post.
+
+    Returns (content, visibility, media_type, group_id, media_urls) or raises
+    ValidationError (-> 400).
+    """
+    content = clean_str(content, 'content', MAX_POST_LENGTH)
+    visibility = clean_choice(visibility or 'public', 'visibility', POST_VISIBILITIES)
+    if media_type:
+        media_type = clean_choice(media_type, 'media_type', POST_MEDIA_TYPES)
+    group_id = None
+    if raw_group_id not in (None, '', 0, '0', 'null', 'None'):
+        group_id = clean_int(raw_group_id, 'group_id', minimum=1)
+    cleaned_urls = [clean_media_url(url, 'media_urls') for url in media_urls]
+    return content or None, visibility, media_type, group_id, cleaned_urls
+
+
+def _friendly_procedure_error(message):
+    """Hide raw PostgreSQL error text (constraint / table names) from API clients."""
+    text = (message or '').lower()
+    if 'must be a member' in text:
+        return message
+    if any(word in text for word in ('violates', 'constraint', 'relation', 'column', 'syntax', 'invalid input')):
+        return 'Invalid post data'
+    return message or 'Post creation failed'
+
+
 class CreatePostView(APIView):
     """
     Create a new post with optional media URLs.
@@ -112,7 +148,7 @@ class CreatePostView(APIView):
         user_id=request.user.id
 
         raw_group_id = data.get('group_id')
-        group_id = None if raw_group_id in (None, '', 0, '0', 'null', 'None') else raw_group_id
+        group_id = None
 
         visibility = data.get('visibility', 'public')
         content = data.get('content')
@@ -162,6 +198,12 @@ class CreatePostView(APIView):
                         collected_media_urls.append(media_url)
                 elif media_item:
                     collected_media_urls.append(media_item)
+
+        content, visibility, requested_media_type, group_id, collected_media_urls = _validate_post_input(
+            content, visibility, data.get('media_type'), raw_group_id, collected_media_urls
+        )
+        if not content and not collected_media_urls:
+            return Response({'error': 'A post needs text or media'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Update media_type based on what was actually collected
         if collected_media_urls and media_type == 'image':
@@ -213,7 +255,7 @@ class CreatePostView(APIView):
         if not out_success or not post_id:
             if 'must be a member' in out_message.lower():
                 return Response({'error': out_message}, status=status.HTTP_403_FORBIDDEN)
-            return Response({'error': out_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _friendly_procedure_error(out_message)}, status=status.HTTP_400_BAD_REQUEST)
         
         # Fetch the complete post data using get_post_details function
         # This returns the same structure as the feed for consistency
@@ -305,8 +347,8 @@ class UserFeedView(APIView):
         Function: get_user_feed(user_id, limit, offset)
     """
     def get(self, request):
-        limit = int(request.query_params.get('limit', 20))
-        offset = int(request.query_params.get('offset', 0))
+        limit = get_limit(request.query_params, 20)
+        offset = get_offset(request.query_params, 0)
         
         try:
             result = DatabaseManager.execute_function(
@@ -356,7 +398,7 @@ class PublicFeedView(APIView):
         limit (int): Number of posts to return (default: 20)
     """
     def get(self, request):
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
 
         query = """
         SELECT
@@ -582,10 +624,10 @@ class PostDetailView(APIView):
 
         if 'content' in data:
             update_fields.append("content = %s")
-            params.append(data['content'])
+            params.append(clean_str(data['content'], 'content', MAX_POST_LENGTH))
         if 'visibility' in data:
             update_fields.append("visibility = %s")
-            params.append(data['visibility'])
+            params.append(clean_choice(data['visibility'], 'visibility', POST_VISIBILITIES, required=True))
 
         if not update_fields and not request.FILES and 'delete_media_urls' not in data and 'media_urls' not in data:
             return Response({'error': 'No fields to update'}, status=status.HTTP_400_BAD_REQUEST)
@@ -854,23 +896,22 @@ class CommentView(APIView):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
         # Validate required field
-        if not data.get('content'):
+        if not data.get('content') or not str(data.get('content')).strip():
             return Response(
                 {'error': 'Content is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+        comment_text = clean_str(data.get('content'), 'content', 2000, required=True, allow_blank=False)
+
         try:
-            parent_comment_id = data.get('parent_comment_id')
-            if parent_comment_id in ('', None):
-                parent_comment_id = None
+            parent_comment_id = clean_int(data.get('parent_comment_id'), 'parent_comment_id', minimum=1)
             
             # Use procedure for comment creation with notification
             params = (
                 int(request.user.id),
                 int(post_id),
-                data['content'],
-                int(parent_comment_id) if parent_comment_id is not None else None,
+                comment_text,
+                parent_comment_id,
                 None,  # out_comment_id
                 None,  # out_success
                 None   # out_message
@@ -887,12 +928,14 @@ class CommentView(APIView):
                 'message': 'Comment added',
                 'comment_id': comment_id
             }, status=status.HTTP_201_CREATED)
+        except ValidationError:
+            raise
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Error adding comment: {str(e)}")
             return Response(
-                {'error': 'Failed to add comment', 'detail': str(e)},
+                {'error': 'Failed to add comment'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -1008,7 +1051,7 @@ class UploadPostMediaView(APIView):
             except Exception as e:
                 errors.append({
                     'file': file.name,
-                    'error': f'Upload failed: {str(e)}'
+                    'error': 'Upload failed'
                 })
         
         response_data = {
@@ -1081,7 +1124,7 @@ class CreatePostWithMediaView(APIView):
         user_id = request.user.id
         
         raw_group_id = data.get('group_id')
-        group_id = None if raw_group_id in (None, '', 0, '0', 'null', 'None') else raw_group_id
+        group_id = None
 
         visibility = data.get('visibility', 'public')
         content = data.get('content')
@@ -1102,7 +1145,11 @@ class CreatePostWithMediaView(APIView):
                 elif media_item:
                     normalized_media_urls.append(media_item)
 
-        media_type = data.get('media_type')
+        content, visibility, media_type, group_id, normalized_media_urls = _validate_post_input(
+            content, visibility, data.get('media_type'), raw_group_id, normalized_media_urls
+        )
+        if not content and not normalized_media_urls:
+            return Response({'error': 'A post needs text or media'}, status=status.HTTP_400_BAD_REQUEST)
         if not media_type:
             media_type = 'image' if normalized_media_urls else 'text'
 
@@ -1145,7 +1192,7 @@ class CreatePostWithMediaView(APIView):
         if not out_success or not post_id:
             if 'must be a member' in out_message.lower():
                 return Response({'error': out_message}, status=status.HTTP_403_FORBIDDEN)
-            return Response({'error': out_message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _friendly_procedure_error(out_message)}, status=status.HTTP_400_BAD_REQUEST)
         
         # Fetch the complete post data using get_post_details function
         # This returns the same structure as the feed for consistency

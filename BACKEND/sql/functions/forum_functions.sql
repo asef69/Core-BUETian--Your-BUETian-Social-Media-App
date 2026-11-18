@@ -1,4 +1,4 @@
-﻿DROP FUNCTION IF EXISTS get_tuition_stats_by_subject;
+DROP FUNCTION IF EXISTS get_tuition_stats_by_subject;
 CREATE OR REPLACE FUNCTION get_tuition_stats_by_subject() RETURNS TABLE(
     subject_name VARCHAR(100),
     total_posts BIGINT,
@@ -154,9 +154,9 @@ CREATE OR REPLACE FUNCTION search_tuition_posts(
 SELECT t.id AS tuition_id,
     t.post_type,
     ARRAY(
-    SELECT subject_name
-    FROM tution_post_subjects
-    WHERE tution_post_id = t.id
+    SELECT tps2.subject_name::TEXT
+    FROM tution_post_subjects tps2
+    WHERE tps2.tution_post_id = t.id
     ) AS subjects,
     t.class_level,
     t.location,
@@ -207,9 +207,9 @@ CREATE OR REPLACE FUNCTION get_user_tuition_posts(p_user_id INTEGER) RETURNS TAB
 SELECT t.id AS tuition_id,
     t.post_type,
     ARRAY(
-    SELECT subject_name
-    FROM tution_post_subjects
-    WHERE tution_post_id = t.id
+    SELECT tps2.subject_name::TEXT
+    FROM tution_post_subjects tps2
+    WHERE tps2.tution_post_id = t.id
     ) AS subjects,
     t.class_level,
     t.location,
@@ -284,9 +284,9 @@ CREATE OR REPLACE FUNCTION get_tuition_post_details(p_post_id INTEGER) RETURNS T
 SELECT t.id as tuition_id,
     t.post_type,
     ARRAY(
-    SELECT subject_name
-    FROM tution_post_subjects
-    WHERE tution_post_id = t.id
+    SELECT tps2.subject_name::TEXT
+    FROM tution_post_subjects tps2
+    WHERE tps2.tution_post_id = t.id
     ) as subjects,
     t.class_level,
     t.preferred_gender,

@@ -1,10 +1,20 @@
 import json
+import logging
 from datetime import date, datetime
+from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import AccessToken
 from utils.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
+
+MAX_MESSAGE_LENGTH = 5000
+
+
+class ChatInputError(Exception):
+    """Bad client input; the message is safe to show to the client."""
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -116,10 +126,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif message_type == 'read_message':
                 await self.handle_read_message(data)
                 
-        except Exception as e:
+        except ChatInputError as e:
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': str(e)
+            }))
+        except Exception:
+            logger.exception('Chat WebSocket handler failed')
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Something went wrong'
             }))
     
     async def handle_chat_message(self, data):
@@ -142,11 +158,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         Returns early if receiver_id is missing.
         """
-        receiver_id = data.get('receiver_id')
-        content = (data.get('content') or '').strip()
-        media_url = data.get('media_url')  
-        
-        if not receiver_id:
+        receiver_id = self.parse_user_id(data.get('receiver_id'))
+        content = data.get('content') or ''
+        if not isinstance(content, str):
+            raise ChatInputError('Invalid message')
+        content = content.strip()
+        if len(content) > MAX_MESSAGE_LENGTH:
+            raise ChatInputError('Message is too long')
+        media_url = data.get('media_url')
+        if media_url is not None and (
+            not isinstance(media_url, str)
+            or len(media_url) > 500
+            or not media_url.startswith(('https://', 'http://', '/'))
+        ):
+            raise ChatInputError('Invalid media URL')
+        if receiver_id is None or receiver_id == self.user.id:
             return
 
         if not content and not media_url:
@@ -162,6 +188,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'message': 'Messaging not allowed'
             }))
             return
+
+        if not await self.user_exists(receiver_id):
+            raise ChatInputError('Recipient not found')
         
         message = await self.save_message(
             sender_id=self.user.id, # type: ignore
@@ -202,10 +231,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "is_typing": bool
             }
         """
-        receiver_id = data.get('receiver_id')
-        is_typing = data.get('is_typing', False)
+        receiver_id = self.parse_user_id(data.get('receiver_id'))
+        is_typing = bool(data.get('is_typing', False))
 
-        if not receiver_id:
+        if receiver_id is None or receiver_id == self.user.id:
             return
 
         if not await self.can_user_message(self.user.id, receiver_id):
@@ -235,11 +264,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             1. Update message is_read field to TRUE
             2. Notify sender's channel group
         """
-        message_id = data.get('message_id')
-        
-        await self.mark_message_as_read(message_id)
-        
-        sender_id = data.get('sender_id')
+        message_id = self.parse_user_id(data.get('message_id'))
+        if message_id is None:
+            return
+
+        sender_id = await self.mark_message_as_read(message_id, self.user.id)
         if sender_id:
             await self.channel_layer.group_send(
                 f'user_{sender_id}',
@@ -248,7 +277,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message_id': message_id
                 }
             )
-    
+
     async def chat_message(self, event):
         """
         Channel layer event handler for incoming chat messages.
@@ -305,6 +334,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message_id': event['message_id']
         }))
     
+    @staticmethod
+    def parse_user_id(value):
+        """Positive int or None (bool / floats / strings with junk are rejected)."""
+        if isinstance(value, bool):
+            return None
+        try:
+            number = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
+    @database_sync_to_async
+    def user_exists(self, user_id):
+        return bool(DatabaseManager.execute_query(
+            "SELECT 1 FROM users WHERE id = %s AND is_active = TRUE", (user_id,)
+        ))
+
     @database_sync_to_async
     def get_user_from_token(self):
         """
@@ -323,11 +369,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             This is a synchronous database operation wrapped for async use.
         """
         try:
-            token = self.scope['query_string'].decode().split('token=')[1]
+            token = parse_qs(self.scope['query_string'].decode()).get('token', [''])[0]
             access_token = AccessToken(token) # type: ignore
             user_id = access_token['user_id']
-            
-            query = "SELECT id, email, name FROM users WHERE id = %s"
+
+            query = "SELECT id, email, name FROM users WHERE id = %s AND is_active = TRUE"
             result = DatabaseManager.execute_query(query, (user_id,))
             
             if result:
@@ -402,7 +448,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return normalized
     
     @database_sync_to_async
-    def mark_message_as_read(self, message_id):
+    def mark_message_as_read(self, message_id, receiver_id):
         """
         Update message read status in database.
         
@@ -411,7 +457,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         Database:
             Updates: messages.is_read = TRUE
-            Where: messages.id = message_id
+            Where: messages.id = message_id AND messages.receiver_id = the connected user
+            Returns the sender_id (so the right user is notified) or None.
         """
-        query = "UPDATE messages SET is_read = TRUE WHERE id = %s"
-        DatabaseManager.execute_update(query, (message_id,))
+        rows = DatabaseManager.execute_query(
+            "UPDATE messages SET is_read = TRUE WHERE id = %s AND receiver_id = %s RETURNING sender_id",
+            (message_id, receiver_id)
+        )
+        return rows[0]['sender_id'] if rows else None

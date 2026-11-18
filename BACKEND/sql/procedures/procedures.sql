@@ -36,11 +36,14 @@ BEGIN
             is_published = COALESCE(p_is_published, is_published),
             scheduled_publish_at = COALESCE(p_scheduled_publish_at, scheduled_publish_at)
         WHERE id = p_blog_id;
-        DELETE FROM blog_post_tags WHERE blog_post_id = p_blog_id;
-        IF p_tags IS NOT NULL AND array_length(p_tags,1)>0 THEN
-            FOREACH v_tag IN ARRAY p_tags LOOP
-                INSERT INTO blog_post_tags(blog_post_id,tag_name) VALUES(p_blog_id,v_tag);
-            END LOOP;
+        IF p_tags IS NOT NULL THEN
+            DELETE FROM blog_post_tags WHERE blog_post_id = p_blog_id;
+            IF array_length(p_tags,1) > 0 THEN
+                FOREACH v_tag IN ARRAY p_tags LOOP
+                    INSERT INTO blog_post_tags(blog_post_id,tag_name) VALUES(p_blog_id,v_tag)
+                    ON CONFLICT (blog_post_id, tag_name) DO NOTHING;
+                END LOOP;
+            END IF;
         END IF;
         out_success := TRUE;
         out_message := 'Blog Post Updated Successfully';
@@ -568,7 +571,6 @@ BEGIN
             SELECT 1 FROM tution_posts WHERE id = p_post_id AND user_id = p_user_id
         ) THEN
             out_message := 'Unauthorized';
-            ROLLBACK;
             RETURN;
         END IF;
 
@@ -596,13 +598,11 @@ BEGIN
             END IF;
         END IF;
     EXCEPTION WHEN OTHERS THEN
-        ROLLBACK;
         out_success := FALSE;
         out_message := SQLERRM;
         RETURN;
     END;
 
-    COMMIT;
     out_success := TRUE;
     out_message := 'Tuition post updated successfully';
 END;
@@ -860,6 +860,8 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_status TEXT;
+    v_buyer INTEGER;
+    v_seller INTEGER;
 BEGIN
     out_success := FALSE;
     out_message := '';
@@ -869,12 +871,22 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT status INTO v_status
+    SELECT status, buyer_id, seller_id INTO v_status, v_buyer, v_seller
     FROM marketplace_products
     WHERE id = p_product_id;
 
     IF NOT FOUND THEN
         out_message := 'Product not found';
+        RETURN;
+    END IF;
+
+    IF v_seller IS DISTINCT FROM p_seller_id THEN
+        out_message := 'Seller does not match this product';
+        RETURN;
+    END IF;
+
+    IF v_buyer IS DISTINCT FROM p_buyer_id THEN
+        out_message := 'Only the buyer of this product can review it';
         RETURN;
     END IF;
 

@@ -72,6 +72,8 @@ BEGIN
     UPDATE posts
     SET likes_count=GREATEST(0,likes_count-1)
     WHERE id=OLD.post_id;
+    DELETE FROM notifications
+    WHERE notification_type='like' AND actor_id=OLD.user_id AND reference_id=OLD.post_id;
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -181,9 +183,15 @@ DECLARE
     post_author_id INTEGER;
 BEGIN
     SELECT user_id INTO post_author_id FROM posts WHERE id=NEW.post_id;
-    IF post_author_id!=NEW.user_id THEN
-        INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
-        VALUES(post_author_id,NEW.user_id,'like',NEW.post_id,'liked your post');
+    IF post_author_id IS NOT NULL AND post_author_id!=NEW.user_id THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM notifications n
+            WHERE n.user_id=post_author_id AND n.actor_id=NEW.user_id
+              AND n.notification_type='like' AND n.reference_id=NEW.post_id
+        ) THEN
+            INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
+            VALUES(post_author_id,NEW.user_id,'like',NEW.post_id,'liked your post');
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -249,7 +257,7 @@ DECLARE
     group_name_text VARCHAR(100);
     admin_id_val INTEGER;
 BEGIN
-    IF NEW.status='pending' THEN
+    IF NEW.status='pending' AND (TG_OP='INSERT' OR OLD.status IS DISTINCT FROM 'pending') THEN
         SELECT name,admin_id INTO group_name_text,admin_id_val FROM groups WHERE id=NEW.group_id;
         IF admin_id_val IS NOT NULL AND admin_id_val<>NEW.user_id THEN
             INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
@@ -261,6 +269,7 @@ BEGIN
                   AND n.actor_id = NEW.user_id
                   AND n.notification_type = 'group_join_request'
                   AND n.reference_id = NEW.group_id
+                  AND n.is_read = FALSE
             );
         END IF;
     END IF;
@@ -270,30 +279,12 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS after_group_member_insert ON group_members;
 CREATE TRIGGER after_group_member_insert
-    AFTER INSERT ON group_members
+    AFTER INSERT OR UPDATE ON group_members
     FOR EACH ROW
     EXECUTE FUNCTION create_group_join_request_notification();
 
-CREATE OR REPLACE FUNCTION create_group_invite_notification()
-RETURNS TRIGGER AS $$
-DECLARE 
-    group_name_text VARCHAR(100);
-    admin_id_val INTEGER;
-BEGIN
-    IF NEW.status='pending' THEN
-        SELECT name,admin_id INTO group_name_text,admin_id_val FROM groups WHERE id=NEW.group_id;
-        INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
-        VALUES(NEW.user_id,admin_id_val,'group_invite',NEW.id,'invited you to join the group "'||group_name_text||'"');
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS after_group_member_invite_notification ON group_members;
-CREATE TRIGGER after_group_member_invite_notification
-    AFTER INSERT ON group_members
-    FOR EACH ROW
-    EXECUTE FUNCTION create_group_invite_notification();
+DROP FUNCTION IF EXISTS create_group_invite_notification();
 
 CREATE OR REPLACE FUNCTION create_blog_like_notification()
 RETURNS TRIGGER AS $$
@@ -301,9 +292,15 @@ DECLARE
     blog_author_id INTEGER;
 BEGIN
     SELECT author_id INTO blog_author_id FROM blog_posts WHERE id=NEW.blog_id;   
-    IF blog_author_id!=NEW.user_id THEN
-        INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
-        VALUES(blog_author_id,NEW.user_id,'blog_like',NEW.blog_id,'liked your blog post');
+    IF blog_author_id IS NOT NULL AND blog_author_id!=NEW.user_id THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM notifications n
+            WHERE n.user_id=blog_author_id AND n.actor_id=NEW.user_id
+              AND n.notification_type='blog_like' AND n.reference_id=NEW.blog_id
+        ) THEN
+            INSERT INTO notifications(user_id,actor_id,notification_type,reference_id,content)
+            VALUES(blog_author_id,NEW.user_id,'blog_like',NEW.blog_id,'liked your blog post');
+        END IF;
     END IF;
     RETURN NEW;
 END;

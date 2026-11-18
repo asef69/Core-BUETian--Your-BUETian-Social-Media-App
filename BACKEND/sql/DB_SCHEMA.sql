@@ -1,7 +1,7 @@
 --MANUALLY CREATED IN POSTGRESQL(PGADMIN) 
 
 --users table
-CREATE TABLE users(
+CREATE TABLE IF NOT EXISTS users(
     id SERIAL PRIMARY KEY,
     student_id INTEGER UNIQUE NOT NULL,
     name VARCHAR(50) NOT NULL,
@@ -14,13 +14,13 @@ CREATE TABLE users(
     hall_attachement VARCHAR(20) CHECK (hall_attachement IN ('Resident', 'Attached')),
     department_name VARCHAR(100),
     bio TEXT,
-    is_active BOOLEAN ,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
 );
 
 --table of posts
-CREATE TABLE posts(
+CREATE TABLE IF NOT EXISTS posts(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     content TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE posts(
 );
 
 --table for media associated with posts
-CREATE TABLE media_urls(
+CREATE TABLE IF NOT EXISTS media_urls(
     id SERIAL PRIMARY KEY,
     post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
     media_url VARCHAR(500) NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE media_urls(
 
 
 --table of comments
-CREATE TABLE comments(
+CREATE TABLE IF NOT EXISTS comments(
     id SERIAL PRIMARY KEY,
     post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -54,7 +54,7 @@ CREATE TABLE comments(
 );
 
 --table of likes
-CREATE TABLE likes(
+CREATE TABLE IF NOT EXISTS likes(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
@@ -63,7 +63,7 @@ CREATE TABLE likes(
 );
 
 --table of follows
-CREATE TABLE follows(
+CREATE TABLE IF NOT EXISTS follows(
     id SERIAL PRIMARY KEY,
     follower_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     following_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -74,7 +74,7 @@ CREATE TABLE follows(
 );
 
 --table of groups
-CREATE TABLE groups(
+CREATE TABLE IF NOT EXISTS groups(
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
@@ -86,7 +86,7 @@ CREATE TABLE groups(
 );
 
 --table for group members
-CREATE TABLE group_members(
+CREATE TABLE IF NOT EXISTS group_members(
     id SERIAL PRIMARY KEY,
     group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -98,7 +98,7 @@ CREATE TABLE group_members(
 
 --table for marketplace sells
 
-CREATE TABLE marketplace_products(
+CREATE TABLE IF NOT EXISTS marketplace_products(
     id SERIAL PRIMARY KEY,
     seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -116,14 +116,14 @@ ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFER
 
 
 --table for marketplace product images
-CREATE TABLE marketplace_product_images(
+CREATE TABLE IF NOT EXISTS marketplace_product_images(
     id SERIAL PRIMARY KEY,
     product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
     image_url VARCHAR(500) NOT NULL
 );
 
 --table for blood donation requests
-CREATE TABLE blood_donation_posts(
+CREATE TABLE IF NOT EXISTS blood_donation_posts(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     blood_group VARCHAR(5) NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE blood_donation_posts(
 );
 
 --table for tution related posts
-CREATE TABLE tution_posts(
+CREATE TABLE IF NOT EXISTS tution_posts(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     post_type VARCHAR(20) CHECK (post_type IN ('seeking_tutor', 'offering_tuition')),
@@ -159,7 +159,7 @@ CREATE TABLE tution_posts(
 );
 
 --table for tution post subjects
-CREATE TABLE tution_post_subjects(
+CREATE TABLE IF NOT EXISTS tution_post_subjects(
     id SERIAL PRIMARY KEY,
     tution_post_id INTEGER REFERENCES tution_posts(id) ON DELETE CASCADE,
     subject_name VARCHAR(100) NOT NULL,
@@ -168,7 +168,7 @@ CREATE TABLE tution_post_subjects(
 
 
 --table for blog posts
-CREATE TABLE blog_posts(
+CREATE TABLE IF NOT EXISTS blog_posts(
     id SERIAL PRIMARY KEY,
     author_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(250) NOT NULL,
@@ -184,7 +184,7 @@ CREATE TABLE blog_posts(
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ALTER TABLE blog_posts
-ADD COLUMN scheduled_publish_at TIMESTAMP;
+ADD COLUMN IF NOT EXISTS scheduled_publish_at TIMESTAMP;
 
 UPDATE blog_posts
 SET is_published = TRUE
@@ -192,7 +192,7 @@ WHERE scheduled_publish_at IS NOT NULL
   AND scheduled_publish_at <= NOW();
 
 --table for blog post tags
-CREATE TABLE blog_post_tags(
+CREATE TABLE IF NOT EXISTS blog_post_tags(
     id SERIAL PRIMARY KEY,
     blog_post_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
     tag_name VARCHAR(50) NOT NULL,
@@ -200,7 +200,7 @@ CREATE TABLE blog_post_tags(
 );
 
 --table for blog post comments
-CREATE TABLE blog_comments(
+CREATE TABLE IF NOT EXISTS blog_comments(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     blog_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
@@ -210,7 +210,7 @@ CREATE TABLE blog_comments(
 );
 
 --table for blog post likes
-CREATE TABLE blog_likes(
+CREATE TABLE IF NOT EXISTS blog_likes(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     blog_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
@@ -219,7 +219,7 @@ CREATE TABLE blog_likes(
 );
 
 --table for blog comment likes
-CREATE TABLE blog_comment_likes(
+CREATE TABLE IF NOT EXISTS blog_comment_likes(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     comment_id INTEGER REFERENCES blog_comments(id) ON DELETE CASCADE,
@@ -228,7 +228,7 @@ CREATE TABLE blog_comment_likes(
 );
 
 --table for messaging chat app (extended for product-specific conversations)
-CREATE TABLE messages(
+CREATE TABLE IF NOT EXISTS messages(
     id SERIAL PRIMARY KEY,
     sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -240,7 +240,7 @@ CREATE TABLE messages(
 );
 
 --table for buyer-seller transaction confirmations
-CREATE TABLE buyer_seller_transactions(
+CREATE TABLE IF NOT EXISTS buyer_seller_transactions(
     id SERIAL PRIMARY KEY,
     product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
     buyer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -253,7 +253,7 @@ CREATE TABLE buyer_seller_transactions(
 );
 
 --table for product reviews and ratings
-CREATE TABLE product_reviews(
+CREATE TABLE IF NOT EXISTS product_reviews(
     id SERIAL PRIMARY KEY,
     product_id INTEGER REFERENCES marketplace_products(id) ON DELETE CASCADE,
     buyer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -266,7 +266,7 @@ CREATE TABLE product_reviews(
 );
 
 --table for seller reputation scores (cached for performance)
-CREATE TABLE seller_reputation(
+CREATE TABLE IF NOT EXISTS seller_reputation(
     id SERIAL PRIMARY KEY,
     seller_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     average_rating DECIMAL(2,1) DEFAULT 0,
@@ -275,7 +275,7 @@ CREATE TABLE seller_reputation(
 );
 
 --table for notifications
-CREATE TABLE notifications(
+CREATE TABLE IF NOT EXISTS notifications(
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     actor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -287,7 +287,7 @@ CREATE TABLE notifications(
 );
 
 --table for notification preferences
-CREATE TABLE notification_preferences(
+CREATE TABLE IF NOT EXISTS notification_preferences(
     id SERIAL PRIMARY KEY,
     user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     email_notifications BOOLEAN DEFAULT TRUE,
@@ -297,7 +297,7 @@ CREATE TABLE notification_preferences(
 );
 
 --Comment Likes
-CREATE TABLE comment_likes (
+CREATE TABLE IF NOT EXISTS comment_likes(
     id SERIAL PRIMARY KEY,
     comment_id INT NOT NULL,
     user_id INT NOT NULL,
@@ -311,8 +311,7 @@ ALTER TABLE messages
 ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES marketplace_products(id) ON DELETE SET NULL;
 
 --table for contextual chat permissions
-DROP TABLE IF EXISTS contextual_chat_permission;
-CREATE TABLE contextual_chat_permission(
+CREATE TABLE IF NOT EXISTS contextual_chat_permission(
     id SERIAL PRIMARY KEY,
     user1_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     user2_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -325,3 +324,13 @@ CREATE TABLE contextual_chat_permission(
     UNIQUE(user1_id, user2_id, context_type, context_id)
 );
 
+-- posts.group_id was created before the groups table existed, so it had no foreign key.
+-- NOT VALID: enforce for new rows without failing on any legacy orphan rows.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'posts_group_id_fkey') THEN
+        ALTER TABLE posts
+            ADD CONSTRAINT posts_group_id_fkey
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE NOT VALID;
+    END IF;
+END $$;

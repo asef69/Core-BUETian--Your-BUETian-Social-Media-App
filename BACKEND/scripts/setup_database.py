@@ -5,6 +5,11 @@ The app talks to PostgreSQL through hand-written SQL (there are no Django
 migrations), so a fresh database - e.g. a new Supabase project - must be
 initialised with this script before first use.
 
+The script is idempotent: every table uses CREATE TABLE IF NOT EXISTS and every
+function / procedure / trigger / view is dropped-and-recreated, so it is also the
+way to ROLL OUT SQL FIXES to an existing database (no data is touched). Take a
+database backup first, and run it with --dry-run once to check it applies cleanly.
+
 Usage (from BACKEND/, with DB_* variables set in .env or the environment):
     python scripts/setup_database.py            # apply everything
     python scripts/setup_database.py --dry-run  # run it all, then roll back

@@ -4,7 +4,13 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
+from utils.params import get_int_param, get_limit, get_page
 from utils.file_upload import FileUploadHandler
+from utils.validators import (
+    POST_VISIBILITIES, clean_choice, clean_int, clean_media_url, clean_str, parse_bool,
+    safe_procedure_message,
+)
+from django.db import transaction
 
 
 def _get_group_role(group_id, user_id):
@@ -109,11 +115,9 @@ class CreateGroupView(APIView):
     def post(self, request):
         data = request.data
 
-        if 'name' not in data:
-            return Response(
-                {'error': 'name is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        group_name = clean_str(data.get('name'), 'name', 100, required=True, allow_blank=False)
+        group_description = clean_str(data.get('description'), 'description', 5000) or None
+        group_is_private = parse_bool(data.get('is_private'), False)
 
         cover_image_url = None
         if 'cover_image' in request.FILES:
@@ -134,9 +138,9 @@ class CreateGroupView(APIView):
             'create_group_with_creator',
             (
                 request.user.id,
-                data['name'],
-                data.get('description'),
-                data.get('is_private', False),
+                group_name,
+                group_description,
+                group_is_private,
                 cover_image_url,
                 None,
                 None,
@@ -153,7 +157,7 @@ class CreateGroupView(APIView):
         proc_result = result[0]
         if not proc_result.get('out_success') or not proc_result.get('group_id'):
             return Response(
-                {'error': proc_result.get('out_message') or 'Group creation failed'},
+                {'error': safe_procedure_message(proc_result.get('out_message'), 'Group creation failed')},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -668,13 +672,13 @@ class UpdateGroupView(APIView):
         
         if 'name' in data:
             update_fields.append("name = %s")
-            params.append(data['name'])
+            params.append(clean_str(data['name'], 'name', 100, required=True, allow_blank=False))
         if 'description' in data:
             update_fields.append("description = %s")
-            params.append(data['description'])
+            params.append(clean_str(data['description'], 'description', 5000))
         if 'is_private' in data:
             update_fields.append("is_private = %s")
-            params.append(data['is_private'])
+            params.append(parse_bool(data['is_private'], False))
         if 'cover_image' in request.FILES:
             try:
                 cover_file = request.FILES['cover_image']
@@ -809,8 +813,8 @@ class GroupPostsView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
         
-        page = int(request.GET.get('page', 1))
-        limit = int(request.GET.get('limit', 20))
+        page = get_page(request.GET, 1)
+        limit = get_limit(request.GET, 20)
         offset = (page - 1) * limit
         
         # Get posts with user info
@@ -899,36 +903,35 @@ class CreateGroupPostView(APIView):
             )
         
         data = request.data
-        
-        # Insert post
+
+        content = clean_str(data.get('content'), 'content', 10000) or ''
+        visibility = clean_choice(data.get('visibility') or 'public', 'visibility', POST_VISIBILITIES)
+        raw_media = data.get('media_urls') or []
+        if not isinstance(raw_media, list) or len(raw_media) > 10:
+            return Response({'error': 'media_urls must be a list of at most 10 URLs'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        media_urls = [clean_media_url(url, 'media_urls') for url in raw_media]
+        if not content and not media_urls:
+            return Response({'error': 'A post needs text or media'}, status=status.HTTP_400_BAD_REQUEST)
+
         post_query = """
         INSERT INTO posts(user_id, content, group_id, visibility, media_type)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id
         """
-        
-        media_urls = data.get('media_urls', [])
         media_type = 'image' if media_urls else 'text'
-        
-        post_id = DatabaseManager.execute_insert(
-            post_query,
-            (
-                request.user.id,
-                data.get('content', ''),
-                group_id,
-                data.get('visibility', 'public'),
-                media_type
+
+        # Post row and its media rows are written together or not at all.
+        with transaction.atomic():
+            post_id = DatabaseManager.execute_insert(
+                post_query,
+                (request.user.id, content, group_id, visibility, media_type)
             )
-        )
-        
-        # Insert media URLs
-        if media_urls:
             for media_url in media_urls:
                 media_insert = "INSERT INTO media_urls(post_id, media_url, media_type) VALUES (%s, %s, %s)"
-                # Determine media type from URL extension
-                file_media_type = 'video' if media_url.endswith(('.mp4', '.avi', '.mov')) else 'image'
+                file_media_type = 'video' if media_url.lower().endswith(('.mp4', '.avi', '.mov')) else 'image'
                 DatabaseManager.execute_insert(media_insert, (post_id, media_url, file_media_type))
-        
+
         return Response({
             'message': 'Post created successfully',
             'post_id': post_id
@@ -1091,7 +1094,7 @@ class SuggestedGroupsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        limit = int(request.GET.get('limit', 10))
+        limit = get_limit(request.GET, 10)
 
         # query = """
         # SELECT
@@ -1182,7 +1185,7 @@ class SearchGroupsView(APIView):
         if not search_term:
             return Response({'error': 'Search term is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        limit = int(request.GET.get('limit', 20))
+        limit = get_limit(request.GET, 20)
         result = DatabaseManager.execute_function('search_groups', (search_term, limit))
         return Response({'results': result or []})
 
@@ -1241,7 +1244,7 @@ class GroupActivityView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
         
-        days = int(request.GET.get('days', 30))
+        days = get_int_param(request.GET, 'days', 30, minimum=1, maximum=3650)
         result = DatabaseManager.execute_function('get_group_activity', (group_id, days))
         return Response(result[0] if result else {})
 
@@ -1282,9 +1285,7 @@ class TransferAdminView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, group_id):
-        new_admin_id = request.data.get('new_admin_id')
-        if not new_admin_id:
-            return Response({'error': 'new_admin_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        new_admin_id = clean_int(request.data.get('new_admin_id'), 'new_admin_id', required=True, minimum=1)
         
         result = DatabaseManager.execute_function(
             'transfer_group_admin',

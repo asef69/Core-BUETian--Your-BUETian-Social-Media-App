@@ -15,6 +15,7 @@ import os
 import warnings
 from datetime import timedelta
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -63,17 +64,33 @@ def _csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
-# SECURITY WARNING: keep the secret key used in production secret!
-# Set SECRET_KEY in the environment (Vercel project settings) for production.
-SECRET_KEY = config(
-    'SECRET_KEY',
-    default='django-insecure-dev-only-key-change-me-in-production',
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = _csv(config('ALLOWED_HOSTS', default='*'))
+# SECURITY WARNING: keep the secret key used in production secret!
+# JWTs are signed with this key, so a guessable key lets anyone forge logins.
+# It must be set in the environment (Vercel / Render project settings) whenever
+# DEBUG is off; only local development (DEBUG=True) gets a throw-away default.
+SECRET_KEY = config('SECRET_KEY', default='')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-dev-only-key-not-for-production'
+    else:
+        raise ImproperlyConfigured(
+            'SECRET_KEY environment variable is required when DEBUG is off. '
+            'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(64))"'
+        )
+
+# Local hosts are always allowed; add your deployed hostnames (or use .vercel.app / .onrender.com).
+ALLOWED_HOSTS = _csv(config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,[::1],.vercel.app,.onrender.com',
+))
+
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # Needed for the Django admin / session login on https origins (e.g. Vercel).
 CSRF_TRUSTED_ORIGINS = _csv(config('CSRF_TRUSTED_ORIGINS', default='https://*.vercel.app,https://*.onrender.com'))
@@ -271,6 +288,12 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'utils.pagination.CustomPagination',
     'PAGE_SIZE': 20,
     'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
+    # Brute-force protection for login / register (views opt in with throttle_scope = 'auth').
+    'DEFAULT_THROTTLE_RATES': {
+        'auth': config('AUTH_THROTTLE_RATE', default='20/min'),
+    },
+    # Number of reverse proxies in front of the app (Render / Vercel add one).
+    'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
@@ -294,6 +317,7 @@ SWAGGER_SETTINGS = {
 #   CORS_ALLOWED_ORIGINS=https://my-frontend.vercel.app
 _cors_origins_env = _csv(config('CORS_ALLOWED_ORIGINS', default=''))
 CORS_ALLOW_ALL_ORIGINS = not _cors_origins_env
+# Browsers must not send cookies cross-site by default: auth is the Authorization header.
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -349,12 +373,12 @@ LOGGING = {
     'loggers': {
         'utils.authentication': {
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': 'DEBUG' if DEBUG else 'WARNING',
             'propagate': True,
         },
         'rest_framework_simplejwt': {
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': 'DEBUG' if DEBUG else 'WARNING',
             'propagate': True,
         },
     },

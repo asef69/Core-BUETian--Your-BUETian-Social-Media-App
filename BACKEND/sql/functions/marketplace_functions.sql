@@ -1,4 +1,4 @@
-﻿CREATE OR REPLACE FUNCTION get_user_marketplace_stats(p_user_id INTEGER) RETURNS TABLE(
+CREATE OR REPLACE FUNCTION get_user_marketplace_stats(p_user_id INTEGER) RETURNS TABLE(
         total_products BIGINT,
         available_products BIGINT,
         sold_products BIGINT,
@@ -66,6 +66,7 @@ ORDER BY ABS(p.price - product_price),
 LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
+DROP FUNCTION IF EXISTS get_trending_products(INTEGER);
 CREATE OR REPLACE FUNCTION get_trending_products(p_limit INTEGER DEFAULT 10) RETURNS TABLE(
         product_id INTEGER,
         title VARCHAR(250),
@@ -89,7 +90,7 @@ SELECT p.id as product_id,
     u.name as seller_name,
     u.profile_picture as seller_picture,
     ARRAY(
-        SELECT image_url
+        SELECT mpi.image_url::TEXT
         FROM marketplace_product_images mpi
         WHERE mpi.product_id = p.id
     ) as images,
@@ -160,6 +161,7 @@ GROUP BY price_range
 ORDER BY MIN(price);
 END;
 $$ LANGUAGE plpgsql;
+DROP FUNCTION IF EXISTS get_department_products(INTEGER, INTEGER);
 CREATE OR REPLACE FUNCTION get_department_products(p_user_id INTEGER, p_limit INTEGER DEFAULT 20) RETURNS TABLE(
         product_id INTEGER,
         title VARCHAR(250),
@@ -187,9 +189,9 @@ SELECT p.id as product_id,
     u.name as seller_name,
     u.profile_picture as seller_picture,
     ARRAY(
-        SELECT image_url
-        FROM marketplace_product_images
-        WHERE product_id = p.id
+        SELECT mpi.image_url::TEXT
+        FROM marketplace_product_images mpi
+        WHERE mpi.product_id = p.id
     ) as images,
     p.created_at
 FROM marketplace_products p
@@ -243,7 +245,7 @@ BEGIN
         bu.id as buyer_id,
         bu.name as buyer_name,
         bu.profile_picture as buyer_picture,
-        ARRAY(SELECT image_url FROM marketplace_product_images WHERE product_id = p.id) as images,
+        ARRAY(SELECT mpi.image_url::TEXT FROM marketplace_product_images mpi WHERE mpi.product_id = p.id) as images,
         p.created_at
     FROM marketplace_products p
     INNER JOIN users u ON p.seller_id = u.id

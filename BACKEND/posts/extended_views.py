@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from utils.database import DatabaseManager
+from utils.params import get_limit
 
 
 def _normalize_media_url(url):
@@ -52,7 +52,7 @@ class PostsByHashtagView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function(
             'get_posts_by_hashtag',
@@ -78,17 +78,24 @@ class UserLikedPostsView(APIView):
         List of posts the user has liked, ordered by most recent like
     
     Database:
-        Function: get_user_liked_posts(user_id, limit)
+        Function: get_user_liked_posts(user_id, limit, viewer_id)
     """
     def get(self, request, user_id):
         if user_id == 'me':
             user_id = request.user.id
-        
-        limit = int(request.query_params.get('limit', 20))
-        
+        else:
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'user_id must be an integer or "me"'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        limit = get_limit(request.query_params, 20)
+
+        # The viewer is passed so private / followers-only / group posts are filtered in SQL.
         result = DatabaseManager.execute_function(
             'get_user_liked_posts',
-            (user_id, limit)
+            (user_id, limit, request.user.id)
         )
         return Response(result or [])
 
@@ -117,6 +124,17 @@ class PostEngagementStatsView(APIView):
         Function: get_post_engagement_stats(post_id)
     """
     def get(self, request, post_id):
+        from posts.views import _can_user_access_post, _get_post_owner_and_visibility
+
+        post_context = _get_post_owner_and_visibility(post_id)
+        if not post_context or not _can_user_access_post(
+            request.user.id,
+            post_context.get('user_id'),
+            post_context.get('visibility', 'public'),
+            post_context.get('group_id'),
+        ):
+            return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
+
         result = DatabaseManager.execute_function(
             'get_post_engagement_stats',
             (post_id,)
@@ -150,7 +168,7 @@ class TrendingHashtagsView(APIView):
         Window: last 30 days of public, non-group posts
     """
     def get(self, request):
-        limit = int(request.query_params.get('limit', 10))
+        limit = get_limit(request.query_params, 10)
         
         result = DatabaseManager.execute_function(
             'get_trending_hashtags',
@@ -179,7 +197,7 @@ class PostsByMediaTypeView(APIView):
         Function: get_posts_by_media_type(media_type, user_id, limit)
     """
     def get(self, request, media_type):
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function(
             'get_posts_by_media_type',
@@ -224,7 +242,7 @@ class SearchPostsView(APIView):
             or request.query_params.get('search')
             or ''
         )
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         if not search_term:
             return Response(

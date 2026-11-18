@@ -5,6 +5,14 @@ from django.conf.urls.static import static
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from django.http import JsonResponse
+from decouple import config as env_config
+
+
+def health(request):
+    """Unauthenticated liveness probe for load balancers / Render."""
+    return JsonResponse({'status': 'ok'})
+
 
 
 schema_view = get_schema_view(
@@ -15,9 +23,16 @@ schema_view = get_schema_view(
         contact=openapi.Contact(email="admin@corebuetians.com"),
     ),
     public=True,
-    permission_classes=(permissions.AllowAny,),
+    # Interactive API docs list every endpoint, so they are only open in development
+    # (or when SWAGGER_PUBLIC=true); otherwise a staff login is required.
+    permission_classes=(
+        (permissions.AllowAny,)
+        if (settings.DEBUG or env_config('SWAGGER_PUBLIC', default=False, cast=bool))
+        else (permissions.IsAdminUser,)
+    ),
 )
 urlpatterns = [
+    path('health/', health, name='health'),
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/posts/', include('posts.urls')),

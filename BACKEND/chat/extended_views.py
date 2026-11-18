@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from utils.params import get_limit
 
 class UnreadMessagesCountView(APIView):
     """
@@ -55,7 +56,7 @@ class TotalUnreadMessagesView(APIView):
             (request.user.id,)
         )
         
-        total = result[0]['get_total_unread_messages'] if result else 0
+        total = result[0]['total_unread'] if result else 0
         return Response({'total_unread': total})
 
 
@@ -90,7 +91,7 @@ class SearchMessagesView(APIView):
     """
     def get(self, request):
         search_term = request.query_params.get('q', '')
-        limit = int(request.query_params.get('limit', 50))
+        limit = get_limit(request.query_params, 50)
         
         if not search_term:
             return Response(
@@ -131,7 +132,7 @@ class DeleteConversationView(APIView):
             (request.user.id, user_id)
         )
         
-        deleted_count = result[0]['delete_conversation'] if result else 0
+        deleted_count = result[0]['deleted_count'] if result else 0
         return Response({
             'message': 'Conversation deleted successfully',
             'deleted_count': deleted_count
@@ -164,7 +165,7 @@ class MarkConversationReadView(APIView):
             (request.user.id, user_id)
         )
         
-        marked_count = result[0]['mark_conversation_read'] if result else 0
+        marked_count = result[0]['updated_count'] if result else 0
         return Response({
             'message': 'Conversation marked as read',
             'marked_count': marked_count

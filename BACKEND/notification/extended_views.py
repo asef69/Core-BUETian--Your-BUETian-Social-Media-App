@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
+from utils.params import get_limit
 from django.db import ProgrammingError
 
 class NotificationSummaryView(APIView):
@@ -65,7 +66,7 @@ class MarkNotificationsByTypeView(APIView):
             (request.user.id, notification_type)
         )
         
-        count = result[0]['mark_notifications_read_by_type'] if result else 0
+        count = result[0]['updated_count'] if result else 0
         return Response({'message': f'{count} notifications marked as read'})
 
 
@@ -99,7 +100,7 @@ class ActivityNotificationsView(APIView):
         Function: get_activity_notifications(user_id, limit)
     """
     def get(self, request):
-        limit = int(request.query_params.get('limit', 20))
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function(
             'get_activity_notifications',

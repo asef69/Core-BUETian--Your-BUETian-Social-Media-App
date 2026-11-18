@@ -4,7 +4,11 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
+from utils.params import get_limit
 from utils.file_upload import FileUploadHandler
+from utils.validators import (
+    BLOOD_GROUPS, HALL_ATTACHMENTS, clean_choice, clean_media_url, clean_str,
+)
 
 
 def _normalize_media_url(url):
@@ -99,7 +103,12 @@ class UserProfileView(APIView):
             return Response({
                 'error':'User not found'
             },status=status.HTTP_404_NOT_FOUND)
-        return Response(result[0])
+
+        profile = result[0]
+        if viewer_id is None or int(viewer_id) != int(user_id):
+            # Email addresses are private: only the account owner gets their own.
+            profile.pop('email', None)
+        return Response(profile)
     
 class UpdateProfileView(APIView):
     """
@@ -148,10 +157,20 @@ class UpdateProfileView(APIView):
         allowed_fields=  ['name', 'bio', 'profile_picture', 'blood_group', 
                          'hall_name', 'hall_attachement', 'department_name']
 
+        cleaners = {
+            'name': lambda v: clean_str(v, 'name', 50, required=True, allow_blank=False),
+            'bio': lambda v: clean_str(v, 'bio', 2000),
+            'profile_picture': lambda v: clean_media_url(v, 'profile_picture'),
+            'blood_group': lambda v: clean_choice(v or None, 'blood_group', BLOOD_GROUPS),
+            'hall_name': lambda v: clean_str(v, 'hall_name', 100) or None,
+            'hall_attachement': lambda v: clean_choice(v or None, 'hall_attachement', HALL_ATTACHMENTS),
+            'department_name': lambda v: clean_str(v, 'department_name', 100) or None,
+        }
+
         for field in allowed_fields:
             if field in data:
                 update_fields.append(f"{field} = %s")
-                params.append(data[field])
+                params.append(cleaners[field](data[field]))
 
         if not update_fields:
             return Response(
@@ -356,7 +375,7 @@ class SuggestedUsersView(APIView):
         Excludes users already followed or with pending follow requests
     """
     def get(self,request):
-        limit = int(request.query_params.get('limit', 10))
+        limit = get_limit(request.query_params, 10)
 
         try:
             result = DatabaseManager.execute_function(
@@ -547,7 +566,7 @@ class UploadProfilePictureView(APIView):
             )
         except Exception as e:
             return Response(
-                {'error': f'Failed to upload profile picture: {str(e)}'},
+                {'error': 'Failed to upload profile picture'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
            

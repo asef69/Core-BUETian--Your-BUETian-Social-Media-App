@@ -8,6 +8,12 @@ from utils.database import DatabaseManager
 from utils.file_upload import FileUploadHandler
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
+from django.db import IntegrityError
+from rest_framework.throttling import ScopedRateThrottle
+from utils.validators import (
+    BLOOD_GROUPS, HALL_ATTACHMENTS, clean_choice, clean_email, clean_int,
+    clean_password, clean_str,
+)
 
 
 class RegisterView(APIView):
@@ -74,32 +80,37 @@ class RegisterView(APIView):
         After registration, user should login via POST /api/users/login/
     """
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 
     def post(self, request):
         data = request.data
-        
-        required_fields = ['student_id', 'name', 'email', 'password']
-        for field in required_fields:
-            if field not in data:
-                return Response(
-                    {'error': f'{field} is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        check_query = "SELECT id FROM users WHERE email = %s OR student_id = %s"
-        existing = DatabaseManager.execute_query(
-            check_query,
-            (data['email'], data['student_id'])
+
+        student_id = clean_int(data.get('student_id'), 'student_id', required=True, minimum=1, maximum=2147483647)
+        name = clean_str(data.get('name'), 'name', 50, required=True, allow_blank=False)
+        email = clean_email(data.get('email'))
+        password = clean_password(data.get('password'))
+        batch = clean_int(data.get('batch'), 'batch', minimum=1, maximum=2147483647)
+        department_name = clean_str(data.get('department_name'), 'department_name', 100) or None
+        blood_group = clean_choice(data.get('blood_group') or None, 'blood_group', BLOOD_GROUPS)
+        hall_name = clean_str(data.get('hall_name'), 'hall_name', 100) or None
+        hall_attachement = clean_choice(
+            data.get('hall_attachement') or 'Resident', 'hall_attachement', HALL_ATTACHMENTS
         )
-        
+
+        # Emails are matched case-insensitively so "A@x.com" and "a@x.com" are one account.
+        existing = DatabaseManager.execute_query(
+            "SELECT id FROM users WHERE LOWER(email) = %s OR student_id = %s",
+            (email, student_id)
+        )
         if existing:
             return Response(
                 {'error': 'Email or Student ID already registered'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        hashed_password = make_password(data['password'])
-        
+
+        hashed_password = make_password(password)
+
         # None -> NULL; the frontend falls back to its bundled default avatar.
         profile_picture_url = settings.DEFAULT_PROFILE_PICTURE_URL or None
         if 'profile_picture' in request.FILES:
@@ -112,28 +123,35 @@ class RegisterView(APIView):
                     {'error': str(e)},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         query = """
         INSERT INTO users (student_id, name, email, password, batch, department_name, blood_group, hall_name, hall_attachement, profile_picture, is_active)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
         RETURNING id, student_id, name, email
         """
         
-        result = DatabaseManager.execute_query(
-            query,
-            (
-                data['student_id'],
-                data['name'],
-                data['email'],
-                hashed_password,
-                data.get('batch'),
-                data.get('department_name'),
-                data.get('blood_group'),
-                data.get('hall_name'),
-                data.get('hall_attachement', 'Resident'),
-                profile_picture_url
+        try:
+            result = DatabaseManager.execute_query(
+                query,
+                (
+                    student_id,
+                    name,
+                    email,
+                    hashed_password,
+                    batch,
+                    department_name,
+                    blood_group,
+                    hall_name,
+                    hall_attachement,
+                    profile_picture_url
+                )
             )
-        )
+        except IntegrityError:
+            # Lost a race with a concurrent registration for the same email / student id.
+            return Response(
+                {'error': 'Email or Student ID already registered'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if result:
             return Response({
@@ -213,20 +231,22 @@ class LoginView(APIView):
         - Access token expires after 1 day
     """
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 
     def post(self, request):
         data = request.data
         email = data.get('email')
         password = data.get('password')
-        
-        if not email or not password:
+
+        if not isinstance(email, str) or not isinstance(password, str) or not email or not password:
             return Response(
                 {'error': 'Email and password are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        query = "SELECT id, student_id, name, email, password FROM users WHERE email = %s"
-        result = DatabaseManager.execute_query(query, (email,))
+        query = "SELECT id, student_id, name, email, password, is_active FROM users WHERE LOWER(email) = %s"
+        result = DatabaseManager.execute_query(query, (email.strip().lower(),))
         
         if not result:
             return Response(
@@ -242,6 +262,12 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
+        if not user.get('is_active'):
+            return Response(
+                {'error': 'This account has been deactivated'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         refresh = RefreshToken()
         refresh['user_id'] = user['id']
         refresh['email'] = user['email']
@@ -304,8 +330,8 @@ class TokenRefreshView(APIView):
         - Refresh token: 7 days
     
     Security:
-        - Refresh tokens can only be used once if ROTATE_REFRESH_TOKENS is enabled
-        - Old tokens are blacklisted after rotation
+        - Refresh tokens are not rotated or blacklisted (ROTATE_REFRESH_TOKENS is off)
+        - A refresh token stops working once the account is deactivated
     """
     permission_classes = [AllowAny]
 
@@ -320,14 +346,24 @@ class TokenRefreshView(APIView):
         
         try:
             refresh = RefreshToken(refresh_token)
-            
+
+            active = DatabaseManager.execute_query(
+                "SELECT 1 FROM users WHERE id = %s AND is_active = TRUE",
+                (refresh.get('user_id'),)
+            )
+            if not active:
+                return Response(
+                    {'error': 'Invalid or expired refresh token'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
             access_token = str(refresh.access_token)
             
             return Response({
                 'access': access_token
             }, status=status.HTTP_200_OK)
             
-        except (TokenError, InvalidToken) as e:
+        except (TokenError, InvalidToken):
             return Response(
                 {'error': 'Invalid or expired refresh token'},
                 status=status.HTTP_401_UNAUTHORIZED

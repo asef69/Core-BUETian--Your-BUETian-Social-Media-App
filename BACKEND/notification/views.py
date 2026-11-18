@@ -1,6 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
 from utils.database import DatabaseManager
+from utils.params import get_limit
 
 class NotificationsListView(APIView):
     """
@@ -43,7 +45,7 @@ class NotificationsListView(APIView):
     """
     def get(self, request):
         try:
-            limit = int(request.query_params.get('limit', 200))
+            limit = get_limit(request.query_params, 200)
         except (TypeError, ValueError):
             limit = 200
         limit = max(1, min(limit, 500))
@@ -98,7 +100,7 @@ class UnreadNotificationsView(APIView):
     """
     def get(self, request):
         try:
-            limit = int(request.query_params.get('limit', 200))
+            limit = get_limit(request.query_params, 200)
         except (TypeError, ValueError):
             limit = 200
         limit = max(1, min(limit, 500))
@@ -163,7 +165,7 @@ class NotificationCountView(APIView):
             'get_unread_notification_count',
             (request.user.id,)
         )
-        return Response({'count': result[0]['get_unread_notification_count']})
+        return Response({'count': result[0]['unread_count'] if result else 0})
 
 class MarkNotificationReadView(APIView):
     """
@@ -193,6 +195,12 @@ class MarkNotificationReadView(APIView):
         Mark notification as read when user clicks/views it
     """
     def post(self, request, notification_id):
+        exists = DatabaseManager.execute_query(
+            "SELECT 1 FROM notifications WHERE id = %s AND user_id = %s",
+            (notification_id, request.user.id)
+        )
+        if not exists:
+            return Response({'error': 'Notification not found'}, status=status.HTTP_404_NOT_FOUND)
         DatabaseManager.execute_update(
             "UPDATE notifications SET is_read = TRUE WHERE id = %s AND user_id = %s",
             (notification_id, request.user.id)
@@ -230,4 +238,5 @@ class MarkAllReadView(APIView):
             'mark_all_notifications_read',
             (request.user.id,)
         )
-        return Response({'message': f'{count[0]["mark_all_notifications_read"]} notifications marked as read'})
+        updated = count[0]['updated_count'] if count else 0
+        return Response({'message': f'{updated} notifications marked as read'})

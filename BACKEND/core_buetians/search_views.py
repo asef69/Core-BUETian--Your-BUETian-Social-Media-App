@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from utils.database import DatabaseManager
+from utils.params import get_int_param, get_limit
 
 
 def _get_search_term(request):
@@ -15,9 +16,9 @@ class SearchUsersView(APIView):
     def get(self, request):
         search_term = _get_search_term(request)
         department = request.query_params.get('department')
-        batch = request.query_params.get('batch')
+        batch = get_int_param(request.query_params, 'batch', None)
         blood_group = request.query_params.get('blood_group')
-        limit = request.query_params.get('limit', 20)
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function(
             'search_users_advanced',
@@ -28,7 +29,7 @@ class SearchUsersView(APIView):
 class SearchPostsView(APIView):
     def get(self, request):
         search_term = _get_search_term(request)
-        limit = request.query_params.get('limit', 20)
+        limit = get_limit(request.query_params, 20)
         
         result = DatabaseManager.execute_function('search_posts', (search_term, limit))
         return Response(result)

@@ -1,4 +1,4 @@
-﻿DROP FUNCTION IF EXISTS get_user_groups(INTEGER);
+DROP FUNCTION IF EXISTS get_user_groups(INTEGER);
 CREATE OR REPLACE FUNCTION get_user_groups(p_user_id INTEGER) RETURNS TABLE(
     group_id INTEGER,
     name VARCHAR(100),
@@ -336,8 +336,8 @@ SELECT g.id AS group_id,
     ) AS members_count,
     (
     SELECT COUNT(*)
-    FROM posts
-    WHERE group_id = g.id
+    FROM posts gp
+    WHERE gp.group_id = g.id
     ) AS posts_count,
     (
     SELECT gm3.role
@@ -390,14 +390,13 @@ CREATE OR REPLACE FUNCTION is_group_member(
     p_user_id INTEGER,
     p_group_id INTEGER
 ) RETURNS BOOLEAN AS $$
-DECLARE
-    is_member BOOLEAN := FALSE;
 BEGIN
-    SELECT TRUE INTO is_member
-    FROM group_members
-    WHERE user_id = p_user_id AND group_id = p_group_id
-    LIMIT 1;
-
-    RETURN is_member;
+    RETURN EXISTS (
+        SELECT 1
+        FROM group_members gm
+        WHERE gm.user_id = p_user_id
+          AND gm.group_id = p_group_id
+          AND gm.status = 'accepted'
+    );
 END;
 $$ LANGUAGE plpgsql;
