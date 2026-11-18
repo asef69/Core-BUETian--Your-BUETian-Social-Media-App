@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from collections import deque
 from datetime import date, datetime
 from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -11,6 +13,11 @@ from utils.database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
+
+# Per-connection flood protection and how often a live socket re-checks its account.
+RATE_LIMIT_EVENTS = 40
+RATE_LIMIT_WINDOW = 10      # seconds
+ACTIVE_RECHECK_SECONDS = 20
 
 
 class ChatInputError(Exception):
@@ -64,6 +71,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         self.user_id = str(self.user.id)
         self.room_group_name = f'user_{self.user_id}'
+        self._events = deque()
+        self._last_active_check = time.monotonic()
         
         # Join room group
         await self.channel_layer.group_add(
@@ -116,7 +125,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Sends error message if parsing or handling fails.
         """
         try:
+            # The token was only checked at connect time: drop sockets whose token has
+            # expired or whose account was deactivated/deleted in the meantime.
+            if getattr(self, 'token_exp', None) and time.time() >= self.token_exp:
+                await self.send(text_data=json.dumps({'type': 'error', 'message': 'Session expired'}))
+                await self.close(code=4401)
+                return
+            if time.monotonic() - self._last_active_check > ACTIVE_RECHECK_SECONDS:
+                self._last_active_check = time.monotonic()
+                if not await self.user_exists(self.user.id):
+                    await self.close(code=4403)
+                    return
+
+            now = time.monotonic()
+            while self._events and now - self._events[0] > RATE_LIMIT_WINDOW:
+                self._events.popleft()
+            if len(self._events) >= RATE_LIMIT_EVENTS:
+                await self.send(text_data=json.dumps({'type': 'error', 'message': 'You are sending too fast'}))
+                return
+            self._events.append(now)
+
             data = json.loads(text_data)
+            if not isinstance(data, dict):
+                raise ChatInputError('Invalid message')
             message_type = data.get('type')
             
             if message_type == 'chat_message':
@@ -372,6 +403,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             token = parse_qs(self.scope['query_string'].decode()).get('token', [''])[0]
             access_token = AccessToken(token) # type: ignore
             user_id = access_token['user_id']
+            self.token_exp = access_token['exp']
 
             query = "SELECT id, email, name FROM users WHERE id = %s AND is_active = TRUE"
             result = DatabaseManager.execute_query(query, (user_id,))

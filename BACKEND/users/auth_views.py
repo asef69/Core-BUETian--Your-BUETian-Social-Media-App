@@ -9,11 +9,56 @@ from utils.file_upload import FileUploadHandler
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
 from django.db import IntegrityError
+from rest_framework.exceptions import ValidationError
 from rest_framework.throttling import ScopedRateThrottle
+from django.core.cache import cache
+import hashlib
 from utils.validators import (
     BLOOD_GROUPS, HALL_ATTACHMENTS, clean_choice, clean_email, clean_int,
     clean_password, clean_str,
 )
+
+
+def _json_object(request):
+    """The request body must be a JSON object / form; a bare string or list is a 400, not a crash."""
+    data = request.data
+    if not hasattr(data, 'get'):
+        raise ValidationError({'error': 'Request body must be a JSON object.'})
+    return data
+
+
+# --- login lockout: repeated failures for ONE account are blocked whatever IP they come from.
+LOGIN_MAX_FAILURES = getattr(settings, 'LOGIN_MAX_FAILURES', 8)
+LOGIN_LOCKOUT_SECONDS = getattr(settings, 'LOGIN_LOCKOUT_SECONDS', 900)
+
+
+def _lockout_key(email):
+    return 'login_fail:' + hashlib.sha256(email.strip().lower().encode('utf-8')).hexdigest()
+
+
+def _is_locked(email):
+    return (cache.get(_lockout_key(email)) or 0) >= LOGIN_MAX_FAILURES
+
+
+def _record_failure(email):
+    key = _lockout_key(email)
+    cache.add(key, 0, LOGIN_LOCKOUT_SECONDS)
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, LOGIN_LOCKOUT_SECONDS)
+
+
+def _revoke_refresh_token(refresh):
+    """Remember a refresh token's jti so it can never be used again."""
+    DatabaseManager.execute_update(
+        "DELETE FROM revoked_tokens WHERE expires_at < (NOW() AT TIME ZONE 'UTC')"
+    )
+    DatabaseManager.execute_update(
+        "INSERT INTO revoked_tokens (jti, user_id, expires_at) "
+        "VALUES (%s, %s, to_timestamp(%s) AT TIME ZONE 'UTC') ON CONFLICT (jti) DO NOTHING",
+        (str(refresh['jti']), refresh.get('user_id'), int(refresh['exp']))
+    )
 
 
 class RegisterView(APIView):
@@ -84,7 +129,7 @@ class RegisterView(APIView):
     throttle_scope = 'auth'
 
     def post(self, request):
-        data = request.data
+        data = _json_object(request)
 
         student_id = clean_int(data.get('student_id'), 'student_id', required=True, minimum=1, maximum=2147483647)
         name = clean_str(data.get('name'), 'name', 50, required=True, allow_blank=False)
@@ -235,7 +280,7 @@ class LoginView(APIView):
     throttle_scope = 'auth'
 
     def post(self, request):
-        data = request.data
+        data = _json_object(request)
         email = data.get('email')
         password = data.get('password')
 
@@ -245,10 +290,22 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        if '\x00' in email or '\x00' in password:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if _is_locked(email):
+            response = Response(
+                {'error': 'Too many failed login attempts. Please try again in a few minutes.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+            response['Retry-After'] = str(LOGIN_LOCKOUT_SECONDS)
+            return response
+
         query = "SELECT id, student_id, name, email, password, is_active FROM users WHERE LOWER(email) = %s"
         result = DatabaseManager.execute_query(query, (email.strip().lower(),))
         
         if not result:
+            _record_failure(email)
             return Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -257,11 +314,14 @@ class LoginView(APIView):
         user = result[0]
         
         if not check_password(password, user['password']):
+            _record_failure(email)
             return Response(
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
+        cache.delete(_lockout_key(email))
+
         if not user.get('is_active'):
             return Response(
                 {'error': 'This account has been deactivated'},
@@ -334,16 +394,23 @@ class TokenRefreshView(APIView):
         - A refresh token stops working once the account is deactivated
     """
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+    # A refresh token that was rotated a moment ago is still accepted for this long, so
+    # several parallel requests that all got a 401 can refresh at once without logging the user out.
+    ROTATION_GRACE_SECONDS = 30
 
     def post(self, request):
-        refresh_token = request.data.get('refresh')
-        
-        if not refresh_token:
+        data = _json_object(request)
+        refresh_token = data.get('refresh')
+
+        if not refresh_token or not isinstance(refresh_token, str):
             return Response(
                 {'error': 'Refresh token is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             refresh = RefreshToken(refresh_token)
 
@@ -357,15 +424,56 @@ class TokenRefreshView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
 
-            access_token = str(refresh.access_token)
-            
+            revoked = DatabaseManager.execute_query(
+                "SELECT EXTRACT(EPOCH FROM (NOW() - revoked_at)) AS age FROM revoked_tokens WHERE jti = %s",
+                (str(refresh['jti']),)
+            )
+            if revoked:
+                if float(revoked[0]['age'] or 0) > self.ROTATION_GRACE_SECONDS:
+                    return Response(
+                        {'error': 'Invalid or expired refresh token'},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+                # Just rotated by a parallel request: hand out an access token only.
+                return Response({'access': str(refresh.access_token)}, status=status.HTTP_200_OK)
+
+            # Rotate: the used refresh token is retired and a fresh one is issued.
+            new_refresh = RefreshToken()
+            new_refresh['user_id'] = refresh.get('user_id')
+            if refresh.get('email'):
+                new_refresh['email'] = refresh.get('email')
+            _revoke_refresh_token(refresh)
+
             return Response({
-                'access': access_token
+                'access': str(new_refresh.access_token),
+                'refresh': str(new_refresh),
             }, status=status.HTTP_200_OK)
-            
+
         except (TokenError, InvalidToken):
             return Response(
                 {'error': 'Invalid or expired refresh token'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+
+class LogoutView(APIView):
+    """
+    Log out: revoke the refresh token so it can no longer mint access tokens.
+
+    API Endpoint: POST /api/users/logout/
+    Request Body: {"refresh": "<refresh token>"}
+    Always answers 200 (idempotent, does not reveal whether the token was valid).
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
+
+    def post(self, request):
+        data = _json_object(request)
+        token = data.get('refresh')
+        if token and isinstance(token, str):
+            try:
+                _revoke_refresh_token(RefreshToken(token))
+            except (TokenError, InvalidToken):
+                pass
+        return Response({'message': 'Logged out'}, status=status.HTTP_200_OK)

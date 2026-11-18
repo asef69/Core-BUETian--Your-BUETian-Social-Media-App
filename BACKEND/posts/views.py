@@ -6,8 +6,9 @@ from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from utils.database import DatabaseManager
-from utils.params import get_limit, get_offset
+from utils.params import get_limit, get_offset, get_page, page_offset
 from utils.file_upload import FileUploadHandler
+from utils.throttles import throttled
 from utils.validators import (
     POST_MEDIA_TYPES, POST_VISIBILITIES, clean_choice, clean_int, clean_media_url, clean_str,
 )
@@ -68,6 +69,22 @@ def _can_user_access_post(viewer_user_id, post_owner_id, visibility, group_id=No
     return False
 
 
+VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.wmv', '.webm', '.mkv')
+
+
+def _attach_media_urls(post_data):
+    """Make post detail/create responses expose `media_urls` like the feed does
+    (the SQL function only returns the flat `media_urls_list`)."""
+    urls = post_data.get('media_urls_list')
+    if 'media_urls' not in post_data and isinstance(urls, (list, tuple)):
+        post_data['media_urls'] = [
+            {'media_url': url,
+             'media_type': 'video' if str(url).lower().split('?')[0].endswith(VIDEO_EXTENSIONS) else 'image'}
+            for url in urls
+        ]
+    return post_data
+
+
 def _get_post_owner_and_visibility(post_id):
     query = "SELECT user_id, visibility, group_id FROM posts WHERE id = %s LIMIT 1"
     result = DatabaseManager.execute_query(query, (post_id,))
@@ -77,6 +94,7 @@ def _get_post_owner_and_visibility(post_id):
 
 
 MAX_POST_LENGTH = 10000
+MAX_MEDIA_FILES = 10
 
 
 def _validate_post_input(content, visibility, media_type, raw_group_id, media_urls):
@@ -92,6 +110,8 @@ def _validate_post_input(content, visibility, media_type, raw_group_id, media_ur
     group_id = None
     if raw_group_id not in (None, '', 0, '0', 'null', 'None'):
         group_id = clean_int(raw_group_id, 'group_id', minimum=1)
+    if len(media_urls) > MAX_MEDIA_FILES:
+        raise ValidationError({'media_urls': f'At most {MAX_MEDIA_FILES} media items are allowed.'})
     cleaned_urls = [clean_media_url(url, 'media_urls') for url in media_urls]
     return content or None, visibility, media_type, group_id, cleaned_urls
 
@@ -106,6 +126,7 @@ def _friendly_procedure_error(message):
     return message or 'Post creation failed'
 
 
+@throttled('posts')
 class CreatePostView(APIView):
     """
     Create a new post with optional media URLs.
@@ -158,28 +179,32 @@ class CreatePostView(APIView):
 
         collected_media_urls = []
 
-        # Handle raw media files if provided
+        # Handle raw media files if provided. Every file is validated BEFORE anything is
+        # uploaded, and a rejected file fails the whole request (no silent drops).
         media_files = request.FILES.getlist('media_files')
-        if media_files:
-            for file in media_files:
-                try:
-                    # Auto-detect media type from file extension
-                    file_ext = file.name.lower().split('.')[-1]
-                    if file_ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'):
-                        detected_type = 'image'
-                    elif file_ext in ('mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'):
-                        detected_type = 'video'
-                    else:
-                        detected_type = media_type
-                    
-                    FileUploadHandler.validate_file(file, file_type=detected_type)
-                    folder = 'post_images' if detected_type == 'image' else 'post_videos'
-                    file_path = FileUploadHandler.upload_file(file, folder=folder)
-                    collected_media_urls.append(file_path)
-                except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Error uploading file: {str(e)}")
+        if len(media_files) > MAX_MEDIA_FILES:
+            return Response({'error': f'At most {MAX_MEDIA_FILES} files can be attached to a post'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        validated_files = []
+        for file in media_files:
+            file_ext = file.name.lower().split('.')[-1]
+            if file_ext in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+                detected_type = 'image'
+            elif file_ext in ('mp4', 'avi', 'mov', 'wmv'):
+                detected_type = 'video'
+            else:
+                return Response({'error': f"{file.name}: unsupported file type"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                FileUploadHandler.validate_file(file, file_type=detected_type)
+            except ValueError as e:
+                return Response({'error': f'{file.name}: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+            validated_files.append((file, detected_type))
+        for file, detected_type in validated_files:
+            folder = 'post_images' if detected_type == 'image' else 'post_videos'
+            try:
+                collected_media_urls.append(FileUploadHandler.upload_file(file, folder=folder))
+            except ValueError as e:
+                return Response({'error': f'{file.name}: {e}'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Handle pre-uploaded URLs if provided
         media_urls = data.get('media_urls', [])
@@ -190,6 +215,8 @@ class CreatePostView(APIView):
             except Exception:
                 media_urls = []
 
+        if media_urls and not isinstance(media_urls, (list, tuple)):
+            raise ValidationError({'media_urls': 'Must be a list of URLs.'})
         if media_urls:
             for media_item in media_urls:
                 if isinstance(media_item, dict):
@@ -271,6 +298,8 @@ class CreatePostView(APIView):
                 id_value = post_data.get('post_id') or post_data.get('id') or post_id
                 post_data['id'] = id_value
                 post_data['post_id'] = id_value
+                post_data.pop('group_id', None)
+                _attach_media_urls(post_data)
                 return Response(post_data, status=status.HTTP_201_CREATED)
         except Exception as e:
             import logging
@@ -306,6 +335,8 @@ class CreatePostView(APIView):
                 id_value = post_data.get('post_id') or post_data.get('id') or post_id
                 post_data['id'] = id_value
                 post_data['post_id'] = id_value
+                post_data.pop('group_id', None)
+                _attach_media_urls(post_data)
                 return Response(post_data, status=status.HTTP_201_CREATED)
         except Exception as e:
             import logging
@@ -349,6 +380,9 @@ class UserFeedView(APIView):
     def get(self, request):
         limit = get_limit(request.query_params, 20)
         offset = get_offset(request.query_params, 0)
+        if request.query_params.get('page'):
+            # The frontend pages with ?page=N (1-based); it takes precedence over a raw offset.
+            offset = page_offset(get_page(request.query_params, 1), limit)
         
         try:
             result = DatabaseManager.execute_function(
@@ -516,12 +550,14 @@ class PostDetailView(APIView):
             )
         
         post_data = result[0]
-        post_owner_id = post_data.get('user_id') or post_data.get('author_id') or post_data.get('owner_id')
-        if not _can_user_access_post(
+        # Group membership / visibility come straight from the posts row, so a private
+        # group's post can never be read by someone who is not in that group.
+        post_context = _get_post_owner_and_visibility(post_id)
+        if not post_context or not _can_user_access_post(
             request.user.id,
-            post_owner_id,
-            post_data.get('visibility', 'public'),
-            post_data.get('group_id')
+            post_context.get('user_id'),
+            post_context.get('visibility', 'public'),
+            post_context.get('group_id'),
         ):
             return Response(
                 {
@@ -540,6 +576,8 @@ class PostDetailView(APIView):
             post_data['user_name'] = post_data.get('author_name')
         if 'profile_picture' not in post_data and post_data.get('author_picture') is not None:
             post_data['profile_picture'] = post_data.get('author_picture')
+        post_data.pop('group_id', None)
+        _attach_media_urls(post_data)
         return Response(post_data)
     
     def delete(self,request,post_id):
@@ -739,6 +777,7 @@ class PostDetailView(APIView):
     
     
     
+@throttled('likes')
 class LikePostView(APIView):
     """
     Like or unlike a post (toggle functionality).
@@ -817,6 +856,7 @@ class LikePostView(APIView):
         })
 
 
+@throttled('comments')
 class CommentView(APIView):
     """
     Retrieve comments or add a comment to a post.
@@ -855,7 +895,10 @@ class CommentView(APIView):
         ):
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        result = DatabaseManager.execute_function('get_post_comments', (post_id, request.user.id)) or []
+        result = DatabaseManager.execute_function(
+            'get_post_comments',
+            (post_id, request.user.id, get_limit(request.query_params, 500, maximum=1000), get_offset(request.query_params, 0))
+        ) or []
         for comment in result:
             if 'profile_picture' not in comment and 'user_picture' in comment:
                 comment['profile_picture'] = comment['user_picture']
@@ -964,6 +1007,7 @@ class TrendingPostsView(APIView):
         return Response(result)
 
 
+@throttled('uploads')
 class UploadPostMediaView(APIView):
     """
     Upload multiple media files (images or videos) for a post.
@@ -1065,6 +1109,7 @@ class UploadPostMediaView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
 
 
+@throttled('posts')
 class CreatePostWithMediaView(APIView):
     """
     Create a post with multiple media files.
@@ -1135,6 +1180,8 @@ class CreatePostWithMediaView(APIView):
                 media_urls = json.loads(media_urls)
             except (json.JSONDecodeError, TypeError):
                 media_urls = []
+        if media_urls and not isinstance(media_urls, (list, tuple)):
+            raise ValidationError({'media_urls': 'Must be a list of URLs.'})
         normalized_media_urls = []
         if media_urls:
             for media_item in media_urls:
@@ -1208,6 +1255,8 @@ class CreatePostWithMediaView(APIView):
                 id_value = post_data.get('post_id') or post_data.get('id') or post_id
                 post_data['id'] = id_value
                 post_data['post_id'] = id_value
+                post_data.pop('group_id', None)
+                _attach_media_urls(post_data)
                 return Response(post_data, status=status.HTTP_201_CREATED)
         except Exception as e:
             import logging
@@ -1243,6 +1292,8 @@ class CreatePostWithMediaView(APIView):
                 id_value = post_data.get('post_id') or post_data.get('id') or post_id
                 post_data['id'] = id_value
                 post_data['post_id'] = id_value
+                post_data.pop('group_id', None)
+                _attach_media_urls(post_data)
                 return Response(post_data, status=status.HTTP_201_CREATED)
         except Exception as e:
             import logging

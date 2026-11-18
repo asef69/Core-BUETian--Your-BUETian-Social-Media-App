@@ -12,6 +12,7 @@ from utils.validators import (
     BLOOD_GROUPS, clean_choice, clean_str, safe_procedure_message,
 )
 from decimal import Decimal, InvalidOperation
+from utils.throttles import throttled
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,8 @@ def _validate_tuition_constraints(data):
             salary_min_value = Decimal(str(salary_min))
         except (InvalidOperation, ValueError):
             return 'Min salary must be a valid number'
+        if not salary_min_value.is_finite():
+            return 'Min salary must be a valid number'
         if salary_min_value < Decimal('1000'):
             return 'Min salary must be at least 1000'
 
@@ -78,6 +81,8 @@ def _validate_tuition_constraints(data):
             duration_value = Decimal(str(duration_hours))
         except (InvalidOperation, ValueError):
             return 'Hours per day must be a valid number'
+        if not duration_value.is_finite():
+            return 'Hours per day must be a valid number'
         if duration_value <= 0 or duration_value > Decimal('24'):
             return 'Hours per day must be greater than 0 and at most 24'
 
@@ -86,6 +91,8 @@ def _validate_tuition_constraints(data):
         try:
             salary_max_value = Decimal(str(salary_max))
         except (InvalidOperation, ValueError):
+            return 'Max salary must be a valid number'
+        if not salary_max_value.is_finite():
             return 'Max salary must be a valid number'
         if salary_max_value < 0 or salary_max_value >= Decimal('100000000'):
             return 'Max salary is out of range'
@@ -108,6 +115,7 @@ def _validate_tuition_constraints(data):
 
     return None
 
+@throttled('forums')
 class CreateBloodRequestView(APIView):
     """
     Create a new blood donation request.
@@ -332,6 +340,7 @@ class ActiveBloodRequestsView(APIView):
         return Response(result)
 
 # Tuition Views
+@throttled('forums')
 class CreateTuitionPostView(APIView):
     """
     Create a new tuition/tutoring post (available or wanted).
@@ -481,6 +490,15 @@ class TuitionPostDetailView(APIView):
         validation_error = _validate_tuition_constraints(data)
         if validation_error:
             return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # The salary range must stay consistent with the values already stored.
+        stored = DatabaseManager.execute_query(
+            "SELECT salary_min, salary_max FROM tution_posts WHERE id = %s", (post_id,)
+        )[0]
+        new_min = data.get('salary_min') if data.get('salary_min') not in (None, '') else stored['salary_min']
+        new_max = data.get('salary_max') if data.get('salary_max') not in (None, '') else stored['salary_max']
+        if new_min is not None and new_max is not None and Decimal(str(new_min)) > Decimal(str(new_max)):
+            return Response({'error': 'Max salary cannot be less than min salary'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Use stored procedure for update
         subjects = data.get('subjects')

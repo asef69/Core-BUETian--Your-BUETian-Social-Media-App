@@ -13,12 +13,10 @@ export const useOnlineStatus = () => {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      console.log('✅ Back online');
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      console.log('⛔ Gone offline');
     };
 
     window.addEventListener('online', handleOnline);

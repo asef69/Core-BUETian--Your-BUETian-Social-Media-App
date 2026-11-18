@@ -97,8 +97,8 @@ CREATE OR REPLACE FUNCTION get_recent_conversations(p_user_id INTEGER) RETURNS T
         ELSE sender_id
         END as other_user
     FROM messages
-    WHERE sender_id = p_user_id
-        OR receiver_id = p_user_id
+    WHERE (sender_id = p_user_id AND NOT deleted_for_sender)
+        OR (receiver_id = p_user_id AND NOT deleted_for_receiver)
     ORDER BY CASE
         WHEN sender_id = p_user_id THEN receiver_id
         ELSE sender_id
@@ -116,6 +116,7 @@ SELECT lm.other_user,
     WHERE sender_id = lm.other_user
         AND receiver_id = p_user_id
         AND is_read = FALSE
+        AND NOT deleted_for_receiver
     ) as unread_count
 FROM last_messages lm
     INNER JOIN users u ON lm.other_user = u.id
@@ -327,8 +328,8 @@ WHERE u.is_active = TRUE
     AND (
     p_search_term IS NULL
     OR p_search_term = ''
-    OR u.name ILIKE '%' || p_search_term || '%'
-    OR u.student_id::TEXT ILIKE '%' || p_search_term || '%'
+    OR u.name ILIKE '%' || replace(replace(replace(p_search_term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+    OR u.student_id::TEXT ILIKE '%' || replace(replace(replace(p_search_term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
     )
     AND (
     p_department IS NULL
@@ -650,6 +651,7 @@ FROM messages m
     INNER JOIN users u ON u.id = m.sender_id
 WHERE m.receiver_id = p_user_id
     AND m.is_read = FALSE
+    AND NOT m.deleted_for_receiver
 GROUP BY u.id,
     u.name,
     u.profile_picture
@@ -663,7 +665,8 @@ CREATE OR REPLACE FUNCTION get_total_unread_messages(p_user_id INTEGER) RETURNS 
 SELECT COUNT(*) AS total_unread
 FROM messages
 WHERE receiver_id = p_user_id
-    AND is_read = FALSE;
+    AND is_read = FALSE
+    AND NOT deleted_for_receiver;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -693,10 +696,10 @@ FROM messages m
     INNER JOIN users s ON s.id = m.sender_id
     INNER JOIN users r ON r.id = m.receiver_id
 WHERE (
-    m.sender_id = p_user_id
-    OR m.receiver_id = p_user_id
+    (m.sender_id = p_user_id AND NOT m.deleted_for_sender)
+    OR (m.receiver_id = p_user_id AND NOT m.deleted_for_receiver)
     )
-    AND m.content ILIKE '%' || p_search_term || '%'
+    AND m.content ILIKE '%' || replace(replace(replace(p_search_term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
 ORDER BY m.created_at DESC
 LIMIT p_limit;
 END;
@@ -708,20 +711,32 @@ CREATE OR REPLACE FUNCTION delete_conversation(
     p_user_id INTEGER,
     p_other_user_id INTEGER
     ) RETURNS TABLE(deleted_count INTEGER) AS $$
-DECLARE v_count INTEGER;
+DECLARE v_sent INTEGER;
+DECLARE v_received INTEGER;
 BEGIN
-DELETE FROM messages
-WHERE (
-    sender_id = p_user_id
+-- "Delete" hides the thread for the caller only; the other person keeps their copy.
+UPDATE messages
+SET deleted_for_sender = TRUE
+WHERE sender_id = p_user_id
     AND receiver_id = p_other_user_id
-    )
-    OR (
-    sender_id = p_other_user_id
-    AND receiver_id = p_user_id
+    AND NOT deleted_for_sender;
+GET DIAGNOSTICS v_sent = ROW_COUNT;
+UPDATE messages
+SET deleted_for_receiver = TRUE
+WHERE receiver_id = p_user_id
+    AND sender_id = p_other_user_id
+    AND NOT deleted_for_receiver;
+GET DIAGNOSTICS v_received = ROW_COUNT;
+-- Rows both people removed are no longer needed.
+DELETE FROM messages
+WHERE deleted_for_sender
+    AND deleted_for_receiver
+    AND (
+    (sender_id = p_user_id AND receiver_id = p_other_user_id)
+    OR (sender_id = p_other_user_id AND receiver_id = p_user_id)
     );
-GET DIAGNOSTICS v_count = ROW_COUNT;
 RETURN QUERY
-SELECT v_count;
+SELECT v_sent + v_received;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -756,25 +771,28 @@ SELECT (
     SELECT COUNT(*)
     FROM messages
     WHERE sender_id = p_user_id
+        AND NOT deleted_for_sender
     ) AS total_sent,
     (
     SELECT COUNT(*)
     FROM messages
     WHERE receiver_id = p_user_id
+        AND NOT deleted_for_receiver
     ) AS total_received,
     (
     SELECT COUNT(*)
     FROM messages
     WHERE receiver_id = p_user_id
         AND is_read = FALSE
+        AND NOT deleted_for_receiver
     ) AS total_unread,
     (
     SELECT COUNT(
         DISTINCT LEAST(sender_id, receiver_id)::TEXT || '-' || GREATEST(sender_id, receiver_id)::TEXT
         )
     FROM messages
-    WHERE sender_id = p_user_id
-        OR receiver_id = p_user_id
+    WHERE (sender_id = p_user_id AND NOT deleted_for_sender)
+        OR (receiver_id = p_user_id AND NOT deleted_for_receiver)
     ) AS conversations_count;
 END;
 $$ LANGUAGE plpgsql;

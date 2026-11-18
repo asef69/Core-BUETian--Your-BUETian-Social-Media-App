@@ -53,13 +53,17 @@ class ConversationView(APIView):
         FROM messages m
         INNER JOIN users s ON m.sender_id = s.id
         INNER JOIN users r ON m.receiver_id = r.id
-        WHERE (m.sender_id = %s AND m.receiver_id = %s)
-           OR (m.sender_id = %s AND m.receiver_id = %s)
+        WHERE (
+                (m.sender_id = %s AND m.receiver_id = %s)
+             OR (m.sender_id = %s AND m.receiver_id = %s)
+        )
+        AND ((m.sender_id = %s AND NOT m.deleted_for_sender)
+             OR (m.receiver_id = %s AND NOT m.deleted_for_receiver))
         ORDER BY m.created_at ASC
         """
         result = DatabaseManager.execute_query(
             query,
-            (request.user.id, user_id, user_id, request.user.id)
+            (request.user.id, user_id, user_id, request.user.id, request.user.id, request.user.id)
         )
         
         DatabaseManager.execute_update(

@@ -27,6 +27,8 @@ def clean_str(value, field, max_length, required=False, allow_blank=True):
         return None
     if not isinstance(value, str):
         _err(field, 'Must be a string.')
+    if '\x00' in value:
+        _err(field, 'Null characters are not allowed.')
     value = value.strip()
     if not value and (required or not allow_blank):
         _err(field, 'This field may not be blank.')
@@ -35,15 +37,20 @@ def clean_str(value, field, max_length, required=False, allow_blank=True):
     return value
 
 
-def clean_int(value, field, required=False, minimum=None, maximum=None):
+MAX_INT = 2147483647
+
+
+def clean_int(value, field, required=False, minimum=None, maximum=MAX_INT):
     if value is None or value == '':
         if required:
             _err(field, 'This field is required.')
         return None
     if isinstance(value, bool):
         _err(field, 'Must be an integer.')
+    if isinstance(value, float) and not value.is_integer():
+        _err(field, 'Must be a whole number.')
     try:
-        number = int(str(value).strip())
+        number = int(str(value).strip()) if not isinstance(value, float) else int(value)
     except (TypeError, ValueError):
         _err(field, 'Must be an integer.')
     if minimum is not None and number < minimum:
@@ -100,14 +107,33 @@ def clean_password(value, field='password'):
     return value
 
 
+def _allowed_media_hosts():
+    from django.conf import settings
+    return tuple(getattr(settings, 'ALLOWED_MEDIA_HOSTS', ('res.cloudinary.com',)))
+
+
 def clean_media_url(value, field='media_url', max_length=500):
-    """Accept only http(s) URLs or site-relative media paths for stored media links."""
+    """Accept only the app's own media paths or https URLs on an allowed storage host.
+
+    Arbitrary external URLs would let users plant tracking pixels / hotlinked content,
+    and javascript:/data: URLs are never valid.
+    """
+    from urllib.parse import urlsplit
     value = clean_str(value, field, max_length)
     if not value:
         return None
-    if not (value.startswith('https://') or value.startswith('http://') or value.startswith('/')):
-        _err(field, 'Must be an http(s) URL or a site-relative path.')
-    return value
+    if value.startswith('/') and not value.startswith('//'):
+        return value
+    parts = urlsplit(value)
+    host = (parts.hostname or '').lower()
+    if parts.scheme == 'https' and any(host == h or host.endswith('.' + h) for h in _allowed_media_hosts()):
+        return value
+    _err(field, 'Must be an uploaded file URL from this site or its media host.')
+
+
+def escape_like(term):
+    """Escape LIKE/ILIKE metacharacters so user input matches literally (backslash is the escape)."""
+    return str(term).replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 def safe_procedure_message(message, fallback='The request could not be completed'):

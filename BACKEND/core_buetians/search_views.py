@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from utils.database import DatabaseManager
 from utils.params import get_int_param, get_limit
+from utils.validators import escape_like
+from users.views import _normalize_media_url
 
 
 def _get_search_term(request):
@@ -24,6 +26,10 @@ class SearchUsersView(APIView):
             'search_users_advanced',
             (search_term, department, batch, blood_group, limit)
         )
+        for user in result:
+            # Same shape as /api/users/search/ (`id` next to `user_id`, usable media URL).
+            user.setdefault('id', user.get('user_id'))
+            user['profile_picture'] = _normalize_media_url(user.get('profile_picture'))
         return Response(result)
 
 class SearchPostsView(APIView):
@@ -67,7 +73,7 @@ class SearchGroupsView(APIView):
             result = DatabaseManager.execute_query(base_query, (cleaned_term,))
         except Exception:
             # Fallback to ILIKE in case the text search configuration or view is missing in the DB
-            like_term = f"%{cleaned_term.lower()}%"
+            like_term = f"%{escape_like(cleaned_term.lower())}%"
             fallback_query = """
             SELECT 
                 g.id,
@@ -128,7 +134,7 @@ class GlobalSearchView(APIView):
         try:
             groups = DatabaseManager.execute_query(groups_query, (cleaned_term,))
         except Exception:
-            like_term = f"%{cleaned_term.lower()}%"
+            like_term = f"%{escape_like(cleaned_term.lower())}%"
             fallback_groups_query = """
             SELECT 
                 g.id,

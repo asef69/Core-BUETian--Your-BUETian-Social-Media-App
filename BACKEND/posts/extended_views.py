@@ -1,9 +1,13 @@
+import re
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from utils.database import DatabaseManager
 from utils.params import get_limit
+from utils.validators import clean_str, escape_like
+from utils.throttles import throttled
 
 
 def _normalize_media_url(url):
@@ -45,7 +49,7 @@ class PostsByHashtagView(APIView):
         Function: get_posts_by_hashtag(hashtag, limit)
     """
     def get(self, request):
-        hashtag = request.query_params.get('hashtag', '').strip()
+        hashtag = request.query_params.get('hashtag', '').strip().lstrip('#')
         if not hashtag:
             return Response(
                 {'error': 'Hashtag query parameter is required'},
@@ -53,7 +57,12 @@ class PostsByHashtagView(APIView):
             )
 
         limit = get_limit(request.query_params, 20)
-        
+
+        # Hashtags are letters/digits/underscore only; anything else cannot match a post and
+        # must never reach the database's regular-expression engine.
+        if not re.fullmatch(r'\w{1,50}', hashtag):
+            return Response([])
+
         result = DatabaseManager.execute_function(
             'get_posts_by_hashtag',
             (hashtag, limit)
@@ -290,7 +299,7 @@ class SearchPostsView(APIView):
             ORDER BY p.created_at DESC
             LIMIT %s
             """
-            result = DatabaseManager.execute_query(fallback_query, (f"%{search_term.lower()}%", limit))
+            result = DatabaseManager.execute_query(fallback_query, (f"%{escape_like(search_term.lower())}%", limit))
 
         posts = result or []
         for post in posts:
@@ -299,6 +308,7 @@ class SearchPostsView(APIView):
         return Response({'results': posts})
 
 
+@throttled('comments')
 class DeleteCommentView(APIView):
     """
     Delete a comment.
@@ -365,6 +375,7 @@ class DeleteCommentView(APIView):
             return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@throttled('comments')
 class UpdateCommentView(APIView):
     """
     Update a comment's content.
@@ -399,7 +410,7 @@ class UpdateCommentView(APIView):
     """
     permission_classes = [IsAuthenticated]
     def patch(self, request, comment_id):
-        content = request.data.get('content', '').strip()
+        content = (clean_str(request.data.get('content'), 'content', 2000) or '').strip()
         
         if not content:
             return Response(
@@ -448,6 +459,7 @@ class UpdateCommentView(APIView):
         return self.patch(request, comment_id)
     
     
+@throttled('likes')
 class LikeCommentView(APIView):
     """
     Like or unlike a comment (toggle functionality).
@@ -482,6 +494,18 @@ class LikeCommentView(APIView):
                 (comment_id,)
             )
             if not comment_exists:
+                return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            # A comment can only be liked by someone who is allowed to see its post.
+            from posts.views import _can_user_access_post
+            post_ctx = DatabaseManager.execute_query(
+                "SELECT p.user_id, p.visibility, p.group_id FROM comments c "
+                "JOIN posts p ON p.id = c.post_id WHERE c.id = %s",
+                (comment_id,)
+            )
+            if not post_ctx or not _can_user_access_post(
+                user_id, post_ctx[0]['user_id'], post_ctx[0]['visibility'], post_ctx[0]['group_id']
+            ):
                 return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
 
             # Use procedure for comment like toggle with notification

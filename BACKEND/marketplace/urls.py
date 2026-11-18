@@ -1,3 +1,4 @@
+import utils.converters  # noqa: F401  (registers <posint:...>)
 from django.urls import path
 from .views import (
     CreateProductView, ProductDetailView, ProductListView,
@@ -12,25 +13,25 @@ from .views import (
 urlpatterns = [
     # Product management
     path('products/create/', CreateProductView.as_view(), name='create-product'),
-    path('products/<int:product_id>/', ProductDetailView.as_view(), name='product-detail'),
+    path('products/<posint:product_id>/', ProductDetailView.as_view(), name='product-detail'),
     path('products/', ProductListView.as_view(), name='product-list'),
     
     # Product actions
-    path('products/<int:product_id>/mark-sold/', MarkProductSoldView.as_view(), name='mark-sold'),
-    path('products/<int:product_id>/reserve/', ReserveProductView.as_view(), name='reserve-product'),
-    path('products/<int:product_id>/similar/', SimilarProductsView.as_view(), name='similar-products'),
+    path('products/<posint:product_id>/mark-sold/', MarkProductSoldView.as_view(), name='mark-sold'),
+    path('products/<posint:product_id>/reserve/', ReserveProductView.as_view(), name='reserve-product'),
+    path('products/<posint:product_id>/similar/', SimilarProductsView.as_view(), name='similar-products'),
     
     # Reviews and ratings
-    path('products/<int:product_id>/reviews/', CreateReviewView.as_view(), name='create-review'),
-    path('sellers/<int:seller_id>/reviews/', SellerReviewsView.as_view(), name='seller-reviews'),
-    path('sellers/<int:seller_id>/reputation/', SellerReputationView.as_view(), name='seller-reputation'),
+    path('products/<posint:product_id>/reviews/', CreateReviewView.as_view(), name='create-review'),
+    path('sellers/<posint:seller_id>/reviews/', SellerReviewsView.as_view(), name='seller-reviews'),
+    path('sellers/<posint:seller_id>/reputation/', SellerReputationView.as_view(), name='seller-reputation'),
     
     # Transaction management
-    path('transactions/<int:product_id>/confirm/', ConfirmTransactionView.as_view(), name='confirm-transaction'),
+    path('transactions/<posint:product_id>/confirm/', ConfirmTransactionView.as_view(), name='confirm-transaction'),
     
     # User products
-    path('users/<int:user_id>/products/', UserProductsView.as_view(), name='user-products'),
-    path('users/<int:user_id>/stats/', UserMarketplaceStatsView.as_view(), name='user-stats'),
+    path('users/<posint:user_id>/products/', UserProductsView.as_view(), name='user-products'),
+    path('users/<posint:user_id>/stats/', UserMarketplaceStatsView.as_view(), name='user-stats'),
     path('my-products/', MyProductsView.as_view(), name='my-products'),
     path('my-stats/', MyMarketplaceStatsView.as_view(), name='my-stats'),
     

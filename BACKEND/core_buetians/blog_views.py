@@ -7,6 +7,7 @@ import logging
 from rest_framework.exceptions import ValidationError  # type: ignore
 
 from utils.database import DatabaseManager
+from utils.throttles import throttled
 from utils.validators import (
     clean_datetime, clean_int, clean_str, clean_tags, parse_bool, safe_procedure_message,
 )
@@ -34,6 +35,23 @@ def _ensure_blog_comment_extensions():
     )
 
 
+def _blog_visible_to(blog_id, user_id):
+    """Published (and already due) blogs are visible to everyone; drafts and
+    scheduled posts only to their author."""
+    rows = DatabaseManager.execute_query(
+        """
+        SELECT 1 FROM blog_posts
+        WHERE id = %s
+          AND (
+            author_id = %s
+            OR (is_published = TRUE AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP))
+          )
+        """,
+        (blog_id, user_id)
+    )
+    return bool(rows)
+
+
 def _resolve_blog_id(blog_id):
     """Resolve a blog reference that may be a blog id or a blog comment id."""
     direct_blog = DatabaseManager.execute_query(
@@ -52,6 +70,7 @@ def _resolve_blog_id(blog_id):
 
     return None
 
+@throttled('blogs')
 class CreateBlogPostView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -131,6 +150,7 @@ class BlogPostDetailView(APIView):
 
         return Response(blog)
 
+@throttled('likes')
 class BlogPostViewTrackView(APIView):
     def post(self, request, blog_id):
         resolved_blog_id = _resolve_blog_id(blog_id)
@@ -145,17 +165,26 @@ class BlogPostViewTrackView(APIView):
         if not exists:
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        result = DatabaseManager.execute_query(
+        visible = DatabaseManager.execute_query(
             """
-            UPDATE blog_posts
-            SET views_count = views_count + 1
+            SELECT author_id, views_count FROM blog_posts
             WHERE id = %s
               AND is_published = TRUE
               AND (scheduled_publish_at IS NULL OR scheduled_publish_at <= CURRENT_TIMESTAMP)
-            RETURNING views_count
             """,
             (resolved_blog_id,)
         )
+        result = visible
+        if visible and visible[0]['author_id'] != request.user.id:
+            first_view_today = DatabaseManager.execute_query(
+                "INSERT INTO blog_view_log(blog_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id",
+                (resolved_blog_id, request.user.id)
+            )
+            if first_view_today:
+                result = DatabaseManager.execute_query(
+                    "UPDATE blog_posts SET views_count = views_count + 1 WHERE id = %s RETURNING views_count",
+                    (resolved_blog_id,)
+                )
 
         if not result:
             return Response({'error': 'Views not allowed for drafts or future scheduled posts'}, status=status.HTTP_403_FORBIDDEN)
@@ -172,6 +201,10 @@ class PublishedBlogsView(APIView):
         is_published = request.query_params.get('is_published')
         mine = request.query_params.get('mine')
         drafts_tab = request.query_params.get('drafts_tab')
+        wants_unpublished = (is_published or '').lower() == 'false'
+        if wants_unpublished:
+            # Unpublished posts are only ever listed for their own author.
+            mine = 'true'
 
         def _attach_edit_delete_flags(rows):
             request_user_id = getattr(request.user, 'id', None)
@@ -213,7 +246,7 @@ class PublishedBlogsView(APIView):
             return rows
 
         # Special logic for drafts tab: show both drafts and scheduled (future) posts for the user
-        if mine == 'true' and drafts_tab == 'true':
+        if mine == 'true' and (drafts_tab == 'true' or wants_unpublished):
             query = (
                 "SELECT b.*, u.name as author_name, u.profile_picture as author_picture, "
                 "ARRAY(SELECT bt.tag_name FROM blog_post_tags bt WHERE bt.blog_post_id = b.id ORDER BY bt.id) AS tags "
@@ -361,6 +394,7 @@ class DeleteBlogPostView(APIView):
         except Exception:
             logger.exception('Blog request failed')
             return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+@throttled('likes')
 class LikeBlogView(APIView):
     def post(self, request, blog_id):
         resolved_blog_id = _resolve_blog_id(blog_id)
@@ -429,9 +463,13 @@ class LikeBlogView(APIView):
             return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@throttled('likes')
 class LikeBlogCommentView(APIView):
     def post(self, request, comment_id):
         _ensure_blog_comment_extensions()
+        owner_blog = DatabaseManager.execute_query("SELECT blog_id FROM blog_comments WHERE id = %s", (comment_id,))
+        if not owner_blog or not _blog_visible_to(owner_blog[0]['blog_id'], request.user.id):
+            return Response({'error': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Use the new procedure for toggling comment like and notification
         params = (
@@ -459,11 +497,12 @@ class LikeBlogCommentView(APIView):
             logger.exception('Blog request failed')
             return Response({'error': 'Something went wrong. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@throttled('comments')
 class BlogCommentsView(APIView):
     def get(self, request, blog_id):
         _ensure_blog_comment_extensions()
         resolved_blog_id = _resolve_blog_id(blog_id)
-        if resolved_blog_id is None:
+        if resolved_blog_id is None or not _blog_visible_to(resolved_blog_id, request.user.id):
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         query = """
@@ -494,7 +533,7 @@ class BlogCommentsView(APIView):
     def post(self, request, blog_id):
         _ensure_blog_comment_extensions()
         resolved_blog_id = _resolve_blog_id(blog_id)
-        if resolved_blog_id is None:
+        if resolved_blog_id is None or not _blog_visible_to(resolved_blog_id, request.user.id):
             return Response({'error': 'Blog post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         data = request.data

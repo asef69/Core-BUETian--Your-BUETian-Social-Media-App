@@ -7,6 +7,7 @@ from utils.database import DatabaseManager
 from utils.params import get_limit, get_offset
 from utils.validators import clean_int, clean_media_url, clean_str
 from utils.file_upload import FileUploadHandler
+from utils.throttles import throttled
 
 
 def _can_message(sender_id, receiver_id):
@@ -95,7 +96,8 @@ class ConversationListView(APIView):
                     ELSE sender_id 
                 END as other_user_id
             FROM messages
-            WHERE sender_id = %s OR receiver_id = %s
+            WHERE (sender_id = %s AND NOT deleted_for_sender)
+               OR (receiver_id = %s AND NOT deleted_for_receiver)
             ORDER BY LEAST(sender_id, receiver_id), GREATEST(sender_id, receiver_id), created_at DESC
         )
         SELECT 
@@ -105,7 +107,8 @@ class ConversationListView(APIView):
             (SELECT COUNT(*) FROM messages 
              WHERE sender_id = lm.other_user_id 
              AND receiver_id = %s 
-             AND is_read = FALSE) as unread_count
+             AND is_read = FALSE
+             AND NOT deleted_for_receiver) as unread_count
         FROM latest_messages lm
         JOIN users u ON u.id = lm.other_user_id
         ORDER BY lm.created_at DESC
@@ -180,15 +183,19 @@ class MessageListView(APIView):
         FROM messages m
         JOIN users sender ON sender.id = m.sender_id
         JOIN users receiver ON receiver.id = m.receiver_id
-        WHERE (m.sender_id = %s AND m.receiver_id = %s)
-           OR (m.sender_id = %s AND m.receiver_id = %s)
+        WHERE (
+                (m.sender_id = %s AND m.receiver_id = %s)
+             OR (m.sender_id = %s AND m.receiver_id = %s)
+        )
+        AND ((m.sender_id = %s AND NOT m.deleted_for_sender)
+             OR (m.receiver_id = %s AND NOT m.deleted_for_receiver))
         ORDER BY m.created_at DESC
         LIMIT %s OFFSET %s
         """
-        
+
         result = DatabaseManager.execute_query(
             query,
-            (user_id, other_user_id, other_user_id, user_id, limit, offset)
+            (user_id, other_user_id, other_user_id, user_id, user_id, user_id, limit, offset)
         )
         
         DatabaseManager.execute_update(
@@ -199,6 +206,7 @@ class MessageListView(APIView):
         return Response(result or [])
 
 
+@throttled('chat')
 class SendMessageView(APIView):
     """
     Send a text message via REST API (fallback if WebSocket unavailable).
@@ -256,6 +264,7 @@ class SendMessageView(APIView):
         )
 
 
+@throttled('uploads')
 class UploadChatImageView(APIView):
     """
     Upload an image file for use in chat messages.
@@ -329,6 +338,7 @@ class UploadChatImageView(APIView):
             )
 
 
+@throttled('uploads')
 class UploadChatVideoView(APIView):
     """
     Upload a video file for use in chat messages.
@@ -386,6 +396,7 @@ class UploadChatVideoView(APIView):
             )
 
 
+@throttled('chat')
 class SendMessageWithImageView(APIView):
     """
     Send a message with an attached image.
@@ -491,13 +502,15 @@ class ProductMessageListView(APIView):
              OR (m.sender_id = %s AND m.receiver_id = %s)
         )
         AND m.product_id = %s
+        AND ((m.sender_id = %s AND NOT m.deleted_for_sender)
+             OR (m.receiver_id = %s AND NOT m.deleted_for_receiver))
         ORDER BY m.created_at DESC
         LIMIT %s OFFSET %s
         """
         
         result = DatabaseManager.execute_query(
             query,
-            (user_id, other_user_id, other_user_id, user_id, product_id, limit, offset)
+            (user_id, other_user_id, other_user_id, user_id, product_id, user_id, user_id, limit, offset)
         )
         
         # Mark messages as read
@@ -509,6 +522,7 @@ class ProductMessageListView(APIView):
         return Response(result or [])
 
 
+@throttled('contact')
 class ContactSellerView(APIView):
     """
     Initiate contact with seller about a specific product.

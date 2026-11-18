@@ -53,6 +53,14 @@ def custom_exception_handler(exc, context):
         }
         return response
 
+    if isinstance(exc, ValueError) and 'NUL' in str(exc):
+        # psycopg2 refuses strings containing \x00
+        message = 'Null characters are not allowed in text values.'
+        return Response(
+            {'error': message, 'message': message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if isinstance(exc, (DataError, IntegrityError)):
         logger.warning('Rejected by database constraint: %s', exc)
         message = 'The submitted data is invalid or refers to something that does not exist.'

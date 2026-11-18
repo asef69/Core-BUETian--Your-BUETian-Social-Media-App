@@ -4,14 +4,15 @@ from rest_framework.exceptions import ValidationError # type: ignore
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
-from rest_framework.permissions import IsAuthenticated, AllowAny # type: ignore
+from rest_framework.permissions import IsAuthenticated # type: ignore
 from django.db.utils import ProgrammingError # type: ignore
 from utils.database import DatabaseManager
-from utils.params import get_float_param, get_limit, get_page
+from utils.params import get_float_param, get_limit, get_page, page_offset
 from utils.validators import (
-    clean_choice, clean_decimal, clean_media_url, clean_str, safe_procedure_message,
+    clean_choice, clean_decimal, clean_int, clean_media_url, clean_str, escape_like, safe_procedure_message,
 )
 from utils.file_upload import FileUploadHandler
+from utils.throttles import throttled
 
 
 VALID_PRODUCT_STATUSES = {'available', 'sold', 'reserved'}
@@ -26,6 +27,7 @@ def _normalize_media_url(url):
         return url
     return f"/{str(url).lstrip('/')}"
 
+@throttled('market')
 class CreateProductView(APIView):
     """
     Create a new marketplace product listing.
@@ -191,11 +193,6 @@ class ProductDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get_permissions(self):
-        if self.request.method == 'GET':
-            return [AllowAny()]
-        return [permission() for permission in self.permission_classes]
-    
     def get(self, request, product_id):
         try:
             result = DatabaseManager.execute_function('get_product_details', (product_id,))
@@ -239,13 +236,18 @@ class ProductDetailView(APIView):
         return Response(product)
     
     def patch(self, request, product_id):
-        check_query = "SELECT seller_id FROM marketplace_products WHERE id = %s"
+        check_query = "SELECT seller_id, status FROM marketplace_products WHERE id = %s"
         result = DatabaseManager.execute_query(check_query, (product_id,))
         
         if not result or result[0]['seller_id'] != request.user.id:
             return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
         
         data = request.data
+        if result[0]['status'] == 'sold' and any(k in data for k in ('price', 'status', 'title', 'condition', 'category')):
+            return Response(
+                {'error': 'A sold product can no longer change its price, status or core details'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         update_fields = []
         params = []
         
@@ -340,7 +342,7 @@ class ProductListView(APIView):
         - Includes seller information
         - Images aggregated from marketplace_product_images
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         category = request.query_params.get('category')
@@ -354,7 +356,7 @@ class ProductListView(APIView):
         search = request.query_params.get('search')
         page = get_page(request.query_params, 1)
         limit = get_limit(request.query_params, 20)
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         
         query = """
         SELECT 
@@ -405,7 +407,7 @@ class ProductListView(APIView):
         
         if search:
             query += " AND (p.title ILIKE %s OR p.description ILIKE %s)"
-            search_pattern = f"%{search}%"
+            search_pattern = f"%{escape_like(search)}%"
             params.extend([search_pattern, search_pattern])
         
         count_query = f"SELECT COUNT(*) as total FROM ({query}) as count_subquery"
@@ -460,13 +462,13 @@ class UserProductsView(APIView):
         - Shows all user's products (available, sold, reserved)
         - Useful for viewing seller's inventory
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, user_id):
         status_filter = request.query_params.get('status')
         page = get_page(request.query_params, 1)
         limit = get_limit(request.query_params, 20)
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         
         query = """
         SELECT 
@@ -547,7 +549,7 @@ class MyProductsView(APIView):
         status_filter = request.query_params.get('status')
         page = get_page(request.query_params, 1)
         limit = get_limit(request.query_params, 20)
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         
         query = """
         SELECT 
@@ -623,7 +625,7 @@ class CategoryListView(APIView):
         - Useful for category browsing
         - Includes sold vs available counts
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         query = """
@@ -633,6 +635,7 @@ class CategoryListView(APIView):
         result = DatabaseManager.execute_query(query, ())
         return Response(result)
 
+@throttled('uploads')
 class UploadProductImageView(APIView):
     """
     Upload product images before creating product listing.
@@ -716,7 +719,7 @@ class SearchProductsView(APIView):
         - Combines text search with filters
         - Results ranked by match quality
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         search_term = (
@@ -735,11 +738,11 @@ class SearchProductsView(APIView):
         location = request.query_params.get('location')
         page = get_page(request.query_params, 1)
         limit = get_limit(request.query_params, 20)
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         
         # Build a shared FROM/WHERE clause once, then derive SELECT and COUNT queries.
-        search_pattern = f"%{search_term}%"
-        exact_pattern = search_term
+        search_pattern = f"%{escape_like(search_term)}%"
+        exact_pattern = escape_like(search_term)
 
         base_from = (
             "FROM marketplace_products p "
@@ -772,7 +775,7 @@ class SearchProductsView(APIView):
 
         if location:
             base_from += " AND p.location ILIKE %s"
-            where_params.append(f"%{location}%")
+            where_params.append(f"%{escape_like(location)}%")
 
         # Count query uses only WHERE params
         count_query = f"SELECT COUNT(*) as total {base_from}"
@@ -843,7 +846,7 @@ class SimilarProductsView(APIView):
         - Helps users find alternatives
         - Ordered by price similarity
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, product_id):
         limit = get_limit(request.query_params, 5)
@@ -887,7 +890,7 @@ class TrendingProductsView(APIView):
         - Helps discover new listings
         - Updates daily
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         limit = get_limit(request.query_params, 10)
@@ -919,7 +922,7 @@ class UserMarketplaceStatsView(APIView):
         - Revenue from sold items
         - Useful for seller profiles
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, user_id):
         result = DatabaseManager.execute_function('get_user_marketplace_stats', (user_id,))
@@ -985,7 +988,7 @@ class PriceRangeStatsView(APIView):
         - Shows market distribution
         - Helps users understand pricing
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         result = DatabaseManager.execute_function('get_price_range_stats', ())
@@ -1034,6 +1037,7 @@ class DepartmentProductsView(APIView):
         result = DatabaseManager.execute_function('get_department_products', (request.user.id, limit))
         return Response(result)
 
+@throttled('market')
 class MarkProductSoldView(APIView):
     """
     Mark a product as sold (Seller only).
@@ -1109,6 +1113,7 @@ class MarkProductSoldView(APIView):
         return Response({'error': 'Failed to mark product as sold'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@throttled('reviews')
 class ConfirmTransactionView(APIView):
     """
     Confirm a buyer-seller transaction for a product.
@@ -1145,56 +1150,34 @@ class ConfirmTransactionView(APIView):
             return Response({'error': 'Invalid role. Use buyer or seller'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Get product and verify it's sold
-        product_query = "SELECT seller_id FROM marketplace_products WHERE id = %s AND status = 'sold'"
+        product_query = "SELECT seller_id, buyer_id FROM marketplace_products WHERE id = %s AND status = 'sold'"
         product_result = DatabaseManager.execute_query(product_query, (product_id,))
-        
+
         if not product_result:
             return Response({'error': 'Product not found or not marked as sold'}, status=status.HTTP_404_NOT_FOUND)
-        
-        seller_id = product_result[0]['seller_id']
-        
-        if role == 'seller':
-            if request.user.id != seller_id:
-                return Response({'error': 'Only seller can confirm as seller'}, status=status.HTTP_403_FORBIDDEN)
-            
-            buyer_id = data.get('buyer_id')
-            if not buyer_id:
-                return Response({'error': 'buyer_id required for seller confirmation'}, status=status.HTTP_400_BAD_REQUEST)
-            try:
-                buyer_id = int(buyer_id)
-            except (TypeError, ValueError):
-                return Response({'error': 'buyer_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
 
-            proc_result = DatabaseManager.execute_procedure(
-                'confirm_marketplace_transaction',
-                (
-                    product_id,
-                    buyer_id,
-                    seller_id,
-                    'seller',
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            )
+        seller_id = product_result[0]['seller_id']
+        recorded_buyer_id = product_result[0].get('buyer_id')
+        if recorded_buyer_id is None:
+            return Response({'error': 'The seller has not recorded a buyer for this product yet'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Who is calling decides the role. The buyer/seller ids are never taken from the client.
+        if request.user.id == seller_id:
+            confirm_role = 'seller'
+        elif request.user.id == recorded_buyer_id:
+            confirm_role = 'buyer'
         else:
-            buyer_id = request.user.id
-            proc_result = DatabaseManager.execute_procedure(
-                'confirm_marketplace_transaction',
-                (
-                    product_id,
-                    buyer_id,
-                    seller_id,
-                    'buyer',
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            )
+            return Response({'error': 'Only the seller or the recorded buyer can confirm this transaction'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if role in ('seller', 'buyer') and role != confirm_role:
+            return Response({'error': f'You are the {confirm_role} of this transaction, not the {role}'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        proc_result = DatabaseManager.execute_procedure(
+            'confirm_marketplace_transaction',
+            (product_id, recorded_buyer_id, seller_id, confirm_role, None, None, None, None, None)
+        )
 
         if proc_result and isinstance(proc_result, list) and len(proc_result) > 0:
             proc_out = proc_result[0]
@@ -1216,6 +1199,7 @@ class ConfirmTransactionView(APIView):
         return Response({'error': 'Failed to confirm transaction'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@throttled('reviews')
 class CreateReviewView(APIView):
     """
     Create a review for a product (Buyer only).
@@ -1255,13 +1239,12 @@ class CreateReviewView(APIView):
         
         # Check rating validity
         rating = data.get('rating')
+        if isinstance(rating, float) and not rating.is_integer():
+            return Response({'error': 'Rating must be a whole number between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            rating = int(rating)
-        except (TypeError, ValueError):
-            return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not (1 <= rating <= 5):
-            return Response({'error': 'Rating must be between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
+            rating = clean_int(rating, 'rating', required=True, minimum=1, maximum=5)
+        except ValidationError:
+            return Response({'error': 'Rating must be a whole number between 1 and 5'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Check product status and buyer ownership
         product_query = "SELECT status, seller_id, buyer_id FROM marketplace_products WHERE id = %s"
@@ -1299,7 +1282,7 @@ class CreateReviewView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        review_text = data.get('review_text', '').strip()
+        review_text = clean_str(data.get('review_text'), 'review_text', 2000) or ''
         proc_result = DatabaseManager.execute_procedure(
             'create_or_update_review',
             (
@@ -1363,13 +1346,13 @@ class SellerReviewsView(APIView):
             "limit": 10
         }
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request, seller_id):
         page = get_page(request.query_params, 1)
         limit = get_limit(request.query_params, 10)
         product_id = request.query_params.get('product_id')
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         filter_by_product = product_id is not None and str(product_id).strip() != ''
         
         query = """
@@ -1435,7 +1418,7 @@ class SellerReputationView(APIView):
             "response_rate": 95
         }
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request, seller_id):
         rep_query = """
@@ -1473,6 +1456,7 @@ class SellerReputationView(APIView):
             'total_products_sold': total_sold
         })
 
+@throttled('market')
 class ReserveProductView(APIView):
     """
     Mark a product as reserved (Seller only).

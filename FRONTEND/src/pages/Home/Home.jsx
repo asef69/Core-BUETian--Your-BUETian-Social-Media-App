@@ -12,6 +12,8 @@ import { useAuth } from '../../context/AuthContext';
 import '../../styles/Home.css';
 import { toTimestamp } from '../../utils/time';
 
+const FEED_PAGE_SIZE = 20;
+
 const Home = () => {
   const { user } = useAuth();
   const [posts, setPosts] = useState([]);
@@ -85,7 +87,8 @@ const Home = () => {
 
   const extractPosts = (data) => {
     if (Array.isArray(data)) {
-      return { items: data, next: null };
+      // The feed endpoint returns a plain list; a full page means there may be more.
+      return { items: data, next: data.length >= FEED_PAGE_SIZE ? true : null };
     }
 
     if (Array.isArray(data?.results)) {
@@ -205,7 +208,12 @@ const Home = () => {
       const response = await postAPI.getFeed(nextPage);
       const { items, next } = extractPosts(response.data);
       const normalizedPosts = items.map(normalizePost);
-      setPosts([...posts, ...normalizedPosts]);
+      // Never show the same post twice if pages overlap.
+      const seen = new Set(posts.map((post) => post.id || post.post_id));
+      setPosts([
+        ...posts,
+        ...normalizedPosts.filter((post) => !seen.has(post.id || post.post_id)),
+      ]);
       setPage(nextPage);
       setHasMore(!!next);
     } catch (error) {

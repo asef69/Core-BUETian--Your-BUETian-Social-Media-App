@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from utils.database import DatabaseManager
 from utils.params import get_int_param, get_limit, get_offset
+from utils.throttles import throttled
 
 
 def _normalize_media_url(url):
@@ -198,6 +199,7 @@ class PendingFollowRequestsView(APIView):
         return Response(result or [])
 
 
+@throttled('follow')
 class RemoveFollowerView(APIView):
     """
     Remove a user from authenticated user's followers list.
@@ -269,6 +271,7 @@ class RemoveFollowerView(APIView):
         )
 
 
+@throttled('follow')
 class RejectFollowRequestView(APIView):
     """
     Reject a pending follow request.

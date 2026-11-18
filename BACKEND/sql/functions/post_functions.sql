@@ -124,7 +124,8 @@ SELECT p.id AS post_id,
 FROM posts p
     INNER JOIN users u ON u.id = p.user_id
     LEFT JOIN media_urls m ON m.post_id = p.id
-WHERE p.content ~* (
+WHERE p_hashtag ~ '^[[:alnum:]_]{1,100}$'
+    AND p.content ~* (
     '(^|[^a-zA-Z0-9_])#' || p_hashtag || '([^a-zA-Z0-9_]|$)'
     )
     AND p.visibility = 'public'
@@ -398,7 +399,8 @@ CREATE OR REPLACE FUNCTION get_post_details(
     likes_count INTEGER,
     comments_count INTEGER,
     is_liked BOOLEAN,
-    media_urls_list VARCHAR(500) []
+    media_urls_list VARCHAR(500) [],
+    group_id INTEGER
     ) AS $$ BEGIN RETURN QUERY
 SELECT p.id as post_id,
     p.content,
@@ -423,7 +425,8 @@ SELECT p.id as post_id,
     SELECT m.media_url
     FROM media_urls m
     WHERE m.post_id = p.id
-    ) as media_urls_list
+    ) as media_urls_list,
+    p.group_id
 FROM posts p
     INNER JOIN users u ON p.user_id = u.id
 WHERE p.id = p_post_id;
@@ -436,23 +439,24 @@ CREATE OR REPLACE FUNCTION get_trending_hashtags(p_limit INTEGER DEFAULT 10) RET
     post_count BIGINT,
     total_engagement BIGINT
     ) AS $$ BEGIN RETURN QUERY
-SELECT lower(regexp_replace(bpt.tag_name, '^#', '')) AS hashtag,
-    COUNT(DISTINCT b.id) AS post_count,
-    COALESCE(SUM(b.likes_count + b.views_count + COALESCE(bc.comments_count, 0)), 0)::BIGINT AS total_engagement
-FROM blog_posts b
-    INNER JOIN blog_post_tags bpt ON bpt.blog_post_id = b.id
-    LEFT JOIN LATERAL (
-    SELECT COUNT(*)::INTEGER AS comments_count
-    FROM blog_comments c
-    WHERE c.blog_id = b.id
-    ) AS bc ON TRUE
-WHERE b.is_published = TRUE
-    AND (b.scheduled_publish_at IS NULL OR b.scheduled_publish_at <= NOW())
-    AND COALESCE(b.published_at, b.created_at) > CURRENT_TIMESTAMP - INTERVAL '30 days'
-    AND NULLIF(TRIM(regexp_replace(bpt.tag_name, '^#', '')), '') IS NOT NULL
-GROUP BY lower(regexp_replace(bpt.tag_name, '^#', ''))
+WITH tags AS (
+    SELECT DISTINCT p.id AS pid,
+        lower(m[1]) AS tag,
+        (p.likes_count + p.comments_count) AS engagement
+    FROM posts p,
+        LATERAL regexp_matches(COALESCE(p.content, ''), '(?:^|[^[:alnum:]_])#([[:alnum:]_]{1,50})', 'g') AS m
+    WHERE p.visibility = 'public'
+        AND (p.group_id IS NULL OR p.group_id = 0)
+        AND p.created_at > CURRENT_TIMESTAMP - INTERVAL '30 days'
+)
+SELECT t.tag AS hashtag,
+    COUNT(*)::BIGINT AS post_count,
+    COALESCE(SUM(t.engagement), 0)::BIGINT AS total_engagement
+FROM tags t
+GROUP BY t.tag
 ORDER BY total_engagement DESC,
-    post_count DESC
+    post_count DESC,
+    t.tag
 LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
@@ -460,7 +464,9 @@ $$ LANGUAGE plpgsql;
 DROP FUNCTION IF EXISTS get_post_comments;
 CREATE OR REPLACE FUNCTION get_post_comments(
     p_post_id INTEGER,
-    p_current_user_id INTEGER DEFAULT NULL
+    p_current_user_id INTEGER DEFAULT NULL,
+    p_limit INTEGER DEFAULT 500,
+    p_offset INTEGER DEFAULT 0
     ) RETURNS TABLE(
     comment_id INTEGER,
     user_id INTEGER,
@@ -501,7 +507,8 @@ GROUP BY c.id,
     c.content,
     c.comment_id,
     c.created_at
-ORDER BY c.created_at ASC;
+ORDER BY c.created_at ASC
+LIMIT p_limit OFFSET p_offset;
 END;
 $$ LANGUAGE plpgsql;
 

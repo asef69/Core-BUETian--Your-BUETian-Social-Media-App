@@ -4,13 +4,14 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
-from utils.params import get_int_param, get_limit, get_page
+from utils.params import get_int_param, get_limit, get_page, page_offset
 from utils.file_upload import FileUploadHandler
 from utils.validators import (
     POST_VISIBILITIES, clean_choice, clean_int, clean_media_url, clean_str, parse_bool,
     safe_procedure_message,
 )
 from django.db import transaction
+from utils.throttles import throttled
 
 
 def _get_group_role(group_id, user_id):
@@ -79,6 +80,7 @@ def _create_group_cover_post(group_id, admin_user_id, cover_image_url, caption='
         (post_id, cover_image_url, 'image')
     )
 
+@throttled('groups')
 class CreateGroupView(APIView):
     """
     Create a new group.
@@ -285,9 +287,16 @@ class GroupMembersView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request, group_id):
+        group = DatabaseManager.execute_query("SELECT is_private FROM groups WHERE id = %s", (group_id,))
+        if not group:
+            return Response({'error': 'Group not found'}, status=status.HTTP_404_NOT_FOUND)
+        if group[0]['is_private'] and _get_group_role(group_id, request.user.id) is None:
+            return Response({'error': 'Only members can see who is in a private group'},
+                            status=status.HTTP_403_FORBIDDEN)
         result = DatabaseManager.execute_function('get_group_members_list', (group_id,))
         return Response(result)
 
+@throttled('follow')
 class JoinGroupView(APIView):
     """
     Request to join a group.
@@ -450,6 +459,7 @@ class RejectGroupMemberView(APIView):
         return Response({'message': 'Member rejected'})
     
     
+@throttled('follow')
 class InviteGroupMemberView(APIView):
     """
     Invite/add a user to group (Admin/Moderator only).
@@ -621,6 +631,7 @@ class RemoveGroupMemberView(APIView):
         DatabaseManager.execute_update(delete_query, (group_id, user_id))
         return Response({'message': 'Member removed successfully'})
 
+@throttled('groups')
 class UpdateGroupView(APIView):
     """
     Update group information (Admin only).
@@ -815,7 +826,7 @@ class GroupPostsView(APIView):
         
         page = get_page(request.GET, 1)
         limit = get_limit(request.GET, 20)
-        offset = (page - 1) * limit
+        offset = page_offset(page, limit)
         
         # Get posts with user info
         # posts_query = """
@@ -852,6 +863,7 @@ class GroupPostsView(APIView):
             'limit': limit
         })
 
+@throttled('posts')
 class CreateGroupPostView(APIView):
     """
     Create a post in a group (members only).

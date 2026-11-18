@@ -21,6 +21,7 @@ export const authAPI = {
     }
   },
   login: (data) => api.post('/users/login/', data),
+  logout: (refresh) => api.post('/users/logout/', { refresh }),
 };
 
 

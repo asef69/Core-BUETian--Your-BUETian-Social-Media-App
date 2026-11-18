@@ -33,7 +33,6 @@ schema_view = get_schema_view(
 )
 urlpatterns = [
     path('health/', health, name='health'),
-    path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/posts/', include('posts.urls')),
     path('api/search/', include('core_buetians.search_urls')),
@@ -47,6 +46,10 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc')
 ]
+
+# The Django admin has no registered models in this project; only expose it when asked for.
+if settings.DEBUG or env_config('ADMIN_ENABLED', default=False, cast=bool):
+    urlpatterns += [path('admin/', admin.site.urls)]
 
 if settings.DEBUG:
     import debug_toolbar

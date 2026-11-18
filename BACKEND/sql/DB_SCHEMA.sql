@@ -334,3 +334,25 @@ BEGIN
             FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE NOT VALID;
     END IF;
 END $$;
+
+-- Per-user message deletion: "delete conversation" hides the thread for the caller only.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_for_sender BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_for_receiver BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- One counted view per user per blog per day (stops view-count inflation).
+CREATE TABLE IF NOT EXISTS blog_view_log(
+    id SERIAL PRIMARY KEY,
+    blog_id INTEGER REFERENCES blog_posts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    viewed_on DATE NOT NULL DEFAULT CURRENT_DATE,
+    UNIQUE(blog_id, user_id, viewed_on)
+);
+
+-- Refresh tokens that were logged out / rotated; checked on every token refresh.
+CREATE TABLE IF NOT EXISTS revoked_tokens(
+    jti VARCHAR(64) PRIMARY KEY,
+    user_id INTEGER,
+    expires_at TIMESTAMP NOT NULL,
+    revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);

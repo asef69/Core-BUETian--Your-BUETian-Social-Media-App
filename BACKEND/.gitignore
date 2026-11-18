@@ -14,3 +14,8 @@ __pycache__/
 procedures.txt
 /.vercel
 /staticfiles
+
+# QA suite scratch data
+/qa/.pgdata
+/qa/results.json
+/qa/__pycache__/

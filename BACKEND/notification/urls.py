@@ -1,3 +1,4 @@
+import utils.converters  # noqa: F401  (registers <posint:...>)
 from django.urls import path
 from .views import (
     NotificationsListView, UnreadNotificationsView,
@@ -16,8 +17,8 @@ urlpatterns = [
     path('summary/', NotificationSummaryView.as_view()),
     path('activity/', ActivityNotificationsView.as_view()),
     
-    path('<int:notification_id>/read/', MarkNotificationReadView.as_view()),
-    path('<int:notification_id>/', DeleteNotificationView.as_view()),
+    path('<posint:notification_id>/read/', MarkNotificationReadView.as_view()),
+    path('<posint:notification_id>/', DeleteNotificationView.as_view()),
     
     path('read-all/', MarkAllReadView.as_view()),
     path('mark-read/<str:notification_type>/', MarkNotificationsByTypeView.as_view()),

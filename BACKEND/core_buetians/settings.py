@@ -91,6 +91,9 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    # Tell browsers to use HTTPS only (the proxy header above marks requests as secure).
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)
+    SECURE_REFERRER_POLICY = 'same-origin'
 
 # Needed for the Django admin / session login on https origins (e.g. Vercel).
 CSRF_TRUSTED_ORIGINS = _csv(config('CSRF_TRUSTED_ORIGINS', default='https://*.vercel.app,https://*.onrender.com'))
@@ -161,6 +164,20 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core_buetians.wsgi.application'
 ASGI_APPLICATION = 'core_buetians.asgi.application'
+
+# Cache (used for rate limiting and login lockout). The in-memory cache is per process,
+# so with several workers / serverless instances set REDIS_URL to share the counters.
+_REDIS_CACHE_URL = config('REDIS_URL', default='')
+if _REDIS_CACHE_URL:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.redis.RedisCache', 'LOCATION': _REDIS_CACHE_URL}}
+else:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
+
+LOGIN_MAX_FAILURES = config('LOGIN_MAX_FAILURES', default=8, cast=int)
+LOGIN_LOCKOUT_SECONDS = config('LOGIN_LOCKOUT_SECONDS', default=900, cast=int)
+
+# Hosts whose https URLs are accepted as media links (profile pictures, post media...).
+ALLOWED_MEDIA_HOSTS = tuple(_csv(config('ALLOWED_MEDIA_HOSTS', default='res.cloudinary.com')))
 
 # Channels configuration
 # In-memory layer is fine for a single process (local dev). Set REDIS_URL to
@@ -290,13 +307,25 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
     # Brute-force protection for login / register (views opt in with throttle_scope = 'auth').
     'DEFAULT_THROTTLE_RATES': {
+        # Login / register / token refresh (per client IP)
         'auth': config('AUTH_THROTTLE_RATE', default='20/min'),
+        # Write endpoints, per user (reads are never throttled). Override any of them with
+        # THROTTLE_<SCOPE>=<n>/min (e.g. THROTTLE_POSTS=60/min).
+        **{
+            scope: config(f'THROTTLE_{scope.upper()}', default=rate)
+            for scope, rate in {
+                'posts': '30/min', 'comments': '60/min', 'likes': '120/min', 'follow': '60/min',
+                'chat': '120/min', 'contact': '10/min', 'uploads': '30/min', 'groups': '20/min',
+                'market': '30/min', 'reviews': '20/min', 'forums': '20/min', 'blogs': '20/min',
+                'profile': '30/min',
+            }.items()
+        },
     },
     # Number of reverse proxies in front of the app (Render / Vercel add one).
     'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
 }
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('ACCESS_TOKEN_MINUTES', default=1440, cast=int)),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
@@ -316,10 +345,18 @@ SWAGGER_SETTINGS = {
 # acceptable, but production should list the frontend origin(s) explicitly:
 #   CORS_ALLOWED_ORIGINS=https://my-frontend.vercel.app
 _cors_origins_env = _csv(config('CORS_ALLOWED_ORIGINS', default=''))
-CORS_ALLOW_ALL_ORIGINS = not _cors_origins_env
-# Browsers must not send cookies cross-site by default: auth is the Authorization header.
+# Only open to every origin in local development. In production an unset
+# CORS_ALLOWED_ORIGINS falls back to the *.vercel.app / *.onrender.com patterns below,
+# so set it to your real frontend origin(s).
+CORS_ALLOW_ALL_ORIGINS = DEBUG and not _cors_origins_env
+CORS_ALLOWED_ORIGIN_REGEXES = [] if (_cors_origins_env or DEBUG) else [
+    r'^https://[\w-]+\.vercel\.app$',
+    r'^https://[\w-]+\.onrender\.com$',
+]
 
-CORS_ALLOW_CREDENTIALS = True
+# Auth is a bearer token in the Authorization header, never a cookie, so credentialed
+# cross-site requests are not needed (and would only widen the attack surface).
+CORS_ALLOW_CREDENTIALS = False
 
 CORS_ALLOWED_ORIGINS = _cors_origins_env or [
     "http://localhost:3000",

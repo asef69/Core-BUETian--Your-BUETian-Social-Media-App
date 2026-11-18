@@ -1,3 +1,4 @@
+import utils.converters  # noqa: F401  (registers <posint:...>)
 from django.urls import path
 from .views import (
     CreatePostView, UserFeedView, PostDetailView,
@@ -19,17 +20,17 @@ urlpatterns = [
     path('trending/', TrendingPostsView.as_view()),
     path('search/', SearchPostsView.as_view()),
     
-    path('<int:post_id>/', PostDetailView.as_view()),
-    path('<int:post_id>/like/', LikePostView.as_view()),
-    path('<int:post_id>/comments/', CommentView.as_view()),
-    path('<int:post_id>/engagement/', PostEngagementStatsView.as_view()),
+    path('<posint:post_id>/', PostDetailView.as_view()),
+    path('<posint:post_id>/like/', LikePostView.as_view()),
+    path('<posint:post_id>/comments/', CommentView.as_view()),
+    path('<posint:post_id>/engagement/', PostEngagementStatsView.as_view()),
     
     path('hashtag/', PostsByHashtagView.as_view()),
     path('hashtags/trending/', TrendingHashtagsView.as_view()),
     path('media/<str:media_type>/', PostsByMediaTypeView.as_view()),
     path('liked/<str:user_id>/', UserLikedPostsView.as_view()),
     
-    path('comments/<int:comment_id>/', UpdateCommentView.as_view()),
-    path('comments/<int:comment_id>/delete/', DeleteCommentView.as_view()),
-    path('comments/<int:comment_id>/like/', LikeCommentView.as_view()),
+    path('comments/<posint:comment_id>/', UpdateCommentView.as_view()),
+    path('comments/<posint:comment_id>/delete/', DeleteCommentView.as_view()),
+    path('comments/<posint:comment_id>/like/', LikeCommentView.as_view()),
 ]

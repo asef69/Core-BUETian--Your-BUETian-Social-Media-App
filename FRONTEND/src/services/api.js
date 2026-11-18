@@ -21,9 +21,6 @@ api.interceptors.request.use(
     const token = localStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('🔑 Adding token to request:', config.url);
-    } else {
-      console.warn('⚠️ No access token found for request:', config.url);
     }
     return config;
   },
@@ -70,11 +67,15 @@ api.interceptors.response.use(
           const response = await axios.post(`${API_BASE_URL}/users/token/refresh/`, {
             refresh: refreshToken,
           });
-          const { access } = response.data;
+          const { access, refresh } = response.data;
           localStorage.setItem('accessToken', access);
+          // The server rotates refresh tokens: keep the new one (absent when a parallel
+          // request already rotated it).
+          if (refresh) {
+            localStorage.setItem('refreshToken', refresh);
+          }
           
           originalRequest.headers.Authorization = `Bearer ${access}`;
-          console.log('🔄 Token refreshed successfully');
           return api(originalRequest);
         } catch (err) {
           console.error('🔐 Token refresh failed:', err.message);
@@ -88,6 +89,12 @@ api.interceptors.response.use(
         localStorage.removeItem('refreshToken');
         window.location.href = '/login';
       }
+    }
+
+    // Handle 429 Too Many Requests
+    if (error.response?.status === 429) {
+      error.displayMessage =
+        error.response?.data?.error || 'You are doing that too often. Please slow down and try again shortly.';
     }
 
     // Handle 403 Forbidden

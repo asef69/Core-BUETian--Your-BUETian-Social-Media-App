@@ -960,6 +960,18 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Only the product's real seller and recorded buyer can have a transaction.
+    IF NOT EXISTS (
+        SELECT 1
+        FROM marketplace_products
+        WHERE id = p_product_id
+          AND seller_id = p_seller_id
+          AND buyer_id = p_buyer_id
+    ) THEN
+        out_message := 'Buyer and seller must match the product record';
+        RETURN;
+    END IF;
+
     IF p_role = 'seller' THEN
     
         INSERT INTO buyer_seller_transactions (

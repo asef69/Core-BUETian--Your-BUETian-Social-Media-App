@@ -86,6 +86,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Revoke the refresh token on the server (best effort; local logout always succeeds).
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
+      authAPI.logout(refreshToken).catch(() => {});
+    }
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);

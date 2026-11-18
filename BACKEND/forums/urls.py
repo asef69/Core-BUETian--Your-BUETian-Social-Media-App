@@ -1,3 +1,4 @@
+import utils.converters  # noqa: F401  (registers <posint:...>)
 from django.urls import path
 from .views import (
     CreateBloodRequestView, BloodRequestDetailView, ActiveBloodRequestsView,
@@ -12,15 +13,15 @@ from .extended_views import (
 
 urlpatterns = [
     path('blood/create/', CreateBloodRequestView.as_view()),
-    path('blood/<int:request_id>/', BloodRequestDetailView.as_view()),
-    path('blood/<int:request_id>/status/', UpdateBloodRequestStatusView.as_view()),
+    path('blood/<posint:request_id>/', BloodRequestDetailView.as_view()),
+    path('blood/<posint:request_id>/status/', UpdateBloodRequestStatusView.as_view()),
     path('blood/', ActiveBloodRequestsView.as_view()),
     path('blood/search/location/', SearchBloodRequestsByLocationView.as_view()),
     path('blood/my-requests/', UserBloodRequestsView.as_view()),
     
     path('tuition/create/', CreateTuitionPostView.as_view()),
-    path('tuition/<int:post_id>/', TuitionPostDetailView.as_view()),
-    path('tuition/<int:post_id>/status/', UpdateTuitionPostStatusView.as_view()),
+    path('tuition/<posint:post_id>/', TuitionPostDetailView.as_view()),
+    path('tuition/<posint:post_id>/status/', UpdateTuitionPostStatusView.as_view()),
     path('tuition/', ActiveTuitionPostsView.as_view()),
     path('tuition/search/', SearchTuitionPostsView.as_view()),
     path('tuition/my-posts/', UserTuitionPostsView.as_view()),

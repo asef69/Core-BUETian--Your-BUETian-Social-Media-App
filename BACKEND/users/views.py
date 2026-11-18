@@ -6,6 +6,7 @@ from django.db.utils import ProgrammingError
 from utils.database import DatabaseManager
 from utils.params import get_limit
 from utils.file_upload import FileUploadHandler
+from utils.throttles import throttled
 from utils.validators import (
     BLOOD_GROUPS, HALL_ATTACHMENTS, clean_choice, clean_media_url, clean_str,
 )
@@ -110,6 +111,7 @@ class UserProfileView(APIView):
             profile.pop('email', None)
         return Response(profile)
     
+@throttled('profile')
 class UpdateProfileView(APIView):
     """
     Update authenticated user's profile information.
@@ -193,6 +195,7 @@ class UpdateProfileView(APIView):
     def put(self, request):
         return self._update_profile(request)
     
+@throttled('follow')
 class FollowUserView(APIView):
     """
     Follow or unfollow a user (toggle functionality).
@@ -275,6 +278,7 @@ class FollowUserView(APIView):
             'following_count': target_counts['following_count'],
         })
         
+@throttled('follow')
 class AcceptFollowView(APIView):
     """
     Accept a pending follow request.
@@ -476,6 +480,7 @@ class UserActivityView(APIView):
         return Response(result[0] if result else {})
 
 
+@throttled('uploads')
 class UploadProfilePictureView(APIView):
     """
     Upload or update user's profile picture.
