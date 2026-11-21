@@ -583,6 +583,7 @@ Vercel API as the frontend's target - point the frontend at one backend only.
 | Area | What is in place |
 | --- | --- |
 | Authentication | JWT bearer tokens; refresh tokens **rotate** on every refresh and are **revoked** on logout (`POST /api/users/logout/`); deactivated users are locked out of HTTP, refresh and live WebSockets |
+| Passwords | Argon2id (OWASP settings): strong and fast (~30 ms per login). Older PBKDF2 hashes still work and are upgraded automatically at the next login |
 | Brute force | 20 login/register requests per minute per IP, plus a **per-account lockout** (8 wrong passwords -> 15 minutes) |
 | Rate limits | Per-user limits on every write endpoint (posts 30/min, comments 60/min, chat 120/min, contact-seller 10/min ...). Reads are never limited. Override with `THROTTLE_<SCOPE>=<n>/min`; set `REDIS_URL` so counters are shared between processes |
 | Privacy | Private posts, followers-only posts, group posts, blog drafts and private-group member lists are enforced on every endpoint; other users' emails are never returned |

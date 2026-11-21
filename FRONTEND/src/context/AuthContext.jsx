@@ -61,10 +61,7 @@ export const AuthProvider = ({ children }) => {
       });
       
       showToast.success('Welcome back!', 'Login successful');
-      
-     
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       return { success: true };
     } catch (error) {
       const message = error.response?.data?.error || 'Login failed';
@@ -76,6 +73,15 @@ export const AuthProvider = ({ children }) => {
   const register = async (data) => {
     try {
       const response = await authAPI.register(data);
+      const { tokens, user: userData } = response.data;
+      if (tokens?.access && tokens?.refresh) {
+        // The server signs new accounts in, so there is no second login step.
+        localStorage.setItem('accessToken', tokens.access);
+        localStorage.setItem('refreshToken', tokens.refresh);
+        setUser({ id: userData.id, email: userData.email, name: userData.name });
+        showToast.success('Welcome to Core BUETians!', 'Your account is ready');
+        return { success: true, signedIn: true, data: response.data };
+      }
       showToast.success('Account created!', 'Please login with your credentials');
       return { success: true, data: response.data };
     } catch (error) {

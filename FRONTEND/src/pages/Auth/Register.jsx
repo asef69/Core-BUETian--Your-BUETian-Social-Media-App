@@ -64,7 +64,7 @@ const Register = () => {
     setLoading(false);
 
     if (result.success) {
-      navigate('/login');
+      navigate(result.signedIn ? '/' : '/login');
       return;
     }
     setFormError(result?.error || 'Registration failed. Please check your details and try again.');

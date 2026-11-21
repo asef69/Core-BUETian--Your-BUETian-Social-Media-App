@@ -3,8 +3,6 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework import permissions
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
 from django.http import JsonResponse
 from decouple import config as env_config
 
@@ -15,22 +13,6 @@ def health(request):
 
 
 
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Core BUETians API",
-        default_version='v1',
-        description="Social Media Platform for BUET Students",
-        contact=openapi.Contact(email="admin@corebuetians.com"),
-    ),
-    public=True,
-    # Interactive API docs list every endpoint, so they are only open in development
-    # (or when SWAGGER_PUBLIC=true); otherwise a staff login is required.
-    permission_classes=(
-        (permissions.AllowAny,)
-        if (settings.DEBUG or env_config('SWAGGER_PUBLIC', default=False, cast=bool))
-        else (permissions.IsAdminUser,)
-    ),
-)
 urlpatterns = [
     path('health/', health, name='health'),
     path('api/users/', include('users.urls')),
@@ -43,9 +25,27 @@ urlpatterns = [
     path('api/notifications/', include('notification.urls')),
     path('api/blogs/', include('core_buetians.blog_urls')),
     
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc')
 ]
+
+if settings.SWAGGER_ENABLED:
+    # Imported lazily: drf_yasg is heavy and only needed when the docs are switched on.
+    from drf_yasg.views import get_schema_view
+    from drf_yasg import openapi
+
+    schema_view = get_schema_view(
+        openapi.Info(
+            title="Core BUETians API",
+            default_version='v1',
+            description="Social Media Platform for BUET Students",
+            contact=openapi.Contact(email="admin@corebuetians.com"),
+        ),
+        public=True,
+        permission_classes=(permissions.AllowAny,) if settings.DEBUG else (permissions.IsAdminUser,),
+    )
+    urlpatterns += [
+        path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+        path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    ]
 
 # The Django admin has no registered models in this project; only expose it when asked for.
 if settings.DEBUG or env_config('ADMIN_ENABLED', default=False, cast=bool):

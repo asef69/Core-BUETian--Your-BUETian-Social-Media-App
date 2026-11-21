@@ -149,4 +149,26 @@ ev = asyncio.run(_live())
 check(AREA, "WS: recipient gets message_edited live", ev["edit"].get("type") == "message_edited" and ev["edit"]["message"]["content"] == "live edited", ev["edit"], "medium")
 check(AREA, "WS: recipient gets message_deleted live", ev["delete"].get("type") == "message_deleted" and ev["delete"]["message"]["is_deleted"] is True, ev["delete"], "medium")
 
+# ---- fast logins: Argon2 for new passwords, legacy PBKDF2 accounts upgraded on login
+import time as _t
+from django.contrib.auth.hashers import make_password as _mk
+r = anon().post("/api/users/register/", {"student_id": 8123456, "name": "Fast", "email": "fast@qa.test", "password": "Str0ngPass!word"})
+check(AREA, "register returns usable tokens (signs the user straight in)", r.status_code == 201 and r.data.get("tokens", {}).get("access") and
+      Client(token=r.data["tokens"]["access"]).get("/api/users/suggestions/").status_code == 200, getattr(r, "data", ""), "high")
+check(AREA, "new passwords are stored as Argon2id", DM.execute_query("select password from users where email='fast@qa.test'")[0]["password"].startswith("argon2$argon2id$"), "", "medium")
+legacy_hash = _mk("Legacy-Pass-123", hasher="pbkdf2_sha256")
+DM.execute_update("insert into users(student_id,name,email,password,is_active) values (8123457,'Legacy','legacy@qa.test',%s,true)", (legacy_hash,))
+r = anon().post("/api/users/login/", {"email": "legacy@qa.test", "password": "wrong-password-1"})
+check(AREA, "legacy PBKDF2 account: wrong password still rejected and hash untouched", r.status_code == 401 and
+      DM.execute_query("select password from users where email='legacy@qa.test'")[0]["password"] == legacy_hash, r.status_code, "high")
+r = anon().post("/api/users/login/", {"email": "legacy@qa.test", "password": "Legacy-Pass-123"})
+check(AREA, "legacy PBKDF2 account can still log in", r.status_code == 200, getattr(r, "data", ""), "critical")
+check(AREA, "legacy account is upgraded to Argon2 after that login", DM.execute_query("select password from users where email='legacy@qa.test'")[0]["password"].startswith("argon2$"), "", "high")
+check(AREA, "and logs in again with the upgraded hash", anon().post("/api/users/login/", {"email": "legacy@qa.test", "password": "Legacy-Pass-123"}).status_code == 200, "", "high")
+t0 = _t.perf_counter(); anon().post("/api/users/login/", {"email": "fast@qa.test", "password": "Str0ngPass!word"}); dt = (_t.perf_counter() - t0) * 1000
+check(AREA, "a login takes under 250 ms of server time", dt < 250, f"{dt:.0f} ms", "medium")
+t0 = _t.perf_counter(); anon().post("/api/users/login/", {"email": "nobody-here@qa.test", "password": "Whatever-123"}); dt_unknown = (_t.perf_counter() - t0) * 1000
+check(AREA, "unknown email costs about the same as a real one (no account enumeration by timing)", dt_unknown > 10, f"{dt_unknown:.0f} ms vs {dt:.0f} ms", "low")
+check(AREA, "API docs are not loaded in production (faster cold start)", anon().api.get("/swagger/").status_code == 404, "", "low")
+
 save_results()

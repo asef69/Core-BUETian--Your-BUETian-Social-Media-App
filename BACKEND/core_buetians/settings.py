@@ -116,7 +116,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-    'drf_yasg',
     'chat',
     'users',
     'posts',
@@ -125,6 +124,12 @@ INSTALLED_APPS = [
     'notification',
     'forums',
 ]
+
+# The interactive API docs import a lot of code at start-up, which slows every serverless cold
+# start, so they are only loaded in development (or when SWAGGER_PUBLIC=true).
+SWAGGER_ENABLED = DEBUG or config('SWAGGER_PUBLIC', default=False, cast=bool)
+if SWAGGER_ENABLED:
+    INSTALLED_APPS.append('drf_yasg')
 
 if DEBUG:
     INSTALLED_APPS.append('debug_toolbar')
@@ -213,13 +218,12 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT', default='5432'),
-        # Keep 0 (close after each request). Under ASGI/Daphne Django runs every
-        # request's sync code in a fresh thread, so a persistent connection is
-        # never reused (measured: no speed-up) and only risks leaking sockets.
-        # The cost of reconnecting is instead kept small by hosting the backend
-        # in the same region as the database (see render.yaml). Only raise this
-        # when serving with a WSGI server (gunicorn); override via DB_CONN_MAX_AGE.
-        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=0, cast=int),
+        # Opening a TLS connection to Supabase costs 100-500 ms, so reuse it. On Vercel the app
+        # runs under WSGI, where a warm instance keeps its connection between requests.
+        # Under ASGI/Daphne (Render) every request's sync code runs in a fresh thread, so a
+        # persistent connection is never reused there (measured: no speed-up) and 0 is kept.
+        # Override with DB_CONN_MAX_AGE.
+        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60 if os.environ.get('VERCEL') else 0, cast=int),
         # Drop and replace a reused connection the pooler has closed.
         'CONN_HEALTH_CHECKS': True,
         # Required with pgbouncer/Supavisor in transaction mode.
@@ -233,6 +237,13 @@ DATABASES = {
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+
+# Argon2id for new passwords (fast + strong); old PBKDF2 hashes are still accepted and upgraded on login.
+PASSWORD_HASHERS = [
+    'utils.hashers.FastArgon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {

@@ -49,6 +49,25 @@ def _record_failure(email):
         cache.set(key, 1, LOGIN_LOCKOUT_SECONDS)
 
 
+_DUMMY_HASH = None
+
+
+def _burn_password_check(password):
+    """Spend about as long as a real password check for unknown emails, so response time
+    does not reveal whether an account exists."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = make_password('not-a-real-password')
+    check_password(password, _DUMMY_HASH)
+
+
+def _issue_tokens(user):
+    refresh = RefreshToken()
+    refresh['user_id'] = user['id']
+    refresh['email'] = user['email']
+    return {'refresh': str(refresh), 'access': str(refresh.access_token)}
+
+
 def _revoke_refresh_token(refresh):
     """Remember a refresh token's jti so it can never be used again."""
     DatabaseManager.execute_update(
@@ -199,9 +218,11 @@ class RegisterView(APIView):
             )
         
         if result:
+            # Sign the new user straight in: saves a second, equally slow, login round trip.
             return Response({
                 'message': 'User registered successfully',
-                'user': result[0]
+                'user': result[0],
+                'tokens': _issue_tokens(result[0]),
             }, status=status.HTTP_201_CREATED)
         
         return Response(
@@ -305,6 +326,7 @@ class LoginView(APIView):
         result = DatabaseManager.execute_query(query, (email.strip().lower(),))
         
         if not result:
+            _burn_password_check(password)
             _record_failure(email)
             return Response(
                 {'error': 'Invalid credentials'},
@@ -313,7 +335,15 @@ class LoginView(APIView):
         
         user = result[0]
         
-        if not check_password(password, user['password']):
+        def _upgrade_hash(raw_password):
+            # Called only after a correct password when the stored hash uses an older / weaker
+            # scheme (PBKDF2): move the account to Argon2 so later logins are fast.
+            DatabaseManager.execute_update(
+                "UPDATE users SET password = %s WHERE id = %s",
+                (make_password(raw_password), user['id'])
+            )
+
+        if not check_password(password, user['password'], setter=_upgrade_hash):
             _record_failure(email)
             return Response(
                 {'error': 'Invalid credentials'},
